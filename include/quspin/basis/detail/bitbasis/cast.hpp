@@ -7,8 +7,8 @@
 
 namespace quspin::details::basis {
 
-template<typename J, BasisPrinativeTypes I>
-  requires std::integral<J> && BasisPrinativeTypes<I>
+template<typename J, BasisPrimativeTypes I>
+  requires std::integral<J> && BasisPrimativeTypes<I>
 J integer_cast(const I s) {
   if (s > std::numeric_limits<J>::max()) {
     return -1;

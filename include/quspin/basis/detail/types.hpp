@@ -14,7 +14,7 @@ namespace quspin::details::basis {
 using uint32_t = std::uint32_t;
 using uint64_t = std::uint64_t;
 
-using dit_interger_t = int;
+using dit_integer_t = int;
 
 #ifdef USE_BOOST
 
@@ -44,7 +44,7 @@ using uint16384_t =
         boost::multiprecision::unchecked, void> >;
 
 template<typename I>
-concept BasisPrinativeTypes =
+concept BasisPrimativeTypes =
     std::same_as<I, uint32_t> || std::same_as<I, uint64_t> ||
     std::same_as<I, uint128_t> || std::same_as<I, uint256_t> ||
     std::same_as<I, uint512_t> || std::same_as<I, uint1024_t> ||
@@ -55,7 +55,7 @@ concept BasisPrinativeTypes =
 #else
 
 template<typename I>
-concept BasisPrinativeTypes =
+concept BasisPrimativeTypes =
     std::same_as<I, uint32_t> || std::same_as<I, uint64_t>;
 
 #endif

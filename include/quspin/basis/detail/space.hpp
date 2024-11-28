@@ -37,8 +37,7 @@ class dit_fullspace  // sps > 2
           mask(constants::mask[_lhss]),
           bits(constants::bits[_lhss]) {}
 
-    dit_fullspace(dit_fullspace<I, J>& other)
-        : dit_fullspace(other.lhss, other.Ns) {}
+    dit_fullspace(const dit_fullspace<I, J>& other) = default;
 
     ~dit_fullspace() {}
 
@@ -122,11 +121,11 @@ class dit_subspace  // sps > 2
     }
 
     inline bool contains(const bitset_t& state) const {
-      return index_map.count(state.content) != 0;
+      return index_map.contains(state.content);
     }
 
     void append(const I new_state, const K new_norm) {
-      if (index_map.count(new_state) == 0) {
+      if (index_map.contains(new_state)) {
         states.push_back(std::make_pair(new_state, new_norm));
         index_map[new_state] = states.size();
       }
@@ -335,17 +334,17 @@ class bit_subspace    // sps = 2
 };
 
 using spaces = std::variant<
-    dit_fullspace<uint32_t, std::size_t>, dit_fullspace<uint64_t, std::size_t>,
-    dit_subspace<uint32_t, std::size_t, int8_t>,
-    dit_subspace<uint64_t, std::size_t, int8_t>,
-    dit_subspace<uint128_t, std::size_t, int8_t>,
-    dit_subspace<uint256_t, std::size_t, int16_t>,
-    dit_subspace<uint16384_t, std::size_t, int16_t>,
-    bit_fullspace<uint32_t, std::size_t>, bit_fullspace<uint64_t, std::size_t>,
-    bit_subspace<uint32_t, std::size_t, int8_t>,
-    bit_subspace<uint64_t, std::size_t, int8_t>,
-    bit_subspace<uint128_t, std::size_t, int8_t>,
-    bit_subspace<uint256_t, std::size_t, int16_t>,
-    bit_subspace<uint16384_t, std::size_t, int16_t>>;
+    dit_fullspace<uint32_t, int32_t>, dit_fullspace<uint64_t, int32_t>,
+    dit_subspace<uint32_t, int32_t, int8_t>,
+    dit_subspace<uint64_t, int32_t, int8_t>,
+    dit_subspace<uint128_t, int32_t, int8_t>,
+    dit_subspace<uint256_t, int32_t, int16_t>,
+    dit_subspace<uint16384_t, int32_t, int16_t>,
+    bit_fullspace<uint32_t, int32_t>, bit_fullspace<uint64_t, int32_t>,
+    bit_subspace<uint32_t, int32_t, int8_t>,
+    bit_subspace<uint64_t, int32_t, int8_t>,
+    bit_subspace<uint128_t, int32_t, int8_t>,
+    bit_subspace<uint256_t, int32_t, int16_t>,
+    bit_subspace<uint16384_t, int32_t, int16_t>>;
 
 }  // namespace quspin::details::basis

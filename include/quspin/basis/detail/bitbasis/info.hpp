@@ -12,7 +12,7 @@ namespace quspin::details::basis {
 template<typename I>
 struct bit_info {};
 
-template<BasisPrinativeTypes I>
+template<BasisPrimativeTypes I>
 struct bit_info<I> {
   public:
 
@@ -24,7 +24,7 @@ struct bit_info<I> {
     static constexpr bit_index_type bytes = bits / 8;
 };
 
-template<BasisPrinativeTypes I>
+template<BasisPrimativeTypes I>
 struct bit_info<std::valarray<I>> : public bit_info<I> {};
 
 static_assert(bit_info<uint32_t>::bits == 32);

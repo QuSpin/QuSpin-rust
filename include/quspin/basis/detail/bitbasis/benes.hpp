@@ -13,8 +13,8 @@ struct tr_bfly {
 
     // This structure is used to hold the configuration of
     // butterfly-based operations as well as compress and expand.
-    bit_info<I>::value_type cfg[ld_bits];  // butterfly configuration
-    bit_info<I>::value_type mask;          // saved mask, for compress/expand
+    typename bit_info<I>::value_type cfg[ld_bits];  // butterfly configuration
+    typename bit_info<I>::value_type mask;  // saved mask, for compress/expand
 
     // Here is sketched how to convert this to a class:
     // Include all the generator and usage functions as private methods
@@ -78,7 +78,8 @@ void invert_perm(const ta_index<I>& src, ta_index<I>& tgt) {
 }
 
 template<typename I>
-I bit_permute_step(I x, const I& m, const int shift) {
+I bit_permute_step(I x, const typename bit_info<I>::value_type& m,
+                   const int shift) {
   // INLINE
   // Can be replaced by bit_permute_step_simple,
   // if for the relevant bits n the following holds:
@@ -165,9 +166,9 @@ void gen_benes_ex(tr_benes<I>* self, const ta_index<I>& c_tgt,
 
   ta_index<I> src, inv_src;
   ta_index<I> tgt, inv_tgt;
-  bit_info<I>::value_type cfg_src, cfg_tgt;
-  bit_info<I>::value_type src_set;
-  bit_info<I>::value_type lo_bit = 1;
+  typename bit_info<I>::value_type cfg_src, cfg_tgt;
+  typename bit_info<I>::value_type src_set;
+  typename bit_info<I>::value_type lo_bit = 1;
 
   int stage;
   int mask;
