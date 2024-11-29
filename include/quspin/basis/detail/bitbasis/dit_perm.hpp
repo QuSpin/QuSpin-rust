@@ -147,7 +147,7 @@ class perm_dit_values {
 };
 
 template<typename bitset_t>
-class perm_dit_values<bitset_t, 2> {
+class perm_dit_mask<bitset_t> {
   private:
 
     bitset_t mask;
@@ -156,7 +156,7 @@ class perm_dit_values<bitset_t, 2> {
 
     perm_dit_values(const bitset_t mask) : mask(mask) {}
 
-    perm_dit_values(const perm_dit_values<bitset_t, 2>& other) = default;
+    perm_dit_values(const perm_dit_mask& other) = default;
     perm_dit_values& operator=(const perm_dit_values<bitset_t, 2>& other) =
         default;
 

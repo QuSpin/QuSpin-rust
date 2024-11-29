@@ -6,7 +6,7 @@
 #include <memory>
 #include <queue>
 #include <quspin/basis/detail/space.hpp>
-#include <quspin/basis/detail/symmetry.hpp>
+#include <quspin/basis/detail/symmetry/grp.hpp>
 #include <quspin/operator.hpp>
 #include <quspin/utils/functions.hpp>
 #include <unordered_map>
@@ -15,8 +15,139 @@
 
 namespace quspin::details::basis {
 
+template<typename bitset_t>
+static constexpr decltype(auto) norm_value(const bitset_t bitset) {
+  if constexpr (bit_info<bitset_t>::bits <
+                std::numeric_limits<uint8_t>::digits) {
+    return uint8_t();
+  } else if constexpr (bit_info<bitset_t>::bits <
+                       std::numeric_limits<uint16_t>::digits) {
+    return uint16_t();
+  } else if constexpr (bit_info<bitset_t>::bits <
+                       std::numeric_limits<uint32_t>::digits) {
+    return uint32_t();
+  } else {
+    return uint64_t();
+  }
+}
+
+constexpr std::size_t int_pow(const std::size_t base, const std::size_t exp) {
+  std::size_t result = 1;
+  for (std::size_t i = 0; i < exp; ++i) {
+    result *= base;
+  }
+  return result;
+}
+
+template<typename bitset_t>
+class dynamic_space {
+  private:
+
+    std::size_t lhss;
+    std::size_t N;
+    std::size_t Ns;
+    dunamic_dit_manip manip;
+
+  public:
+
+    dynamic_basis(std::size_t lhss, std::size_t N)
+        : N(N), lhss(lhss), Ns(int_pow(lhss, N)), manip(lhss) {}
+
+    constexpr std::size_t get_index(const bitset_t& bits) const {
+      return (Ns - integer_cast<std::size_t>(bits) - 1);
+    }
+
+    static constexpr std::size_t get_norm(const std::size_t i) const {
+      return 1;
+    }
+
+    constexpr bitset_t get_state(const std::size_t i) const {
+      return bitset_t(Ns - i - 1);
+    }
+
+    bool contains(const bitset_t& bits) const { return bits < Ns; }
+};
+
+template<typename bitset_t, std::size_t lhss>
+  requires(lhss > 1)
+class space : public dynamic_space<bitset_t> {
+  private:
+
+    static constexpr std::size_t lhss = lhss;
+    std::size_t N;
+    std::size_t Ns;
+    dit_manip<bitset_t> manip;
+
+  public:
+
+    space(std::size_t N) : dynamc_space<bitset_t>(lhss, N) {}
+
+}
+
+template<typename grp_t>
+class dynamic_subspace {
+  private:
+
+    std::size_t lhss;
+    std::size_t N;
+    grp_t symmetry_grp;
+    dynamic_dit_manip manip;
+    std::vector<std::pair<bitset_type, norm_type>> basis_states;
+    std::unordered_map<bitset_type, std::size_t> basis_map;
+
+  public:
+
+    using bitset_type = typename grp_t::bitset_type;
+    using norm_type = decltype(norm_value(bitset_type()));
+
+    symmetric_basis(std::size_t lhss, std::size_t N, const grp_t& symmetry_grp)
+        : N(N), lhss(lhss), symmetry_grp(symmetry_grp), manip(lhss) {}
+
+    std::size_t get_index(const bitset_type& bits) const {
+      return basis_map.at(bits);
+    }
+
+    std::size_t get_norm(const std::size_t i) const {
+      return basis_states[i].second;
+    }
+
+    bitset_type get_state(const std::size_t i) const {
+      return basis_states[i].first;
+    }
+
+    void add(const bitset_type& bits) {
+      if (!basis_map.contains(bits)) {
+        const auto norm = symmetry_grp.check_refstate(bits);
+        if (!std::isnan(std::real(norm))) {
+          basis_map[bits] = basis_states.size();
+          basis_states.emplace_back(bits, norm);
+        }
+      }
+    }
+};
+
+template<typename grp_t, std::size_t lhss>
+class subspace : public dynamic_subspace<grp_t> {
+  private:
+
+    constexpr std::size_t lhss = lhss;
+    std::size_t N;
+    grp_t symmetry_grp;
+    constexpr dit_manip<lhss> manip;
+    std::vector<std::pair<bitset_type, norm_type>> basis_states;
+    std::unordered_map<bitset_type, std::size_t> basis_map;
+
+  public:
+
+    using bitset_type = typename grp_result_t::bitset_type;
+    using norm_type = decltype(norm_value(bitset_type()));
+
+    symmetric_basis(std::size_t N, const grp_t& symmetry_grp)
+        : N(N), symmetry_grp(symmetry_grp) {}
+};
+
 template<typename space_t, typename symmetry_t>
-class symmetric_basis {
+class subspace {
   public:
 
     symmetry_t symmetry;  // OK to copy

@@ -9,6 +9,7 @@ namespace quspin::details::basis {
 template<typename grp_element_t, typename grp_result_t>
 concept grp_requirements =
     requires(grp_element_t grp_element, grp_result_t grp_result) {
+      typename grp_result_t::bitset_type;
       { grp_element.apply(grp_result) } -> std::same_as<grp_result_t>;
       { check_refstate(grp_result, grp_result) } -> std::same_as<grp_result_t>;
       { get_refstate(grp_result, grp_result) } -> std::same_as<grp_result_t>;
@@ -24,15 +25,18 @@ struct grp {
 
   public:
 
-    grp(const std::vector<lattice_grp_element_t>& lattice_grp,
-        const std::vector<local_grp_element_t>& local_grp)
+    grp(const std::vector<lattice_grp_element_t>& lattice_grp = {},
+        const std::vector<local_grp_element_t>& local_grp = {})
         : lattice_grp(lattice_grp), local_grp(local_grp) {}
 
     grp(const grp& other) = default;
     grp& operator=(const grp& other) = default;
 
-    grp_result_t check_refstate(const grp_result_t& input) {
-      grp_result_t curr = input;
+    using bitset_type = typename grp_result_t::bitset_type;
+
+    grp_result_t check_refstate(
+        const typename grp_result_t::bitset_type& input) {
+      grp_result_t curr(nput);
 
       // Apply lattice operators only
       for (auto& lattice : lattice_grp) {
@@ -50,8 +54,8 @@ struct grp {
       return std::move(curr);
     }
 
-    grp_result_t get_refstate(const grp_result_t& input) {
-      grp_result_t curr = input;
+    grp_result_t get_refstate(const typename grp_result_t::bitset_type& input) {
+      grp_result_t curr(input);
 
       // Apply lattice operators only
       for (auto& lattice : lattice_grp) {

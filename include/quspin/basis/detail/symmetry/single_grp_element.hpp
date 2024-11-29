@@ -14,6 +14,10 @@ struct grp_result {
 
   public:
 
+    using bitet_type = bitset_t;
+
+    grp_result(const bitset_t& bits) : bits(bits), coeff(1.0) {}
+
     grp_result(const grp_result<bitset_t>& other) = default;
     grp_result(grp_result<bitset_t>&& other) = default;
     grp_result& operator=(const grp_result<bitset_t>& other) = default;
