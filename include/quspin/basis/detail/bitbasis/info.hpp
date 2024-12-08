@@ -7,7 +7,7 @@
 #include <quspin/basis/detail/types.hpp>
 #include <valarray>
 
-namespace quspin::details::basis {
+namespace quspin::detail::basis {
 
 template<typename I>
 struct bit_info {};
@@ -71,4 +71,4 @@ static_assert(bit_info<uint16384_t>::bytes == 2048);
 
 #endif
 
-}  // namespace quspin::details::basis
+}  // namespace quspin::detail::basis

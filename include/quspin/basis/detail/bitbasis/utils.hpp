@@ -3,7 +3,7 @@
 
 #include <quspin/basis/detail/bitbasis/info.hpp>
 
-namespace quspin::details::basis {
+namespace quspin::detail::basis {
 
 template<class T>
 typename bit_info<T>::bit_index_type bit_pos(
@@ -31,19 +31,19 @@ int inline bit_count(T v, const int l) {
   return (int)res;
 }
 
-}  // namespace quspin::details::basis
+}  // namespace quspin::detail::basis
 
 #ifdef QUSPIN_UNIT_TESTS
 
-namespace quspin::details::basis {
+namespace quspin::detail::basis {
 
 template int bit_pos<uint8_t>(uint8_t, int *);
 template int bit_count<uint8_t>(uint8_t, const int);
 
-}  // namespace quspin::details::basis
+}  // namespace quspin::detail::basis
 
 TEST_SUITE("quspin/basis/bitbasis/utils.h") {
-  using namespace quspin::details::basis;
+  using namespace quspin::detail::basis;
 
   TEST_CASE("bit_pos") {
     uint8_t val = 0b10110010;
@@ -63,7 +63,7 @@ TEST_SUITE("quspin/basis/bitbasis/utils.h") {
   }
 
   TEST_CASE("bit_count") {
-    using namespace quspin::details::basis;
+    using namespace quspin::detail::basis;
     uint8_t val = 0b10110010;
 
     CHECK(bit_count<uint8_t>(val, 0) == 0);

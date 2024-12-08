@@ -9,11 +9,11 @@
 #include <string>
 #include <vector>
 
-namespace quspin::details::basis {
+namespace quspin::detail::basis {
 
 namespace constants {
 
-static const quspin::details::basis::dit_integer_t bits[256] = {
+static const quspin::detail::basis::dit_integer_t bits[256] = {
     1, 1, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5,
     5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
     6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7,
@@ -144,4 +144,4 @@ class dit_manip : public dynamic_dit_manip {
     explicit dit_manip() : dynamic_dit_manip(lhss) {}
 };
 
-}  // end namespace quspin::details::basis
+}  // end namespace quspin::detail::basis

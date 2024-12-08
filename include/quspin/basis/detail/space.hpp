@@ -2,349 +2,252 @@
 #pragma once
 
 #include <algorithm>
+#include <boost/container/small_vector.hpp>
 #include <cmath>
+#include <iostream>
+#include <quspin/detail/omp.hpp>
+#include <ranges>
+#include <stack>
 #include <unordered_map>
 #include <utility>
-// quspin includes
-#include <quspin/basis/detail/bitbasis/bits.hpp>
-#include <quspin/basis/detail/bitbasis/dits.hpp>
 
-namespace quspin::details::basis {
+namespace quspin::detail::basis {
 
-// J = {int32, int64}
-// I = {uint32, uint64, uint1024, uint16384_t}
-// K = {uint8, uint16}
-
-template<typename I, typename J>
-class dit_fullspace  // sps > 2
-{
+template<typename bitset_t, typename norm_t>
+class space {
   private:
 
-    const int lhss;            // local hilbert space sice
-    const J Ns;                // number of states
-    const I mask;              // mask for local hilbert space storage.
-    const dit_integer_t bits;  // number of bits to store lhss
+    std::size_t Ns;
+    std::ranges::iota_view<bitset_t> basis_states;
 
   public:
 
-    typedef dit_set<I> bitset_t;
-    typedef J index_t;
-    typedef int norm_t;
+    space(std::size_t Ns) : Ns(Ns), basis_states(0, Ns) {}
 
-    dit_fullspace(const int _lhss, const J _Ns)
-        : lhss(_lhss),
-          Ns(_Ns),
-          mask(constants::mask[_lhss]),
-          bits(constants::bits[_lhss]) {}
-
-    dit_fullspace(const dit_fullspace<I, J>& other) = default;
-
-    ~dit_fullspace() {}
-
-    inline J size() const { return Ns; }
-
-    inline J get_Ns() const { return Ns; }
-
-    inline bitset_t get_state(const J index) const {
-      return bitset_t(I(Ns - index - 1), lhss, mask, bits);
+    template<typename InputContainer, typename OutputContainer>
+    void get_matrix_elements(const InputContainer& matrix_ele_data,
+                             OutputContainer& matrix_elements) const {
+      for (const auto& [state, matrix_element] : matrix_ele_data) {
+        matrix_elements.push_back(Ns - state - 1, std::move(matrix_element));
+      }
     }
 
-    inline J get_index(const bitset_t& state) const {
-      return Ns - integer<J, I>::cast(state.content) - 1;
-    }
+    decltype(auto) begin() const {
+      return basis_states.rbegin();
+    }  // reverse iterator
 
-    J get_index(const std::vector<dit_integer_t>& state_vector) const {
-      bitset_t state(state_vector, lhss);
-      return get_index(state);
-    }
-
-    static int get_norm(const bitset_t& state) { return 1; }
-
-    static int get_norm(const J index) { return 1; }
+    decltype(auto) end() const { return basis_states.rend(); }
 };
 
-template<typename I, typename J, typename K>
-class dit_subspace  // sps > 2
-{
+template<typename bitset_t>
+class subspace {
   private:
 
-    const int lhss;            // local hilbert space sice
-    const I mask;              // mask for bits
-    const dit_integer_t bits;  // number of bits to store lhss
-
-    std::vector<std::pair<I, K>> states;
-    std::unordered_map<I, J> index_map;
+    std::vector<bitset_t> basis_states;
+    std::unordered_map<bitset_t, std::size_t> basis_map;
 
   public:
 
-    typedef dit_set<I> bitset_t;
-    typedef J index_t;
-    typedef K norm_t;
+    using bitset_type = bitset_t;
 
-    dit_subspace(const int _lhss, const J Ns_est)
-        : lhss(_lhss),
-          mask(constants::mask[_lhss]),
-          bits(constants::bits[_lhss]) {
-      states.reserve(Ns_est);
-      index_map.reserve(Ns_est * 2);
-    }
+    subspace(std::size_t Ns_est = 0) { basis_states.reserve(Ns_est); }
 
-    ~dit_subspace() {}
+    // delete copy constructor and assignment operator
+    subspace(const subspace& other) = delete;
+    subspace& operator=(const subspace& other) = delete;
 
-    inline J size() const { return states.size(); }
+    // default move constructor and assignment operator
+    subspace(subspace&& other) = default;
+    subspace& operator=(subspace&& other) = default;
 
-    inline J get_Ns() const { return states.size(); }
+    template<typename InputContainer, typename OutputContainer>
+    void get_matrix_elements(const InputContainer& matrix_ele_data,
+                             OutputContainer& matrix_elements) const {
+      for (const auto& [state, matrix_element] : matrix_ele_data) {
+        const auto map_it = basis_map.find(state);
+        if (map_it == basis_map.end()) {
+          continue;
+        }
+        const auto ref_state_index = map_it->second;
 
-    inline size_t nbytes() const {
-      return states.size() * sizeof(std::pair<I, K>);
-    }
+        auto found_it =
+            std::find_if(matrix_elements.begin(), matrix_elements.end(),
+                         [ref_state_index](const auto& ele) {
+                           return ele == ref_state_index;
+                         });
 
-    inline bitset_t get_state(const size_t index) const {
-      return bitset_t(std::get<0>(states[index]), lhss, mask, bits);
-    }
-
-    J get_index(const std::vector<dit_integer_t>& state_vector) const {
-      bitset_t state(state_vector, lhss);
-      return (contains(state) ? get_index(state) : -1);
-    }
-
-    inline J get_index(const bitset_t& state) const {
-      return index_map.at(state.content);
-    }
-
-    inline K get_norm(const bitset_t& state) const {
-      return get_norm(get_index(state));
-    }
-
-    inline K get_norm(const J index) const {
-      return std::get<1>(states[index]);
-    }
-
-    inline bool contains(const bitset_t& state) const {
-      return index_map.contains(state.content);
-    }
-
-    void append(const I new_state, const K new_norm) {
-      if (index_map.contains(new_state)) {
-        states.push_back(std::make_pair(new_state, new_norm));
-        index_map[new_state] = states.size();
-      }
-    }
-
-    void append(const dit_subspace& other) {
-      for (const auto& [new_state, new_norm] : other.states) {
-        this->append(new_state, new_norm);
-      }
-    }
-
-    void sort_states() {
-      const bool is_sorted = std::is_sorted(
-          states.begin(), states.end(),
-          [](const std::pair<I, K>& lhs, const std::pair<I, K>& rhs) -> bool {
-            return lhs.first < rhs.first;
-          });
-
-      if (!is_sorted) {
-        std::sort(
-            states.begin(), states.end(),
-            [](const std::pair<I, K>& lhs, const std::pair<I, K>& rhs) -> bool {
-              return lhs.first < rhs.first;
-            });
-
-        index_map.clear();
-        J index = 0;
-        for (const auto& [state, norm] : states) {
-          index_map[state] = index++;
+        if (found_it != matrix_elements.end()) {
+          found_it->second += matrix_element;
+        } else {
+          matrix_elements.emplace_back(ref_state_index,
+                                       std::move(matrix_element));
         }
       }
     }
 
-    void serialize_states(char* output) const {
-      char* states_ptr = (char*)states.data();
-      std::copy(states_ptr, states_ptr + nbytes(), output);
+    void add(const bitset_t& bits) {
+      assert(!basis_map.contains(bits));
+      basis_map[bits] = basis_states.size();
+      basis_states.emplace_back(bits);
     }
 
-    void deserialize_states(char* input, const size_t nbytes) {
-      const size_t n_elements = nbytes / sizeof(std::pair<I, K>);
-
-      states.clear();  // clears current data
-      index_map.clear();
-
-      states.resize(n_elements);
-
-      std::copy(input, input + nbytes, (char*)states.data());
-
-      J index = 0;
-      for (const auto& [state, norm] : states) {
-        index_map[state] = index++;
+    void sort() {
+      basis_map.clear();
+      std::sort(basis_states.begin(), basis_states.end());
+      for (std::size_t i = 0; i < basis_states.size(); i++) {
+        basis_map[basis_states[i]] = i;
       }
     }
+
+    decltype(auto) begin() const { return basis_states.begin(); }
+
+    decltype(auto) end() const { return basis_states.end(); }
 };
 
-template<typename I, typename J>
-class bit_fullspace  // sps = 2
-{
+template<typename grp_t, typename bitset_t, typename norm_t>
+class symmetric_subspace {
   private:
 
-    const J Ns;  // total number of states
+    grp_t symm_grp;
+    std::vector<std::pair<bitset_t, norm_t>> basis_states;
+    std::unordered_map<bitset_t, std::size_t> basis_map;
 
   public:
 
-    typedef bit_set<I> bitset_t;
-    typedef J index_t;
-    typedef int norm_t;
+    using map_iterator =
+        typename std::unordered_map<bitset_t, std::size_t>::iterator;
+    using const_map_iterator =
+        typename std::unordered_map<bitset_t, std::size_t>::const_iterator;
+    using iterator =
+        typename std::vector<std::pair<bitset_t, norm_t>>::iterator;
+    using const_iterator =
+        typename std::vector<std::pair<bitset_t, norm_t>>::const_iterator;
+    using norm_type = norm_t;
+    using bitset_type = bitset_t;
 
-    bit_fullspace(const J _Ns, const int _lhss = 2) : Ns(_Ns) {}
-
-    ~bit_fullspace() {}
-
-    inline J size() const { return Ns; }
-
-    inline size_t get_Ns() const { return Ns; }
-
-    inline bitset_t get_state(const J index) const {
-      return bitset_t(I(Ns - index - 1));
+    symmetric_subspace(const grp_t& symm_grp, std::size_t Ns_est = 0)
+        : symm_grp(symm_grp) {
+      basis_states.reserve(Ns_est);
+      basis_map.reserve(2 * Ns_est);
     }
 
-    inline J get_index(const bitset_t& state) const {
-      return Ns - integer<J, I>::cast(state.content) - 1;
+    // delete copy constructor and assignment operator
+    symmetric_subspace(const symmetric_subspace& other) = delete;
+    symmetric_subspace& operator=(const symmetric_subspace& other) = delete;
+
+    // default move constructor and assignment operator
+    symmetric_subspace(symmetric_subspace&& other) = default;
+    symmetric_subspace& operator=(symmetric_subspace&& other) = default;
+
+    std::pair<bitset_t, std::complex<double>> get_refstate(
+        const bitset_t& bits) const {
+      return symm_grp.check_refstate(bits);
     }
 
-    J get_index(const std::vector<dit_integer_t>& state_vector) const {
-      bitset_t state(state_vector);
-      return get_index(state);
+    std::pair<const_map_iterator, const_map_iterator> find(
+        const bitset_t& bits) const {
+      return std::make_pair(basis_map.find(bits), basis_map.end());
     }
 
-    static int get_norm(const bitset_t& state) { return 1; }
-
-    static int get_norm(const J index) { return 1; }
-};
-
-template<typename I, typename J,
-         typename K>  // tem[plate argument to turn off hash mapping]
-class bit_subspace    // sps = 2
-{
-  private:
-
-    std::vector<std::pair<I, K>> states;
-    // TODO: create ABI to switch on and off the index_map;
-    std::unordered_map<I, J> index_map;
-
-  public:
-
-    typedef bit_set<I> bitset_t;
-    typedef J index_t;
-    typedef K norm_t;
-
-    bit_subspace(const J Ns_est, const int _lhss = 2) {
-      states.reserve(Ns_est);
-      index_map.reserve(Ns_est * 2);
+    const std::pair<bitset_t, norm_t>& operator[](std::size_t index) const {
+      return basis_states[index];
     }
 
-    ~bit_subspace() {}
-
-    inline J size() const { return states.size(); }
-
-    inline J get_Ns() const { return states.size(); }
-
-    inline size_t nbytes() const {
-      return states.size() * sizeof(std::pair<I, K>);
+    std::pair<bitset_t, norm_t>& operator[](std::size_t index) {
+      return basis_states[index];
     }
 
-    inline bitset_t get_state(const size_t index) const {
-      return bitset_t(std::get<0>(states[index]));
-    }
-
-    J get_index(const std::vector<dit_integer_t>& state_vector) const {
-      bitset_t state(state_vector);
-      return (contains(state) ? get_index(state) : -1);
-    }
-
-    inline J get_index(const bitset_t& state) const {
-      return index_map.at(state.content);
-    }
-
-    inline K get_norm(const bitset_t& state) const {
-      return get_norm(get_index(state));
-    }
-
-    inline K get_norm(const J index) const {
-      return std::get<1>(states[index]);
-    }
-
-    inline bool contains(const bitset_t& state) const {
-      return index_map.count(state.content) != 0;
-    }
-
-    void append(const I new_state, const K new_norm) {
-      if (index_map.count(new_state) == 0) {
-        states.push_back(std::make_pair(new_state, new_norm));
-        index_map[new_state] = states.size();
+    void sort() {
+      auto sort_kernel = [](const auto& a, const auto& b) {
+        return std::get<bitset_t>(a) < std::get<bitset_t>(b);
+      };
+      const bool is_sorted =
+          std::is_sorted(basis_states.begin(), basis_states.end(), sort_kernel);
+      if (is_sorted) {
+        return;
+      }
+      basis_map.clear();
+      std::sort(basis_states.begin(), basis_states.end(), sort_kernel);
+      for (std::size_t i = 0; i < basis_states.size(); i++) {
+        basis_map[std::get<bitset_t>(basis_states[i])] = i;
       }
     }
 
-    void append(const bit_subspace& other) {
-      for (const auto& [new_state, new_norm] : other.states) {
-        this->append(new_state, new_norm);
+    template<typename Operation>
+    void build(Operation&& op, const bitset_t& state0) {
+      std::vector<bitset_t> stack;
+
+      const auto& [ref_state, coeff] = symm_grp.get_refstate(state0);
+      const auto& [_, norm] = symm_grp.check_refstate(ref_state);
+
+      if (norm != 0.0 && !basis_map.contains(ref_state)) {
+        basis_map[ref_state] = basis_states.size();
+        basis_states.emplace_back(ref_state, norm);
+        stack.emplace_back(ref_state);
+      } else {
+        throw std::runtime_error("Invalid initial state");
       }
-    }
 
-    void sort_states() {
-      const bool is_sorted = std::is_sorted(
-          states.begin(), states.end(),
-          [](const std::pair<I, K>& lhs, const std::pair<I, K>& rhs) -> bool {
-            return lhs.first < rhs.first;
-          });
+      using container_t =
+          boost::container::small_vector<std::pair<bitset_t, norm_t>, 128>;
+      boost::container::small_vector<container_t, 128> new_basis_states_thread(
+          omp_get_max_threads());
 
-      if (!is_sorted) {
-        std::sort(
-            states.begin(), states.end(),
-            [](const std::pair<I, K>& lhs, const std::pair<I, K>& rhs) -> bool {
-              return lhs.first < rhs.first;
-            });
+#pragma omp parallel
+#pragma omp single
+      {
+        while (!stack.empty()) {
+          const bitset_t& state = stack.back();
+          stack.pop_back();
 
-        index_map.clear();
-        J index = 0;
-        for (const auto& [state, norm] : states) {
-          index_map[state] = index++;
+#pragma omp task depend(in : state) firstprivate(state) \
+    shared(new_basis_states_thread)
+          {
+            const auto& matrix_elements = op(state);
+            const int tid = omp_get_thread_num();
+            auto& new_basis_states = new_basis_states_thread[tid];
+            for (const auto& matrix_element : matrix_elements) {
+              const bitset_t& next_state = std::get<bitset_t>(matrix_element);
+              if (next_state == state) continue;
+
+              const auto& [next_ref_state, next_norm] =
+                  symm_grp.check_refstate(next_state);
+              if (next_state == next_ref_state && next_norm != 0.0 &&
+                  !basis_map.contains(next_state)) {
+                new_basis_states.emplace_back(next_state, next_norm);
+              }
+            }
+          }
+
+          if (stack.size() > 0) continue;
+
+#pragma omp taskwait
+
+          for (auto& new_basis_states : new_basis_states_thread) {
+            for (const auto& new_basis_state : new_basis_states) {
+              if (basis_map.contains(std::get<bitset_t>(new_basis_state))) {
+                continue;
+              }
+
+              basis_map[std::get<bitset_t>(new_basis_state)] =
+                  basis_states.size();
+              basis_states.push_back(new_basis_state);
+              stack.emplace_back(std::get<bitset_t>(new_basis_state));
+            }
+            new_basis_states.clear();
+          }
         }
       }
+
+      basis_states.shrink_to_fit();
+      sort();
     }
 
-    void serialize_states(char* output) const {
-      char* states_ptr = (char*)states.data();
-      std::copy(states_ptr, states_ptr + nbytes(), output);
-    }
+    const_iterator begin() const { return basis_states.begin(); }
 
-    void deserialize_states(char* input, const size_t nbytes) {
-      const size_t n_elements = nbytes / sizeof(std::pair<I, K>);
+    const_iterator end() const { return basis_states.end(); }
 
-      states.clear();  // clears current data
-      index_map.clear();
-
-      states.resize(n_elements);
-
-      std::copy(input, input + nbytes, (char*)states.data());
-
-      J index = 0;
-      for (const auto& [state, norm] : states) {
-        index_map[state] = index++;
-      }
-    }
+    std::size_t size() const { return basis_states.size(); }
 };
 
-using spaces = std::variant<
-    dit_fullspace<uint32_t, int32_t>, dit_fullspace<uint64_t, int32_t>,
-    dit_subspace<uint32_t, int32_t, int8_t>,
-    dit_subspace<uint64_t, int32_t, int8_t>,
-    dit_subspace<uint128_t, int32_t, int8_t>,
-    dit_subspace<uint256_t, int32_t, int16_t>,
-    dit_subspace<uint16384_t, int32_t, int16_t>,
-    bit_fullspace<uint32_t, int32_t>, bit_fullspace<uint64_t, int32_t>,
-    bit_subspace<uint32_t, int32_t, int8_t>,
-    bit_subspace<uint64_t, int32_t, int8_t>,
-    bit_subspace<uint128_t, int32_t, int8_t>,
-    bit_subspace<uint256_t, int32_t, int16_t>,
-    bit_subspace<uint16384_t, int32_t, int16_t>>;
-
-}  // namespace quspin::details::basis
+}  // namespace quspin::detail::basis

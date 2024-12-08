@@ -2,7 +2,7 @@
 
 #include <vector>
 
-namespace quspin::details::basis {
+namespace quspin::detail::basis {
 
 template<typename Container, typename Map, typename J>
 void ref_states_conj(const J i, const Container& col_states, Map& columns) {
@@ -217,4 +217,4 @@ void on_the_fly(const Basis basis, const Term* terms, const int nterms,
   }
 }
 
-}  // namespace quspin::details::basis
+}  // namespace quspin::detail::basis

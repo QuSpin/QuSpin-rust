@@ -4,21 +4,27 @@
 #include <concepts>
 #include <vector>
 
-namespace quspin::details::basis {
+namespace quspin::detail::basis {
+
+template<typename grp_result_t>
+concept grp_result_requirements =
+    requires(grp_result_t grp_result, grp_result_t other) {
+      typename grp_result_t::bitset_type;
+      { grp_result.check_refstate(other) } -> std::same_as<grp_result_t>;
+      { grp_result.get_refstate(other) } -> std::same_as<grp_result_t>;
+    };
 
 template<typename grp_element_t, typename grp_result_t>
-concept grp_requirements =
+concept grp_element_requirements =
     requires(grp_element_t grp_element, grp_result_t grp_result) {
-      typename grp_result_t::bitset_type;
       { grp_element.apply(grp_result) } -> std::same_as<grp_result_t>;
-      { check_refstate(grp_result, grp_result) } -> std::same_as<grp_result_t>;
-      { get_refstate(grp_result, grp_result) } -> std::same_as<grp_result_t>;
     };
 
 template<typename lattice_grp_element_t, typename local_grp_element_t,
          typename grp_result_t>
-  requires grp_requirements<lattice_grp_element_t, grp_result_t> &&
-           grp_requirements<local_grp_element_t, grp_result_t>
+  requires grp_element_requirements<lattice_grp_element_t, grp_result_t> &&
+           grp_element_requirements<local_grp_element_t, grp_result_t> &&
+           grp_result_requirements<grp_result_t>
 struct grp {
     std::vector<lattice_grp_element_t> lattice_grp;
     std::vector<local_grp_element_t> local_grp;
@@ -33,52 +39,57 @@ struct grp {
     grp& operator=(const grp& other) = default;
 
     using bitset_type = typename grp_result_t::bitset_type;
+    using get_result_t = std::pair<bitset_type, std::complex<double>>;
+    using check_result_t = std::pair<bitset_type, double>;
 
-    grp_result_t check_refstate(
-        const typename grp_result_t::bitset_type& input) {
-      grp_result_t curr(nput);
+    check_result_t check_refstate(
+        const typename grp_result_t::bitset_type& input_bits) const {
+      const grp_result_t input(input_bits);
+      grp_result_t output(input_bits, 0.0);
 
       // Apply lattice operators only
       for (auto& lattice : lattice_grp) {
-        auto next = lattice.apply(curr);
-        curr = check_refstate(curr, next);
+        const auto& next = lattice.apply(input);
+        output = output.check_refstate(next);
       }
       // Apply local operators then lattice operators
       for (auto& local : local_grp) {
-        auto next_local = local.apply(curr);
+        const auto& next_local = local.apply(input);
         for (auto& lattice : lattice_grp) {
-          auto next = lattice.apply(next_local);
-          curr = check_refstate(curr, next);
+          const auto& next = lattice.apply(next_local);
+          output = output.check_refstate(next);
         }
       }
-      return std::move(curr);
+      return std::move(std::make_pair(output.bits, output.coeff.real()));
     }
 
-    grp_result_t get_refstate(const typename grp_result_t::bitset_type& input) {
-      grp_result_t curr(input);
+    get_result_t get_refstate(const typename grp_result_t::bitset_type& input,
+                              const std::complex<double>& coeff =
+                                  std::complex<double>(1.0, 0.0)) const {
+      grp_result_t curr(input, coeff);
 
       // Apply lattice operators only
-      for (auto& lattice : lattice_grp) {
-        auto next = lattice.apply(curr);
-        curr = get_refstate(curr, next);
+      for (const auto& lattice : lattice_grp) {
+        const auto& next = lattice.apply(curr);
+        curr = curr.get_refstate(next);
       }
       // Apply local operators then lattice operators
-      for (auto& local : local_grp) {
-        auto next_local = local.apply(curr);
+      for (const auto& local : local_grp) {
+        const auto& next_local = local.apply(curr);
         for (auto& lattice : lattice_grp) {
-          auto next = lattice.apply(next_local);
-          curr = get_refstate(curr, next);
+          const auto& next = lattice.apply(next_local);
+          curr = curr.get_refstate(next);
         }
       }
-      return std::move(curr);
+      return std::move(std::make_pair(curr.bits, curr.coeff));
     }
 };
 
-}  // namespace quspin::details::basis
+}  // namespace quspin::detail::basis
 
 #ifdef QUSPIN_UNIT_TESTS
 
-namespace quspin::details::basis {  // test cases
+namespace quspin::detail::basis {  // test cases
 
 template class dit_perm<uint8_t>;
 template dit_set<uint8_t> dit_perm<uint8_t>::app<double>(
@@ -107,11 +118,11 @@ template bit_set<uint8_t> perm_bit<uint8_t>::inv<double>(
 template class symmetry<bit_perm<uint8_t>, perm_bit<uint8_t>, bit_set<uint8_t>,
                         double>;
 
-}  // namespace quspin::details::basis
+}  // namespace quspin::detail::basis
 
 TEST_SUITE("quspin/basis/symmetry.h") {
 #include <memory>
-  using namespace quspin::details::basis;
+  using namespace quspin::detail::basis;
 
   TEST_CASE("bit_perm") {
     std::vector<int> perm = {1, 3, 2, 0};

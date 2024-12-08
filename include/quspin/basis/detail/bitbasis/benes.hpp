@@ -3,7 +3,7 @@
 
 #include <quspin/basis/detail/bitbasis/info.hpp>
 
-namespace quspin::details::basis::benes {
+namespace quspin::detail::basis::benes {
 
 static const int no_index = -1;
 
@@ -293,12 +293,12 @@ I benes_bwd(const tr_benes<I>* self, I x) {
 
   return ibfly(&self->b1, bfly(&self->b2, x));
 }
-}  // namespace quspin::details::basis::benes
+}  // namespace quspin::detail::basis::benes
 
 #ifdef QUSPIN_UNIT_TESTS
 
-namespace quspin::details::basis::benes {  // explicit instantiation for code
-                                           // coverage
+namespace quspin::detail::basis::benes {  // explicit instantiation for code
+                                          // coverage
 
 template struct tr_bfly<uint8_t>;
 template struct tr_benes<uint8_t>;
@@ -318,15 +318,15 @@ template void gen_benes<uint8_t>(tr_benes<uint8_t>*, const ta_index<uint8_t>&);
 template uint8_t benes_fwd<uint8_t>(const tr_benes<uint8_t>*, uint8_t);
 template uint8_t benes_bwd<uint8_t>(const tr_benes<uint8_t>*, uint8_t);
 
-}  // namespace quspin::details::basis::benes
+}  // namespace quspin::detail::basis::benes
 
 TEST_SUITE("quspin/basis/bitbasis/benes.h") {
-  using namespace quspin::details::basis::benes;
+  using namespace quspin::detail::basis::benes;
 
   TEST_CASE("ta_subword set/get") {
     ta_subword<uint8_t> subword;
 
-    for (int i = 0; i < quspin::details::basis::bit_info<uint8_t>::ld_bits;
+    for (int i = 0; i < quspin::detail::basis::bit_info<uint8_t>::ld_bits;
          ++i) {
       subword[i] = i;
       CHECK(subword[i] == i);
@@ -336,7 +336,7 @@ TEST_SUITE("quspin/basis/bitbasis/benes.h") {
   TEST_CASE("ta_index set/get") {
     ta_index<uint8_t> index;
 
-    for (int i = 0; i < quspin::details::basis::bit_info<uint8_t>::bits; ++i) {
+    for (int i = 0; i < quspin::detail::basis::bit_info<uint8_t>::bits; ++i) {
       index[i] = i;
       CHECK(index[i] == i);
     }
@@ -346,7 +346,7 @@ TEST_SUITE("quspin/basis/bitbasis/benes.h") {
     ta_index<uint8_t> i1;
     ta_index<uint8_t> i2;
 
-    for (int i = 0; i < quspin::details::basis::bit_info<uint8_t>::bits; ++i) {
+    for (int i = 0; i < quspin::detail::basis::bit_info<uint8_t>::bits; ++i) {
       i1[i] = no_index;
     }
 

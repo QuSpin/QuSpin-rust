@@ -5,7 +5,7 @@
 #include <limits>
 #include <quspin/basis/detail/types.hpp>
 
-namespace quspin::details::basis {
+namespace quspin::detail::basis {
 
 template<typename J, BasisPrimativeTypes I>
   requires std::integral<J> && BasisPrimativeTypes<I>
@@ -21,4 +21,4 @@ J integer_cast(const I s) {
   }
 }
 
-}  // namespace quspin::details::basis
+}  // namespace quspin::detail::basis

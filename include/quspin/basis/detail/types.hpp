@@ -9,7 +9,7 @@
 #include <boost/numeric/conversion/cast.hpp>
 #endif
 
-namespace quspin::details::basis {
+namespace quspin::detail::basis {
 
 using uint32_t = std::uint32_t;
 using uint64_t = std::uint64_t;
@@ -60,4 +60,4 @@ concept BasisPrimativeTypes =
 
 #endif
 
-}  // namespace quspin::details::basis
+}  // namespace quspin::detail::basis

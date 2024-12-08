@@ -3,9 +3,10 @@
 
 #include <complex>
 #include <concepts>
+#include <iostream>
 #include <quspin/basis/detail/types.hpp>
 
-namespace quspin::details::basis {
+namespace quspin::detail::basis {
 
 template<typename bitset_t>
 struct grp_result {
@@ -14,32 +15,36 @@ struct grp_result {
 
   public:
 
-    using bitet_type = bitset_t;
+    using bitset_type = bitset_t;
 
     grp_result(const bitset_t& bits) : bits(bits), coeff(1.0) {}
 
+    grp_result(const bitset_t& bits, const std::complex<double>& coeff)
+        : bits(bits), coeff(coeff) {}
+
     grp_result(const grp_result<bitset_t>& other) = default;
     grp_result(grp_result<bitset_t>&& other) = default;
-    grp_result& operator=(const grp_result<bitset_t>& other) = default;
-    grp_result& operator=(grp_result<bitset_t>&& other) = default;
+    grp_result& operator=(const grp_result& other) = default;
+    grp_result& operator=(grp_result&& other) = default;
+
+    grp_result check_refstate(const grp_result& next);
+    grp_result get_refstate(const grp_result& next);
 };
 
 template<typename bitset_t>
-grp_result<bitset_t> check_refstate(const grp_result<bitset_t>& curr,
-                                    const grp_result<bitset_t>& next) {
-  const double check_failed = static_cast<double>(next.bits > curr.bits);
-  const double check_equal = static_cast<double>(next.bits == curr.bits);
-  constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
-
-  const std::complex<double> norm =
-      curr.coeff + NaN * check_failed + next.coeff * check_equal;
-
-  return std::move(grp_result<bitset_t>(curr.bits, norm));
+grp_result<bitset_t> grp_result<bitset_t>::check_refstate(
+    const grp_result<bitset_t>& next) {
+  const auto curr = *this;
+  const double bits_equal = static_cast<double>(curr.bits == next.bits);
+  const std::complex<double> norm = curr.coeff.real() + (bits_equal);
+  return grp_result<bitset_t>(next.bits > curr.bits ? next.bits : curr.bits,
+                              norm);
 }
 
 template<typename bitset_t>
-grp_result<bitset_t> get_refstate(const grp_result<bitset_t>& curr,
-                                  const grp_result<bitset_t>& next) {
+grp_result<bitset_t> grp_result<bitset_t>::get_refstate(
+    const grp_result<bitset_t>& next) {
+  const auto curr = *this;
   return std::move(next.bits > curr.bits ? next : curr);
 }
 
@@ -51,7 +56,7 @@ concept bit_operation_requirements =
 
 template<typename bit_operation_t, typename bitset_t>
   requires BasisPrimativeTypes<bitset_t> &&
-           grp_result_requirements<bitset_t, coeff_t>
+           bit_operation_requirements<bit_operation_t, bitset_t>
 struct grp_element {
     std::complex<double> grp_char;
     bit_operation_t dit_operator;
@@ -75,4 +80,4 @@ struct grp_element {
     }
 };
 
-}  // namespace quspin::details::basis
+}  // namespace quspin::detail::basis
