@@ -9,19 +9,13 @@ if host_machine.system() == 'windows'
     add_project_arguments('/bigobj', language: 'cpp')
 elif host_machine.system() == 'darwin'
     add_project_arguments(
-        '-arch',
-        'x86_64',
-        '-arch',
-        'arm64',
+        '-fopenmp',
         '-mmacosx-version-min=11.1',
         language: 'cpp',
     )
     add_project_link_arguments(
-        '-arch',
-        'x86_64',
-        '-arch',
-        'arm64',
         '-flto',
+        '-fopenmp',
         '-mmacosx-version-min=11.1',
         language: 'cpp',
     )
@@ -56,11 +50,8 @@ src_files = files(
     'src' / 'scalar' / 'scalar.cpp',
     'src' / 'scalar' / 'reference.cpp',
     'src' / 'dtype' / 'dtype.cpp',
-    'src' / 'qmatrix' / 'kernel' / 'dot.cpp',
     'src' / 'qmatrix' / 'kernel' / 'sum.cpp',
     'src' / 'qmatrix' / 'qmatrix.cpp',
-    'src' / 'qmatrix' / 'detail' / 'qmatrix.cpp',
-    'src' / 'qmatrix' / 'detail' / 'iterator.cpp',
 )
 
 if host_machine.system() == 'windows'
@@ -102,8 +93,6 @@ test_files = [
     ('test' / 'array' / 'constructor.cpp'),
     ('test' / 'array' / 'kernels.cpp'),
     ('test' / 'dtype.cpp'),
-    ('test' / 'qmatrix' / 'constructor.cpp'),
-    ('test' / 'qmatrix' / 'sum.cpp'),
     ('test' / 'detail' / 'select.cpp'),
     ('test' / 'scratch.cpp')
 ]

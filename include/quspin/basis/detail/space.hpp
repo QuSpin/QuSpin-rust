@@ -2,7 +2,6 @@
 #pragma once
 
 #include <algorithm>
-#include <boost/container/small_vector.hpp>
 #include <cmath>
 #include <iostream>
 #include <quspin/detail/omp.hpp>
@@ -10,10 +9,23 @@
 #include <stack>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace quspin::detail::basis {
 
-template<typename bitset_t, typename norm_t>
+constexpr inline size_t binom(size_t n, size_t k) noexcept {
+  return (k > n) ? 0 :  // out of range
+             (k == 0 || k == n) ? 1
+                                :  // edge
+             (k == 1 || k == n - 1) ? n
+                                    :  // first
+             (k + k < n) ?             // recursive:
+             (binom(n - 1, k - 1) * n) / k
+                         :                     //  path to k=1   is faster
+             (binom(n - 1, k) * n) / (n - k);  //  path to k=n-1 is faster
+}
+
+template<typename bitset_t>
 class space {
   private:
 
@@ -22,35 +34,45 @@ class space {
 
   public:
 
+    using bitset_type = bitset_t;
+
     space(std::size_t Ns) : Ns(Ns), basis_states(0, Ns) {}
 
-    template<typename InputContainer, typename OutputContainer>
-    void get_matrix_elements(const InputContainer& matrix_ele_data,
-                             OutputContainer& matrix_elements) const {
-      for (const auto& [state, matrix_element] : matrix_ele_data) {
-        matrix_elements.push_back(Ns - state - 1, std::move(matrix_element));
-      }
+    std::size_t index(const bitset_t& bits) const {
+      assert(bits < Ns);
+      return static_cast<std::size_t>(Ns - bits - 1);
+    }
+
+    const bitset_t& operator[](std::size_t index) const {
+      return static_cast<bitset_t>(Ns - index - 1);
     }
 
     decltype(auto) begin() const {
-      return basis_states.rbegin();
-    }  // reverse iterator
+      return basis_states.rbegin();  // reverse iterator
+    }
 
     decltype(auto) end() const { return basis_states.rend(); }
 };
 
-template<typename bitset_t>
+template<typename bitset_t,
+         typename basis_map_t = std::unordered_map<bitset_t, std::size_t>>
 class subspace {
   private:
 
     std::vector<bitset_t> basis_states;
-    std::unordered_map<bitset_t, std::size_t> basis_map;
+    basis_map_t basis_map;
 
   public:
 
+    using map_iterator =
+        typename std::unordered_map<bitset_t, std::size_t>::iterator;
+    using const_map_iterator =
+        typename std::unordered_map<bitset_t, std::size_t>::const_iterator;
+    using iterator = typename std::vector<bitset_t>::iterator;
+    using const_iterator = typename std::vector<bitset_t>::const_iterator;
     using bitset_type = bitset_t;
 
-    subspace(std::size_t Ns_est = 0) { basis_states.reserve(Ns_est); }
+    subspace() = default;
 
     // delete copy constructor and assignment operator
     subspace(const subspace& other) = delete;
@@ -60,36 +82,16 @@ class subspace {
     subspace(subspace&& other) = default;
     subspace& operator=(subspace&& other) = default;
 
-    template<typename InputContainer, typename OutputContainer>
-    void get_matrix_elements(const InputContainer& matrix_ele_data,
-                             OutputContainer& matrix_elements) const {
-      for (const auto& [state, matrix_element] : matrix_ele_data) {
-        const auto map_it = basis_map.find(state);
-        if (map_it == basis_map.end()) {
-          continue;
-        }
-        const auto ref_state_index = map_it->second;
-
-        auto found_it =
-            std::find_if(matrix_elements.begin(), matrix_elements.end(),
-                         [ref_state_index](const auto& ele) {
-                           return ele == ref_state_index;
-                         });
-
-        if (found_it != matrix_elements.end()) {
-          found_it->second += matrix_element;
-        } else {
-          matrix_elements.emplace_back(ref_state_index,
-                                       std::move(matrix_element));
-        }
-      }
+    std::pair<const_map_iterator, const_map_iterator> find(
+        const bitset_t& bits) const {
+      return std::make_pair(basis_map.find(bits), basis_map.end());
     }
 
-    void add(const bitset_t& bits) {
-      assert(!basis_map.contains(bits));
-      basis_map[bits] = basis_states.size();
-      basis_states.emplace_back(bits);
+    const bitset_t& operator[](std::size_t index) const {
+      return basis_states[index];
     }
+
+    bitset_t& operator[](std::size_t index) { return basis_states[index]; }
 
     void sort() {
       basis_map.clear();
@@ -99,9 +101,45 @@ class subspace {
       }
     }
 
-    decltype(auto) begin() const { return basis_states.begin(); }
+    template<typename Operation>
+    void build(Operation&& op, const bitset_t& state0) {
+      std::stack<bitset_t, std::vector<bitset_t>> stack;
 
-    decltype(auto) end() const { return basis_states.end(); }
+      if (!basis_map.contains(state0)) {
+        basis_map[state0] = basis_states.size();
+        basis_states.push_back(state0);
+        stack.push(state0);
+      }
+
+      while (!stack.empty()) {
+        const bitset_t& state = stack.top();
+        // stack.pop_back();
+        stack.pop();
+        const auto& matrix_elements = op(state);
+        for (const auto& matrix_element : matrix_elements) {
+          const bitset_t& next_state = std::get<bitset_t>(matrix_element);
+          if (!basis_map.contains(next_state)) {
+            basis_map[next_state] = basis_states.size();
+            basis_states.push_back(next_state);
+            // stack.emplace_back(next_state);
+            stack.push(next_state);
+          }
+        }
+      }
+
+      basis_states.shrink_to_fit();
+      sort();
+    }
+
+    const_iterator begin() const { return basis_states.begin(); }
+
+    iterator begin() { return basis_states.begin(); }
+
+    const_iterator end() const { return basis_states.end(); }
+
+    iterator end() { return basis_states.end(); }
+
+    std::size_t size() const { return basis_states.size(); }
 };
 
 template<typename grp_t, typename bitset_t, typename norm_t>

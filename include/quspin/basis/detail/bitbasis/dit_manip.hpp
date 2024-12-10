@@ -13,7 +13,7 @@ namespace quspin::detail::basis {
 
 namespace constants {
 
-static const quspin::detail::basis::dit_integer_t bits[256] = {
+static const unsigned bits[256] = {
     1, 1, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5,
     5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
     6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7,
@@ -54,7 +54,7 @@ class dynamic_dit_manip {
     // tool for manipuating dit integers
     // use this inside of operator classes to
     // extract subspace of integer.
-    int lhss_;
+    std::size_t lhss_;
     unsigned mask;
     dit_integer_t bits;
 
@@ -67,7 +67,7 @@ class dynamic_dit_manip {
 
     template<BasisPrimativeTypes I>
     std::vector<dit_integer_t> to_vector(const I content,
-                                         const int length = 0) const {
+                                         const std::size_t length = 0) const {
       const int niter = (length > 0 ? length : bit_info<I>::bits / bits);
 
       std::vector<dit_integer_t> out(niter);
@@ -79,7 +79,7 @@ class dynamic_dit_manip {
     }
 
     template<BasisPrimativeTypes I>
-    std::string to_string(const I content, const int length = 0) const {
+    std::string to_string(const I content, const std::size_t length = 0) const {
       auto dit_vec = to_vector(content, length);
       std::stringstream out;
       for (auto ele : dit_vec) {
@@ -88,51 +88,63 @@ class dynamic_dit_manip {
       return out.str();
     }
 
-    template<BasisPrimativeTypes I, std::integral J>
-    J get_sub_bitstring(const I content, const J i) const {
-      return integer_cast<J, I>((content >> (i * bits)) & mask);
+    template<BasisPrimativeTypes I>
+    std::size_t get_sub_bitstring(
+        const I content, std::initializer_list<std::size_t> locs) const {
+      return get_sub_bitstring(content, locs.begin(), locs.end());
+    }
+
+    template<BasisPrimativeTypes I>
+    std::size_t get_sub_bitstring(const I content, const std::size_t i) const {
+      return integer_cast<std::size_t, I>(
+          (content >> static_cast<unsigned>(i * bits)) & I(mask));
     }
 
     template<BasisPrimativeTypes I, std::bidirectional_iterator Iterator>
       requires std::integral<std::iter_value_t<Iterator>>
-    decltype(auto) get_sub_bitstring(const I content, Iterator locs_begin,
-                                     Iterator locs_end) const {
-      using out_t = typename std::iter_value_t<Iterator>;
-
-      out_t out = 0;
+    std::size_t get_sub_bitstring(const I content, Iterator locs_begin,
+                                  Iterator locs_end) const {
+      std::size_t out = 0;
       auto locs = locs_end;
+      std::size_t lhss_pow = 1;
+      --locs;
       while (locs != locs_begin) {
+        out += lhss_pow * get_sub_bitstring(content, *locs);
+        lhss_pow *= lhss_;
         --locs;
-        out += get_sub_bitstring(content, *locs) % lhss_;
-        out *= lhss_;
       }
-      out += get_sub_bitstring(content, *locs);
+      out += lhss_pow * get_sub_bitstring(content, *locs);
 
       return out;
     }
 
-    template<BasisPrimativeTypes I, std::integral J>
-    I set_sub_bitstring(const I content, const J in, const int i) const {
-      const int shift = i * bits;
-      if constexpr (std::is_same_v<I, J>) {
-        return content ^ (((in << shift) ^ content) & (mask << shift));
-      } else {
-        return content ^ (((I(in) << shift) ^ content) & (mask << shift));
-      }
+    template<BasisPrimativeTypes I>
+    I set_sub_bitstring(const I content, const std::size_t in,
+                        const std::size_t i) const {
+      const std::size_t shift = i * bits;
+      assert(shift < bit_info<I>::bits);
+      const I cleared_content = content & ~(I(mask) << shift);
+      return cleared_content | (I(in) << shift);
     }
 
     template<BasisPrimativeTypes I, std::forward_iterator Iterator>
       requires std::integral<std::iter_value_t<Iterator>>
-    I set_sub_bitstring(const I content, const int in, Iterator locs_begin,
-                        Iterator locs_end) const {
+    I set_sub_bitstring(const I content, const std::size_t in,
+                        Iterator locs_begin, Iterator locs_end) const {
       I out = content;
-      I in_ = I(in);
+      std::size_t in_ = in;
       for (Iterator loc = locs_begin; loc != locs_end; ++loc) {
-        out = set_sub_bitstring(out, in_, *loc);
+        out = set_sub_bitstring(out, in_ % lhss_, *loc);
         in_ /= lhss_;
       }
 
       return out;
+    }
+
+    template<BasisPrimativeTypes I>
+    I set_sub_bitstring(const I content, const std::size_t in,
+                        std::initializer_list<std::size_t> locs) const {
+      return set_sub_bitstring(content, in, locs.begin(), locs.end());
     }
 };
 

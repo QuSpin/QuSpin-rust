@@ -260,7 +260,7 @@ bool array<T>::is_contiguous() const {
 
 template<PrimativeTypes T>
 std::size_t array<T>::strides(const std::size_t &i) const {
-  if (i >= ndim) {
+  if (i >= ndim_) {
     return 0;
   }
   return stride_.at(i);
@@ -268,7 +268,7 @@ std::size_t array<T>::strides(const std::size_t &i) const {
 
 template<PrimativeTypes T>
 std::size_t array<T>::shape(const std::size_t &i) const {
-  if (i >= ndim) {
+  if (i >= ndim_) {
     return 0;
   }
   return shape_.at(i);
