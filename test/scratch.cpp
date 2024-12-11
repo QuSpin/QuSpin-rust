@@ -109,8 +109,7 @@ int test_basis() {
   grp<lattice_grp_t, local_grp_t, grp_result<bitset_t>> my_grp(lattice_elements,
                                                                local_elements);
 
-  constexpr std::size_t ns_est = binom(L, L / 2);
-  subspace<bitset_t> my_subspace(ns_est);
+  subspace<bitset_t> my_subspace;
 
   std::array<double, 16> mat = {1.0, 0.0, 0.0,  0.0, 0.0, -1.0, 0.5, 0.0,
                                 0.0, 0.5, -1.0, 0.0, 0.0, 0.0,  0.0, 1.0};
