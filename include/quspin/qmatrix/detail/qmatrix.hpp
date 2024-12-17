@@ -3,7 +3,6 @@
 
 #include <boost/container/small_vector.hpp>
 #include <iterator>
-#include <numeric>
 #include <quspin/array/detail/array.hpp>
 #include <quspin/basis/detail/space.hpp>
 #include <quspin/detail/omp.hpp>
@@ -16,7 +15,7 @@
 namespace quspin { namespace detail {
 
 template<typename T>
-void atomic_add(std::complex<T> &lhs, const std::complex<T> &rhs) {
+void atomic_iadd(std::complex<T> &lhs, const std::complex<T> &rhs) {
   T *lhs_ptr = reinterpret_cast<T *>(&lhs);
   const T *rhs_ptr = reinterpret_cast<const T *>(&rhs);
 
@@ -28,7 +27,7 @@ void atomic_add(std::complex<T> &lhs, const std::complex<T> &rhs) {
 }
 
 template<typename T>
-void atomic_add(T &lhs, const T &rhs) {
+void atomic_iadd(T &lhs, const T &rhs) {
 #pragma omp atomic
   lhs += rhs;
 }
@@ -102,10 +101,11 @@ class qmatrix : public typed_object<T> {
     std::vector<std::tuple<T, I, J>> data_;
 
     template<typename Operation, typename grp_t, typename bitset_t,
-             typename norm_t>
+             typename norm_t, typename map_t>
     static decltype(auto) calculate_row(
         Operation &&op, const std::size_t row_index,
-        const basis::symmetric_subspace<grp_t, bitset_t, norm_t> &basis) {
+        const basis::symmetric_subspace<grp_t, bitset_t, norm_t, map_t>
+            &basis) {
       boost::container::small_vector<std::tuple<T, I, J>, 256> new_data;
 
       const auto &[state, norm] = basis[row_index];
@@ -139,14 +139,16 @@ class qmatrix : public typed_object<T> {
       return new_data;
     }
 
-    template<typename Operation, typename bitset_t>
+    template<typename Operation, typename bitset_t, typename map_t>
     static decltype(auto) calculate_row(
         Operation &&op, const std::size_t row_index,
-        const basis::subspace<bitset_t> &basis) {
+        const basis::subspace<bitset_t, map_t> &basis) {
       boost::container::small_vector<std::tuple<T, I, J>, 256> new_data;
 
       const auto &state = basis[row_index];
       const auto &new_matrix_elements = op(state);
+
+      new_data.reserve(new_matrix_elements.size());
       for (const auto &[data, new_state, cindex] : new_matrix_elements) {
         const auto &[map_it, end_map_it] = basis.find(new_state);
 
@@ -177,6 +179,8 @@ class qmatrix : public typed_object<T> {
 
       const auto &[state, norm] = basis[row_index];
       const auto &new_matrix_elements = op(state);
+
+      new_data.reserve(new_matrix_elements.size());
       for (const auto &[data, new_state, cindex] : new_matrix_elements) {
         const I index = basis.index(new_state);
         const T matrix_element = quspin::detail::cast<T>(data);
@@ -200,6 +204,18 @@ class qmatrix : public typed_object<T> {
 
     qmatrix() = default;
 
+    qmatrix(std::vector<I> &&indptr, std::vector<std::tuple<T, I, J>> &&data)
+        : indptr_(std::move(indptr)), data_(std::move(data)) {
+      dim_ = indptr_.size() - 1;
+      num_coeff_ = 0;
+      for (const auto &ele : data_) {
+        num_coeff_ = std::max(num_coeff_, std::get<J>(ele));
+      }
+      if (!has_sorted_indices()) {
+        sort_indices();
+      }
+    }
+
     template<typename Operation, typename basis_t>
     qmatrix(Operation &&op, const basis_t &basis) {
       using bitset_t = typename basis_t::bitset_type;
@@ -212,28 +228,7 @@ class qmatrix : public typed_object<T> {
       indptr_.resize(basis.size() + 1);
       dim_ = basis.size();
 
-      if (omp_get_max_threads() == 1) {
-        num_coeff_ = 0;
-        for (std::size_t row_index = 0; row_index < dim_; ++row_index) {
-          auto new_data = calculate_row(op, row_index, basis);
-          std::sort(new_data.begin(), new_data.end(),
-                    [](const auto &a, const auto &b) {
-                      return std::get<I>(a) < std::get<I>(b) ||
-                             (std::get<I>(a) == std::get<I>(b) &&
-                              std::get<J>(a) < std::get<J>(b));
-                    });
-
-          for (const auto &ele : new_data) {
-            const std::size_t cindex = std::get<J>(ele);
-            num_coeff_ = std::max(num_coeff_, cindex);
-            data_.push_back(std::move(ele));
-          }
-          indptr_.push_back(data_.size());
-        }
-        indptr_.push_back(data_.size());
-        data_.shrink_to_fit();
-
-      } else {
+      if (omp_get_max_threads() > 1) {
 #pragma omp parallel shared(op, num_coeff_, data_, indptr_, basis) \
     firstprivate(dim_) default(none)
         {
@@ -277,6 +272,37 @@ class qmatrix : public typed_object<T> {
             const std::size_t coeff_index = std::get<J>(ele);
             num_coeff_ = std::max(num_coeff_, coeff_index);
           }
+        }
+      } else {
+        num_coeff_ = 0;
+        indptr_.push_back(data_.size());
+        for (std::size_t row_index = 0; row_index < dim_; ++row_index) {
+          auto new_data = calculate_row(op, row_index, basis);
+          std::sort(new_data.begin(), new_data.end(),
+                    [](const auto &a, const auto &b) {
+                      return std::get<I>(a) < std::get<I>(b) ||
+                             (std::get<I>(a) == std::get<I>(b) &&
+                              std::get<J>(a) < std::get<J>(b));
+                    });
+
+          for (const auto &ele : new_data) {
+            auto begin_it = data_.begin() + indptr_.back();
+            auto find_it =
+                std::find_if(begin_it, data_.end(), [ele](const auto &data) {
+                  return std::get<I>(data) == std::get<I>(ele) &&
+                         std::get<J>(data) == std::get<J>(ele);
+                });
+
+            if (find_it == data_.end()) {
+              data_.push_back(std::move(ele));
+            } else {
+              std::get<T>(*find_it) += std::get<T>(ele);
+            }
+
+            const std::size_t cindex = std::get<J>(ele);
+            num_coeff_ = std::max(num_coeff_, cindex);
+          }
+          indptr_.push_back(data_.size());
         }
       }
     }
@@ -422,8 +448,8 @@ class qmatrix : public typed_object<T> {
         for (const auto &[data, index, cindex] : row_it) {
           std::array<size_t, 1> col_index = {index};
           std::array<size_t, 1> row_index = {row_it.row()};
-          atomic_add(output[row_index],
-                     data * input[col_index] * coeff[cindex]);
+          atomic_iadd(output[row_index],
+                      data * input[col_index] * coeff[cindex]);
         }
       }
     }
@@ -448,8 +474,8 @@ class qmatrix : public typed_object<T> {
               const K coeff_data = coeff[static_cast<std::size_t>(cindex)];
               std::array<std::size_t, 2> in_index = {row_it.row(), vec};
               std::array<std::size_t, 2> out_index = {index, vec};
-              atomic_add(output[out_index],
-                         data * input[in_index] * coeff_data);
+              atomic_iadd(output[out_index],
+                          data * input[in_index] * coeff_data);
             }
           }
         }
@@ -470,8 +496,8 @@ class qmatrix : public typed_object<T> {
               const K coeff_data = coeff[static_cast<std::size_t>(cindex)];
               std::array<std::size_t, 2> in_index = {row_it.row(), vec};
               std::array<std::size_t, 2> out_index = {index, vec};
-              atomic_add(output[out_index],
-                         data * input[in_index] * coeff_data);
+              atomic_iadd(output[out_index],
+                          data * input[in_index] * coeff_data);
             }
           }
         }
@@ -503,6 +529,9 @@ class qmatrix : public typed_object<T> {
       }
     }
 
+    qmatrix operator+(const qmatrix &rhs) const;
+    qmatrix operator-(const qmatrix &rhs) const;
+
     std::size_t dim() const { return dim_; }
 
     std::size_t num_coeff() const { return num_coeff_; }
@@ -510,13 +539,190 @@ class qmatrix : public typed_object<T> {
     decltype(auto) begin() const { return qmatrix_row_iterator(0, *this); }
 
     decltype(auto) end() const { return qmatrix_row_iterator(dim_, *this); }
+
+    decltype(auto) row_bounds(const std::size_t row) const {
+      assert(row < dim_);
+      auto begin = data_.begin() + indptr_[row];
+      auto end = data_.begin() + indptr_[row + 1];
+      return std::make_pair(begin, end);
+    }
 };
+
+template<typename Op, typename T, typename I, typename J>
+  requires QMatrixTypes<T, I, J>
+qmatrix<T, I, J> binary_op(Op &&op, const qmatrix<T, I, J> &lhs,
+                           const qmatrix<T, I, J> &rhs) {
+  static_assert(std::is_invocable_v<Op, T, T>,
+                "Incompatible Operator with input types");
+  static_assert(std::is_same_v<T, std::decay_t<std::invoke_result_t<Op, T, T>>>,
+                "Incompatible output type");
+
+  assert(lhs.dim() == rhs.dim());
+
+  std::vector<I> indptr;
+  std::vector<std::tuple<T, I, J>> out_data;
+
+  auto lt = [](const auto &lhs, const auto &rhs) {
+    return std::get<I>(lhs) < std::get<I>(rhs) ||
+           (std::get<I>(lhs) == std::get<I>(rhs) &&
+            std::get<J>(lhs) < std::get<J>(rhs));
+  };
+
+  const int num_threads = omp_get_max_threads();
+
+  if (num_threads > 1) {
+    indptr.resize(lhs.dim() + 1);
+    indptr[0] = 0;
+#pragma omp parallel firstprivate(op, lt) shared(indptr, lhs, rhs) default(none)
+    {
+#pragma omp for
+      for (std::size_t row_index = 0; row_index < lhs.dim(); ++row_index) {
+        I sum_size = 0;
+
+        auto [lhs_row_begin, lhs_row_end] = lhs.row_bounds(row_index);
+        auto [rhs_row_begin, rhs_row_end] = rhs.row_bounds(row_index);
+
+        while (lhs_row_begin != lhs_row_end && rhs_row_begin != rhs_row_end) {
+          if (lt(*lhs_row_begin, *rhs_row_begin)) {
+            const T result = op(std::get<T>(*lhs_row_begin++), T());
+            sum_size += cast<I>(result != T());
+          } else if (lt(*rhs_row_begin, *lhs_row_begin)) {
+            const T result = op(T(), std::get<T>(*rhs_row_begin++));
+            sum_size += cast<I>(result != T());
+          } else {
+            const T result = op(std::get<T>(*lhs_row_begin++),
+                                std::get<T>(*rhs_row_begin++));
+            sum_size += cast<I>(result != T());
+          }
+        }
+
+        while (lhs_row_begin != lhs_row_end) {
+          const T result = op(std::get<T>(*lhs_row_begin++), T());
+          sum_size += cast<I>(result != T());
+        }
+
+        while (rhs_row_begin != rhs_row_end) {
+          const T result = op(T(), std::get<T>(*rhs_row_begin++));
+          sum_size += cast<I>(result != T());
+        }
+      }
+
+#pragma omp barrier
+
+#pragma omp single nowait
+      {
+        // cumulaive sum
+        for (std::size_t row_index = 1; row_index <= lhs.dim(); ++row_index) {
+          indptr[row_index] += indptr[row_index - 1];
+        }
+        out_data.resize(indptr.back());
+      }
+
+#pragma omp barrier
+
+#pragma omp for
+      for (std::size_t row_index = 0; row_index < lhs.dim(); ++row_index) {
+        I sum_size = 0;
+
+        auto out_row_begin = out_data.begin() + indptr[row_index];
+        auto out_row_end = out_data.begin() + indptr[row_index + 1];
+
+        auto [lhs_row_begin, lhs_row_end] = lhs.row_bounds(row_index);
+        auto [rhs_row_begin, rhs_row_end] = rhs.row_bounds(row_index);
+
+        while (lhs_row_begin != lhs_row_end && rhs_row_begin != rhs_row_end) {
+          if (lt(*lhs_row_begin, *rhs_row_begin)) {
+            const T result = op(std::get<T>(*lhs_row_begin), T());
+            if (result != T()) {
+              *out_row_begin++ =
+                  std::forward_as_tuple(result, std::get<I>(*lhs_row_begin),
+                                        std::get<J>(*lhs_row_begin));
+            }
+            ++lhs_row_begin;
+          } else if (lt(*rhs_row_begin > *lhs_row_begin)) {
+            const T result = op(T(), std::get<T>(*rhs_row_begin));
+            if (result != T()) {
+              *out_row_begin++ =
+                  std::forward_as_tuple(result, std::get<I>(*rhs_row_begin),
+                                        std::get<J>(*rhs_row_begin));
+            }
+            ++rhs_row_begin;
+          } else {
+            const T result =
+                op(std::get<T>(*lhs_row_begin), std::get<T>(*rhs_row_begin));
+            if (result != T()) {
+              *out_row_begin++ =
+                  std::forward_as_tuple(result, std::get<I>(*lhs_row_begin),
+                                        std::get<J>(*lhs_row_begin));
+            }
+            ++lhs_row_begin;
+            ++rhs_row_begin;
+          }
+        }
+      }
+    }
+  } else {
+    indptr.push_back(out_data.size());
+    for (std::size_t row_index = 0; row_index < lhs.dim(); ++row_index) {
+      auto [lhs_row_begin, lhs_row_end] = lhs.row_bounds(row_index);
+      auto [rhs_row_begin, rhs_row_end] = rhs.row_bounds(row_index);
+
+      while (lhs_row_begin != lhs_row_end && rhs_row_begin != rhs_row_end) {
+        if (lt(*lhs_row_begin, *rhs_row_begin)) {
+          const T result = op(std::get<T>(*lhs_row_begin), T());
+          if (result != T()) {
+            out_data.emplace_back(
+                std::forward_as_tuple(result, std::get<I>(*lhs_row_begin),
+                                      std::get<J>(*lhs_row_begin)));
+          }
+          ++lhs_row_begin;
+        } else if (lt(*rhs_row_begin, *lhs_row_begin)) {
+          const T result = op(T(), std::get<T>(*rhs_row_begin));
+          if (result != T()) {
+            out_data.emplace_back(
+                std::forward_as_tuple(result, std::get<I>(*rhs_row_begin),
+                                      std::get<J>(*rhs_row_begin)));
+          }
+          ++rhs_row_begin;
+        } else {
+          const T result =
+              op(std::get<T>(*lhs_row_begin), std::get<T>(*rhs_row_begin));
+          if (result != T()) {
+            out_data.emplace_back(
+                std::forward_as_tuple(result, std::get<I>(*lhs_row_begin),
+                                      std::get<J>(*lhs_row_begin)));
+          }
+          ++lhs_row_begin;
+          ++rhs_row_begin;
+        }
+      }
+
+      while (lhs_row_begin != lhs_row_end) {
+        out_data.push_back(*lhs_row_begin++);
+      }
+
+      while (rhs_row_begin != rhs_row_end) {
+        out_data.push_back(*rhs_row_begin++);
+      }
+
+      indptr.push_back(out_data.size());
+    }
+  }
+
+  return qmatrix<T, I, J>(indptr, out_data);
+}
 
 template<typename T, typename I, typename J>
   requires QMatrixTypes<T, I, J>
-struct value_type<qmatrix<T, I, J>> {
-    using type = T;
-};
+qmatrix<T, I, J> qmatrix<T, I, J>::operator+(const qmatrix &rhs) const {
+  return binary_op(std::plus<T>(), *this, rhs);
+}
+
+template<typename T, typename I, typename J>
+  requires QMatrixTypes<T, I, J>
+qmatrix<T, I, J> qmatrix<T, I, J>::operator-(const qmatrix &rhs) const {
+  return binary_op(std::minus<T>(), *this, rhs);
+}
 
 using qmatrices = std::variant<
     qmatrix<int8_t, int32_t, uint8_t>, qmatrix<int16_t, int32_t, uint8_t>,
