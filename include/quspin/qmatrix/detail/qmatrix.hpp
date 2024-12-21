@@ -1,10 +1,10 @@
 // Copyright 2024 Phillip Weinberg
 #pragma once
 
-#include <boost/container/small_vector.hpp>
 #include <iterator>
 #include <quspin/array/detail/array.hpp>
 #include <quspin/basis/detail/space.hpp>
+#include <quspin/detail/default_containers.hpp>
 #include <quspin/detail/omp.hpp>
 #include <quspin/detail/type_concepts.hpp>
 #include <quspin/dtype/detail/dtype.hpp>
@@ -106,7 +106,7 @@ class qmatrix : public typed_object<T> {
         Operation &&op, const std::size_t row_index,
         const basis::symmetric_subspace<grp_t, bitset_t, norm_t, map_t>
             &basis) {
-      boost::container::small_vector<std::tuple<T, I, J>, 256> new_data;
+      svector<std::tuple<T, I, J>, 256> new_data;
 
       const auto &[state, norm] = basis[row_index];
       const auto &new_matrix_elements = op(state);
@@ -143,7 +143,7 @@ class qmatrix : public typed_object<T> {
     static decltype(auto) calculate_row(
         Operation &&op, const std::size_t row_index,
         const basis::subspace<bitset_t, map_t> &basis) {
-      boost::container::small_vector<std::tuple<T, I, J>, 256> new_data;
+      svector<std::tuple<T, I, J>, 256> new_data;
 
       const auto &state = basis[row_index];
       const auto &new_matrix_elements = op(state);
@@ -175,7 +175,7 @@ class qmatrix : public typed_object<T> {
     static decltype(auto) calculate_row(Operation &&op,
                                         const std::size_t row_index,
                                         const basis::space<bitset_t> &basis) {
-      boost::container::small_vector<std::tuple<T, I, J>, 256> new_data;
+      svector<std::tuple<T, I, J>, 256> new_data;
 
       const auto &[state, norm] = basis[row_index];
       const auto &new_matrix_elements = op(state);

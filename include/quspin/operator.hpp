@@ -3,520 +3,373 @@
 
 #include <algorithm>
 #include <array>
-#include <cassert>
-#include <cinttypes>
-#include <cmath>
 #include <complex>
-#include <limits>
-#include <list>
-#include <memory>
-#include <quspin/basis/detail/bitbasis/bits.hpp>
-#include <quspin/basis/detail/bitbasis/dits.hpp>
-#include <quspin/utils/functions.hpp>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <concepts>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <quspin/basis/detail/bitbasis/cast.hpp>
+#include <quspin/basis/grp/hardcore.hpp>
+#include <quspin/detail/cast.hpp>
+#include <quspin/detail/default_containers.hpp>
+#include <sstream>
+#include <unordered_set>
 
 namespace quspin {
 
-template<class T, size_t N>
-class N_body_dit_op {
-    //
-  private:
+using cdouble = std::complex<double>;
 
-    const basis::dit_integer_t lhss;  // size of local
-    const int dim;
-    std::array<int, N> locs;
-    std::vector<T> data;
-    std::vector<bool> nonzero;
-
+class pauli {
   public:
 
-    static const int length = N;
-    typedef T value_type;
+    enum class OperatorType { X, Y, Z, P, M, N };
 
-    static int get_power(const int _lhss) {
-      int _dim = 1;
-      for (size_t i = 0; i < N; i++) {
-        _dim *= _lhss;
-      }
-      return _dim;
-    }
-
-    N_body_dit_op(const basis::dit_integer_t _lhss,
-                  const std::vector<int>& _locs, const std::vector<T>& _data)
-        : lhss(_lhss), dim(get_power(_lhss)) {
-      assert(_data.size() == dim * dim);
-      assert(_locs.size() == N);
-      // copy to contiguous pointers
-      data.insert(data.begin(), _data.begin(), _data.end());
-      std::copy(_locs.begin(), _locs.end(), locs.begin());
-
-      nonzero.resize(data.size());
-      std::transform(data.begin(), data.end(), nonzero.begin(),
-                     [](const T value) -> bool { return value != T(0); });
-    }
-
-    N_body_dit_op(const basis::dit_integer_t _lhss, int* _locs, T* _data)
-        : lhss(_lhss), dim(get_power(_lhss)) {
-      // copy to contiguous pointers
-      data.insert(data.begin(), _data, _data + dim * dim);
-      std::copy(_locs, _locs + N, locs.begin());
-
-      nonzero.resize(data.size());
-      std::transform(data.begin(), data.end(), nonzero.begin(),
-                     [](const T value) -> bool { return value != T(0); });
-    }
-
-    ~N_body_dit_op() {}
-
-    template<typename bitset_t, typename container_t>
-    void op(const bitset_t& s, container_t& output) const {
-      const int a = basis::get_sub_bitstring(s, locs);
-      for (int b = 0; b < dim; ++b) {  // loop over columns
-        const int i = dim * a + b;
-        if (nonzero[i]) {
-          const bitset_t r = basis::set_sub_bitstring(s, b, locs);
-          output.push_back(std::make_pair(r, data[i]));
-        }
+    static OperatorType convert(const char c) {
+      switch (c) {
+        case 'x':
+        case 'X':
+          return OperatorType::X;
+        case 'y':
+        case 'Y':
+          return OperatorType::Y;
+        case 'z':
+        case 'Z':
+          return OperatorType::Z;
+        case '+':
+          return OperatorType::P;
+        case '-':
+          return OperatorType::M;
+        case 'n':
+        case 'N':
+          return OperatorType::N;
+        default:
+          throw std::invalid_argument("Invalid operator type");
       }
     }
 
-    template<typename bitset_t, typename container_t>
-    void op_dagger(const bitset_t& s, container_t& output) const {
-      const int a = basis::get_sub_bitstring(s, locs);
-      for (int b = 0; b < dim; ++b) {  // loop over rows
-        const int i = dim * b + a;
-        if (nonzero[i]) {
-          const bitset_t r = basis::set_sub_bitstring(s, b, locs);
-          output.push_back(std::make_pair(r, conj(data[i])));
-        }
-      }
+    template<typename bitset_t, typename cindex_t>
+    static std::pair<bitset_t, cdouble> apply_op(const bitset_t &state,
+                                                 const OperatorType op,
+                                                 const cindex_t loc) noexcept {
+      const bool n = quspin::detail::basis::integer_cast<uint32_t>(
+                         (state >> loc) & bitset_t(1)) &
+                     uint32_t(1);
+      const double s = 1.0 - 2.0 * n;
+      const bool is_X = OperatorType::X == op;
+      const bool is_Y = OperatorType::Y == op;
+      const bool is_Z = OperatorType::Z == op;
+      const bool is_P = OperatorType::P == op;
+      const bool is_M = OperatorType::M == op;
+      const bool is_N = OperatorType::N == op;
+      const bitset_t new_state = state ^ bitset_t(is_X || is_Y || is_P || is_M)
+                                             << loc;
+      const cdouble result = cdouble(
+          is_Z * s + (is_X | ((is_M | is_N) & n) | (is_P & (!n))), s * is_Y);
+      return std::make_pair(new_state, result);
     }
 };
 
-template<class T, size_t N>
-class N_body_bit_op {
-    //
+template<typename cindex_t>
+class pauli_operator_string {
   private:
 
-    static const int dim = static_cast<size_t>(integer_pow<2, N>::value);
-
-    std::array<int, N> locs;
-    std::array<T, dim * dim> data;
-    std::array<bool, dim * dim> nonzero;
+    std::vector<pauli::OperatorType> ops_;
+    std::vector<cindex_t> locs_;
+    cdouble coeff;
 
   public:
 
-    static const int length = N;
-    typedef T value_type;
+    pauli_operator_string() = default;
+    pauli_operator_string(pauli_operator_string &&) = default;
+    pauli_operator_string(const pauli_operator_string &) = default;
+    pauli_operator_string &operator=(const pauli_operator_string &) = default;
+    pauli_operator_string &operator=(pauli_operator_string &&) = default;
 
-    N_body_bit_op(const std::vector<int>& _locs, const std::vector<T>& _data) {
-      assert(_data.size() == dim * dim);
-      assert(_locs.size() == N);
-      // copy to contiguous pointers
-      std::copy(_data.begin(), _data.end(), data.begin());
-      std::copy(_locs.begin(), _locs.end(), locs.begin());
-
-      std::transform(data.begin(), data.end(), nonzero.begin(),
-                     [](const T& value) -> bool { return value != T(0); });
-    }
-
-    N_body_bit_op(int* _locs, T* _data) {
-      // copy to contiguous pointers (already allocated)
-      std::copy(_data, _data + dim * dim, data.begin());
-      std::copy(_locs, _locs + N, locs.begin());
-
-      std::transform(data.begin(), data.end(), nonzero.begin(),
-                     [](const T& value) -> bool { return value != T(0); });
-    }
-
-    ~N_body_bit_op() {}
-
-    template<typename bitset_t, typename container_t>
-    void op(const bitset_t& s, container_t& output) const {
-      const int a = basis::get_sub_bitstring(s, locs);
-
-      for (int b = 0; b < dim; ++b) {  // loop over columns
-        const int i = dim * a + b;
-        if (nonzero[i]) {
-          bitset_t r = basis::set_sub_bitstring(s, b, locs);
-          output.push_back(std::make_pair(r, data[i]));
-        }
+    pauli_operator_string(const std::string &ops,
+                          const std::vector<cindex_t> &locs,
+                          const cdouble &coeff = 1.0)
+        : coeff(coeff) {
+      if (ops.size() != locs.size()) {
+        throw std::invalid_argument("Invalid operator string");
       }
+
+      this->ops_.resize(ops.size());
+      this->locs_.resize(locs.size());
+
+      std::copy(locs.begin(), locs.end(), this->locs_.begin());
+      std::transform(ops.begin(), ops.end(), this->ops_.begin(),
+                     [](const auto c) { return pauli::convert(c); });
     }
 
-    template<typename bitset_t, typename container_t>
-    void op_dagger(const bitset_t& s, container_t& output) const {
-      const int a = basis::get_sub_bitstring(s, locs);
-
-      for (int b = 0; b < dim; ++b) {  // loop over rows
-        const int i = dim * b + a;
-        if (nonzero[i]) {
-          bitset_t r = basis::set_sub_bitstring(s, b, locs);
-          output.push_back(std::make_pair(r, conj(data[i])));
-        }
+    template<typename bitset_t>
+    std::pair<cdouble, bitset_t> operator()(
+        const bitset_t &state) const noexcept {
+      cdouble result = 1.0;
+      bitset_t new_state = state;
+      auto op_it = ops_.rbegin();
+      auto loc_it = locs_.rbegin();
+      for (; op_it != ops_.rend(); ++op_it, ++loc_it) {
+        const auto [new_state_, result_] =
+            pauli::apply_op(new_state, *op_it, *loc_it);
+        new_state = new_state_;
+        result *= result_;
       }
+
+      return std::make_pair(result, new_state);
     }
 };
 
-template<typename T>
-class operator_string  // generic operator
-{
+template<typename cindex_t, std::size_t num_operators>
+class fixed_pauli_operator_string {
   private:
 
-    const int lhss;          // local hilbert space size for each term
-    const int nlocs;         // number of local operators
-    std::vector<int> locs;   // number of local operators in
-    std::vector<int> perms;  // non-branching operators stored as permutations
-    std::vector<int>
-        inv_perms;  // non-branching operators dagger stored as permutations
-    std::vector<T> datas;      // matrix elements for non-branching operators.
-    std::vector<T> inv_datas;  // matrix elements for dagger operator.
+    std::array<pauli::OperatorType, num_operators> ops_;
+    std::array<cindex_t, num_operators> locs_;
+    cdouble coeff;
 
   public:
 
-    static const int length = 0;
-    typedef T value_type;
+    fixed_pauli_operator_string() = default;
+    fixed_pauli_operator_string(const fixed_pauli_operator_string &) = default;
+    fixed_pauli_operator_string(fixed_pauli_operator_string &&) = default;
+    fixed_pauli_operator_string &operator=(
+        const fixed_pauli_operator_string &) = default;
+    fixed_pauli_operator_string &operator=(fixed_pauli_operator_string &&) =
+        default;
 
-    operator_string(const std::vector<int>& _locs,
-                    const std::vector<std::vector<int>>& _perms,
-                    const std::vector<std::vector<T>>& _datas)
-        : lhss(_perms.front().size()), nlocs(_locs.size()) {
-      assert(_locs.size() == _perms.size());
-      assert(_locs.size() == _datas.size());
+    fixed_pauli_operator_string(const std::string &ops,
+                                const std::vector<cindex_t> &locs,
+                                const cdouble &coeff = 1.0)
+        : coeff(coeff) {
+      if (ops.size() != locs.size()) {
+        throw std::invalid_argument("Invalid operator string");
+      }
 
-      locs.insert(locs.end(), _locs.begin(), _locs.end());
+      if (locs.size() != num_operators) {
+        throw std::invalid_argument("Invalid operator string");
+      }
 
-      for (size_t i = 0; i < _locs.size(); i++) {
-        std::vector<int> perm(_perms[i].begin(), _perms[i].end()),
-            inv_perm(_perms[i].size());
-        std::vector<T> data(_datas[i].begin(), _datas[i].end()),
-            inv_data(_datas[i].size());
+      std::copy(locs.begin(), locs.end(), this->locs_.begin());
+      std::transform(ops.begin(), ops.end(), this->ops_.begin(),
+                     [](const auto c) { return pauli::convert(c); });
+    }
 
-        assert(perm.size() == lhss);
-        assert(data.size() == lhss);
+    template<typename bitset_t>
+    std::pair<cdouble, bitset_t> operator()(
+        const bitset_t &state) const noexcept {
+      cdouble result = 1.0;
+      bitset_t new_state = state;
+      auto op_it = ops_.rbegin();
+      auto loc_it = locs_.rbegin();
+      for (; op_it != ops_.rend(); ++op_it, ++loc_it) {
+        const auto [new_state_, result_] =
+            pauli::apply_op(new_state, *op_it, *loc_it);
+        new_state = new_state_;
+        result *= result_;
+      }
 
-        int j = 0;
-        for (const int p : perm) {
-          assert((p >= 0) && (p < lhss));
-          inv_perm[p] = j;
-          inv_data[p] = conj(data[j]);
-          j++;
+      return std::make_pair(result, new_state);
+    }
+};
+
+template<typename cindex_t>
+class pauli_hamiltonian {
+  private:
+
+    svector<std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 1>>, 64>
+        ops_1;
+    svector<std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 2>>, 64>
+        ops_2;
+    svector<std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 3>>, 64>
+        ops_3;
+    svector<std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 4>>, 64>
+        ops_4;
+    std::vector<std::pair<cindex_t, pauli_operator_string<cindex_t>>> ops_other;
+
+    std::size_t size_ = 0;
+
+  public:
+
+    using cindex_type = cindex_t;
+
+    pauli_hamiltonian() = default;
+    pauli_hamiltonian(const pauli_hamiltonian &) = default;
+    pauli_hamiltonian(pauli_hamiltonian &&) = default;
+    pauli_hamiltonian &operator=(const pauli_hamiltonian &) = default;
+    pauli_hamiltonian &operator=(pauli_hamiltonian &&) = default;
+
+    template<typename... Args>
+    pauli_hamiltonian(const std::vector<std::tuple<cindex_t, Args...>> &args) {
+      for (const auto &[cindex, str, locs, coeff] : args) {
+        if (cindex > std::numeric_limits<cindex_t>::max()) {
+          throw std::invalid_argument("Invalid cindex");
         }
 
-        perms.insert(perms.end(), perm.begin(), perm.end());
-        inv_perms.insert(inv_perms.end(), inv_perm.begin(), inv_perm.end());
+        auto max_loc = std::max_element(locs.begin(), locs.end());
+        if (max_loc != locs.end()) {
+          size_ = std::max(size_, static_cast<std::size_t>(*max_loc + 1));
+        }
 
-        datas.insert(datas.end(), data.begin(), data.end());
-        inv_datas.insert(inv_datas.end(), inv_data.begin(), inv_data.end());
+        switch (locs.size()) {
+          case 1:
+            ops_1.emplace_back(
+                cindex, std::move(fixed_pauli_operator_string<cindex_t, 1>(
+                            str, locs, coeff)));
+            break;
+          case 2:
+            ops_2.emplace_back(
+                cindex, std::move(fixed_pauli_operator_string<cindex_t, 2>(
+                            str, locs, coeff)));
+            break;
+          case 3:
+            ops_3.emplace_back(
+                cindex, std::move(fixed_pauli_operator_string<cindex_t, 3>(
+                            str, locs, coeff)));
+            break;
+          case 4:
+            ops_4.emplace_back(
+                cindex, std::move(fixed_pauli_operator_string<cindex_t, 4>(
+                            str, locs, coeff)));
+            break;
+          default:
+            ops_other.emplace_back(
+                cindex,
+                std::move(pauli_operator_string<cindex_t>(str, locs, coeff)));
+        }
+      }
+
+      std::sort(ops_1.begin(), ops_1.end(),
+                [](const auto &a, const auto &b) { return a.first < b.first; });
+      std::sort(ops_2.begin(), ops_2.end(),
+                [](const auto &a, const auto &b) { return a.first < b.first; });
+      std::sort(ops_3.begin(), ops_3.end(),
+                [](const auto &a, const auto &b) { return a.first < b.first; });
+      std::sort(ops_4.begin(), ops_4.end(),
+                [](const auto &a, const auto &b) { return a.first < b.first; });
+      std::sort(ops_other.begin(), ops_other.end(),
+                [](const auto &a, const auto &b) { return a.first < b.first; });
+    }
+
+    std::size_t size() const noexcept { return size_; }
+
+    std::size_t num_ops() const noexcept {
+      return ops_1.size() + ops_2.size() + ops_3.size() + ops_4.size() +
+             ops_other.size();
+    }
+
+    template<typename bitset_t>
+    svector<std::tuple<cdouble, bitset_t, cindex_t>, 256> operator()(
+        const bitset_t &state) const noexcept {
+      svector<std::tuple<cdouble, bitset_t, cindex_t>, 256> result;
+      result.reserve(num_ops());
+
+      for (const auto &[cindex, op_1] : ops_1) {
+        const auto [coeff, new_state] = op_1(state);
+        if (coeff != 0.0) {
+          result.emplace_back(coeff, new_state, cindex);
+        }
+      }
+
+      for (const auto &[cindex, op_2] : ops_2) {
+        const auto [coeff, new_state] = op_2(state);
+        if (coeff != 0.0) {
+          result.emplace_back(coeff, new_state, cindex);
+        }
+      }
+
+      for (const auto &[cindex, op_3] : ops_3) {
+        const auto [coeff, new_state] = op_3(state);
+        if (coeff != 0.0) {
+          result.emplace_back(coeff, new_state, cindex);
+        }
+      }
+
+      for (const auto &[cindex, op_4] : ops_4) {
+        const auto [coeff, new_state] = op_4(state);
+        if (coeff != 0.0) {
+          result.emplace_back(coeff, new_state, cindex);
+        }
+      }
+
+      for (const auto &[cindex, op] : ops_other) {
+        const auto [coeff, new_state] = op(state);
+        if (coeff != 0.0) {
+          result.emplace_back(coeff, new_state, cindex);
+        }
+      }
+
+      return result;
+    }
+};
+
+class PauliHamiltonian {
+  private:
+
+    using pauli_hamiltonian_t =
+        std::variant<pauli_hamiltonian<uint8_t>, pauli_hamiltonian<uint16_t>>;
+
+    pauli_hamiltonian_t internals_;
+
+    template<typename cindex_t>
+    static pauli_hamiltonian<cindex_t> create_typed_internals(
+        const std::vector<
+            std::tuple<std::size_t, std::string, std::vector<std::size_t>,
+                       std::complex<double>>> &ham_list) {
+      std::vector<std::tuple<cindex_t, std::string, std::vector<cindex_t>,
+                             std::complex<double>>>
+          ham_list_typed;
+      for (const auto &[cindex, str, locs, coeff] : ham_list) {
+        std::vector<cindex_t> locs_typed;
+        locs_typed.reserve(locs.size());
+        std::transform(
+            locs.begin(), locs.end(), std::back_inserter(locs_typed),
+            [](const auto loc) { return static_cast<cindex_t>(loc); });
+        ham_list_typed.emplace_back(static_cast<cindex_t>(cindex), str,
+                                    locs_typed, coeff);
+      }
+
+      return pauli_hamiltonian<cindex_t>(ham_list_typed);
+    }
+
+    static pauli_hamiltonian_t create_internals(
+        const std::vector<
+            std::tuple<std::size_t, std::string, std::vector<std::size_t>,
+                       std::complex<double>>> &ham_list) {
+      std::size_t max_cindex_value = 0;
+
+      std::for_each(ham_list.begin(), ham_list.end(),
+                    [&max_cindex_value](const auto &ele) {
+                      std::size_t loc_max = *std::max_element(
+                          std::get<2>(ele).begin(), std::get<2>(ele).end());
+                      max_cindex_value =
+                          std::max(max_cindex_value, std::get<0>(ele));
+                      max_cindex_value = std::max(max_cindex_value, loc_max);
+                    });
+
+      if (max_cindex_value > std::numeric_limits<uint8_t>::max()) {
+        return create_typed_internals<uint8_t>(ham_list);
+
+      } else if (max_cindex_value <= std::numeric_limits<uint16_t>::max()) {
+        return create_typed_internals<uint16_t>(ham_list);
+
+      } else {
+        throw std::invalid_argument("Invalid cindex");
       }
     }
 
-    operator_string(const int _lhss, const int _nlocs, int* _locs, int* _perms,
-                    T* _datas)
-        : lhss(_lhss), nlocs(_nlocs) {
-      // constructor for raw data.
-      locs.insert(locs.end(), _locs, _locs + _nlocs);
-      perms.insert(perms.end(), _perms, _perms + _lhss * _nlocs);
-      datas.insert(datas.end(), _datas, _datas + _lhss * _nlocs);
-      inv_perms.resize(perms.size());
-      inv_datas.resize(perms.size());
+  public:
 
-      std::transform(datas.begin(), datas.end(), inv_datas.begin(),
-                     [](const T& val) { return conj(val); });
+    PauliHamiltonian(
+        const std::vector<
+            std::tuple<std::size_t, std::string, std::vector<std::size_t>,
+                       std::complex<double>>> &ham_list)
+        : internals_(create_internals(ham_list)) {}
 
-      int* _inv_perms = inv_perms.data();
-      for (int i = 0; i < _nlocs; ++i) {
-        int* perm = _perms + i * _lhss;
-        int* inv_perm = _inv_perms + i * _lhss;
-        for (int j = 0; j < _lhss; ++j) {
-          inv_perm[perm[j]] = j;
-        }
-      }
+    std::size_t size() const {
+      return std::visit([](const auto &ham) { return ham.size(); }, internals_);
     }
 
-    ~operator_string() {}
-
-    template<typename bitset_t, typename container_t>
-    void op(const bitset_t& s, container_t& output) const {
-      T m = T(1.0);
-      bitset_t r(s);
-
-      bool nonzero = true;
-      size_t ptr = 0;
-
-      for (int i = 0; i < nlocs; ++i) {
-        const int s_loc = quspin::detail::basis::get_sub_bitstring(r, locs[i]);
-        const size_t ind = ptr + s_loc;
-
-        m *= datas[ind];
-        r = basis::set_sub_bitstring(r, perms[ind], locs[i]);
-
-        if (m == T(0)) {
-          nonzero = false;
-          break;
-        }
-
-        // shift to next permutation
-        ptr += lhss;
-      }
-
-      if (nonzero) output.push_back(std::make_pair(r, m));
-    }
-
-    template<typename bitset_t, typename container_t>
-    void op_dagger(const bitset_t& s, container_t& output) const {
-      T m = T(1.0);
-      bitset_t r(s);
-
-      bool nonzero = true;
-      size_t ptr = inv_perms.size() - lhss;
-
-      for (int i = nlocs - 1; i > -1; --i) {
-        const int s_loc = basis::get_sub_bitstring(r, locs[i]);
-        const size_t ind = ptr + s_loc;
-
-        m *= inv_datas[ind];
-        r = basis::set_sub_bitstring(r, inv_perms[ind], locs[i]);
-
-        if (m == T(0)) {
-          nonzero = false;
-          break;
-        }
-
-        ptr -= lhss;
-      }
-
-      if (nonzero) output.push_back(std::make_pair(r, m));
-    }
+    pauli_hamiltonian_t internals() const { return internals_; }
 };
 
 }  // namespace quspin
-
-#ifdef QUSPIN_UNIT_TESTS
-
-namespace quspin {  // test cases
-
-typedef basis::bit_set<uint8_t> bs;
-typedef basis::dit_set<uint8_t> ds;
-
-// qubits
-
-template class operator_string<double>;
-template void operator_string<double>::op<bs>(
-    const bs&, std::vector<std::pair<bs, double>>&) const;
-template void operator_string<double>::op_dagger<bs>(
-    const bs&, std::vector<std::pair<bs, double>>&) const;
-
-template class N_body_bit_op<double, 2>;
-template void N_body_bit_op<double, 2>::op<bs>(
-    const bs&, std::vector<std::pair<bs, double>>&) const;
-template void N_body_bit_op<double, 2>::op_dagger<bs>(
-    const bs&, std::vector<std::pair<bs, double>>&) const;
-
-// qudits
-
-template class N_body_dit_op<double, 2>;
-template void N_body_dit_op<double, 2>::op<ds>(
-    const ds&, std::vector<std::pair<ds, double>>&) const;
-template void N_body_dit_op<double, 2>::op_dagger<ds>(
-    const ds&, std::vector<std::pair<ds, double>>&) const;
-
-}  // namespace quspin
-
-TEST_SUITE("quspin/operators.h") {
-  using namespace quspin;
-
-  TEST_CASE("operator_string.op") {
-    operator_string<double>* H;
-
-    // qudits
-    std::vector<std::pair<ds, double>> dit_output;
-    basis::dit_set<uint8_t> dit_state({0, 1, 2, 1}, 3);
-
-    H = new operator_string<double>({0, 1}, {{0, 1, 2}, {0, 1, 2}},
-                                    {{-1.0, 0.0, 1.0}, {-1.0, 0.0, 1.0}});
-
-    H->op(dit_state, dit_output);
-    CHECK(dit_output.size() == 0);
-
-    delete H;
-
-    H = new operator_string<double>({0, 2}, {{0, 1, 2}, {0, 1, 2}},
-                                    {{-1.0, 0.0, 1.0}, {-1.0, 0.0, 1.0}});
-
-    dit_output.clear();
-    H->op(dit_state, dit_output);
-    CHECK(dit_output.size() == 1);
-    CHECK(dit_output[0].first.to_string() == "0 1 2 1 ");
-    CHECK(dit_output[0].second == -1.0);
-
-    delete H;
-
-    H = new operator_string<double>(
-        {0, 2, 3}, {{0, 1, 2}, {1, 2, 0}, {2, 0, 1}},
-        {{1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}});
-
-    dit_output.clear();
-    H->op(dit_state, dit_output);
-    CHECK(dit_output.size() == 1);
-    CHECK(dit_output[0].first.to_string() == "0 1 0 0 ");
-    CHECK(dit_output[0].second == 6.0);
-
-    delete H;
-
-    // qubits
-
-    std::vector<std::pair<bs, double>> bit_output;
-    basis::bit_set<uint8_t> bit_state({0, 1, 1, 0, 1, 0, 0, 1});
-
-    // \sigma_z \sigma_z
-    H = new operator_string<double>({0, 1}, {{0, 1}, {0, 1}},
-                                    {{-1.0, 1.0}, {-1.0, 1.0}});
-    H->op(bit_state, bit_output);
-
-    CHECK(bit_output.size() == 1);
-    CHECK(bit_output[0].first.to_string() == "0 1 1 0 1 0 0 1 ");
-    CHECK(bit_output[0].second == -1.0);
-
-    delete H;
-
-    H = new operator_string<double>({0, 3}, {{0, 1}, {0, 1}},
-                                    {{-1.0, 1.0}, {-1.0, 1.0}});
-    H->op(bit_state, bit_output);
-
-    CHECK(bit_output.size() == 2);
-    CHECK(bit_output[1].first.to_string() == "0 1 1 0 1 0 0 1 ");
-    CHECK(bit_output[1].second == 1.0);
-
-    H = new operator_string<double>({0, 1, 4}, {{0, 1}, {0, 1}, {1, 0}},
-                                    {{-1.0, 1.0}, {-1.0, 1.0}, {0.5, 1.0}});
-    bit_output.clear();
-    H->op(bit_state, bit_output);
-
-    CHECK(bit_output.size() == 1);
-    CHECK(bit_output[0].first.to_string() == "0 1 1 0 0 0 0 1 ");
-    CHECK(bit_output[0].second == -1.0);
-
-    delete H;
-
-    H = new operator_string<double>({0, 1, 0}, {{0, 1}, {0, 1}, {1, 0}},
-                                    {{-1.0, 1.0}, {-1.0, 1.0}, {0.5, 1.0}});
-    bit_output.clear();
-    H->op(bit_state, bit_output);
-
-    CHECK(bit_output.size() == 1);
-    CHECK(bit_output[0].first.to_string() == "1 1 1 0 1 0 0 1 ");
-    CHECK(bit_output[0].second == -0.5);
-
-    delete H;
-  }
-
-  TEST_CASE("operator_string.op_dagger") {
-    typedef double T;
-    operator_string<T>* H;
-    std::vector<std::pair<ds, T>> output;
-    basis::dit_set<uint8_t> state({2, 10}, 16);
-
-    std::vector<int> perm;
-    std::vector<T> data;
-
-    for (int i = 0; i < 16; i++) {
-      int ip = (i + 1) % 16;
-      perm.push_back(ip);
-      data.push_back(std::sqrt(ip));
-    }
-
-    H = new operator_string<T>({0, 1}, {perm, perm}, {data, data});
-
-    H->op_dagger(state, output);
-    CHECK(output.size() == 1);
-    CHECK(output[0].first.to_string() == "1 9 ");
-    CHECK(output[0].second == doctest::Approx(std::sqrt(2 * 10)));
-  }
-
-  TEST_CASE("N_body_bit_op<double,2>") {
-    N_body_bit_op<double, 2>* H;
-    std::vector<std::pair<bs, double>> output;
-    basis::bit_set<uint8_t> state({0, 1, 1, 0, 1, 0, 0, 1});
-
-    std::vector<double> H_loc = {0.25, 0.0, 0.0,   0.0, 0.0, -0.25, 0.5, 0.0,
-                                 0.0,  0.5, -0.25, 0.0, 0.0, 0.0,   0.0, 0.25};
-
-    H = new N_body_bit_op<double, 2>({0, 1}, H_loc);
-
-    H->op(state, output);
-
-    REQUIRE(output.size() == 2);
-    CHECK(output[0].first.to_string() == "1 0 1 0 1 0 0 1 ");
-    CHECK(output[0].second == 0.5);
-    CHECK(output[1].first.to_string() == "0 1 1 0 1 0 0 1 ");
-    CHECK(output[1].second == -0.25);
-
-    output.clear();
-    H->op_dagger(state, output);
-
-    REQUIRE(output.size() == 2);
-    CHECK(output[0].first.to_string() == "1 0 1 0 1 0 0 1 ");
-    CHECK(output[0].second == 0.5);
-
-    CHECK(output[1].first.to_string() == "0 1 1 0 1 0 0 1 ");
-    CHECK(output[1].second == -0.25);
-
-    delete H;
-
-    H = new N_body_bit_op<double, 2>({0, 3}, H_loc);
-
-    output.clear();
-    H->op(state, output);
-    H->op_dagger(state, output);
-    REQUIRE(output.size() == 2);
-    CHECK(output[0].first.to_string() == "0 1 1 0 1 0 0 1 ");
-    CHECK(output[0].second == 0.25);
-    CHECK(output[1].first.to_string() == "0 1 1 0 1 0 0 1 ");
-    CHECK(output[1].second == 0.25);
-
-    delete H;
-  }
-
-  TEST_CASE("N_body_dit_op<double,2>") {
-    std::vector<double> H_loc = {
-        1., 0., 0., 0.,  0., 0., 0., 0., 0., 0.,  0., 0., 1., 0., 0., 0., 0.,
-        0., 0., 0., -1., 0., 1., 0., 0., 0., 0.,  0., 1., 0., 0., 0., 0., 0.,
-        0., 0., 0., 0.,  1., 0., 0., 0., 1., 0.,  0., 0., 0., 0., 0., 0., 0.,
-        0., 1., 0., 0.,  0., 0., 0., 1., 0., -1., 0., 0., 0., 0., 0., 0., 0.,
-        1., 0., 0., 0.,  0., 0., 0., 0., 0., 0.,  0., 0., 1.};
-    using namespace quspin;
-    N_body_dit_op<double, 2>* H;
-
-    // qudits
-    std::vector<std::pair<ds, double>> output;
-    basis::dit_set<uint8_t> state({0, 1, 2, 1}, 3);
-
-    H = new N_body_dit_op<double, 2>(3, {0, 1}, H_loc);
-
-    H->op(state, output);
-
-    CHECK(output.size() == 1);
-    CHECK(output[0].first.to_string() == "1 0 2 1 ");
-    CHECK(output[0].second == 1.0);
-
-    delete H;
-
-    H = new N_body_dit_op<double, 2>(3, {0, 2}, H_loc);
-
-    output.clear();
-    H->op(state, output);
-
-    REQUIRE(output.size() == 2);
-    CHECK(output[0].first.to_string() == "1 1 1 1 ");
-    CHECK(output[0].second == 1.0);
-    CHECK(output[1].first.to_string() == "0 1 2 1 ");
-    CHECK(output[1].second == -1.0);
-
-    delete H;
-  }
-}
-
-#endif

@@ -94,6 +94,8 @@ test_files = [
     ('test' / 'array' / 'kernels.cpp'),
     ('test' / 'dtype.cpp'),
     ('test' / 'detail' / 'select.cpp'),
+    # ('test' / 'basis_scratch.cpp'),
+    ('test' / 'qmatrix_sketch.cpp'),
     ('test' / 'scratch.cpp')
 ]
 

@@ -1,6 +1,7 @@
 // Copyright 2024 Phillip Weinberg
 #pragma once
 
+#include <memory>
 #include <quspin/detail/operators.hpp>
 #include <quspin/detail/variant_container.hpp>
 #include <quspin/dtype/detail/dtype.hpp>
@@ -74,6 +75,29 @@ class DTypeObject : public detail::VariantContainer<Variant> {
       return std::visit(
           [](const auto &obj) { return DType::of<decltype(obj)>(); },
           internals_);
+    }
+};
+
+template<typename Variant>
+  requires std::move_constructible<Variant>
+class DTypePointer : public detail::VariantContainer<std::shared_ptr<Variant>> {
+    using detail::VariantContainer<std::shared_ptr<Variant>>::internals_;
+
+  public:
+
+    DTypePointer(Variant &&data)
+        : detail::VariantContainer<std::shared_ptr<Variant>>(
+              std::make_shared<Variant>(std::move(data))) {}
+
+    DTypePointer(const DTypePointer &) = default;
+    DTypePointer(DTypePointer &&) = default;
+    DTypePointer &operator=(const DTypePointer &) = default;
+    DTypePointer &operator=(DTypePointer &&) = default;
+
+    DType dtype() const {
+      return std::visit(
+          [](const auto &obj) { return DType::of<decltype(obj)>(); },
+          *internals_);
     }
 };
 
