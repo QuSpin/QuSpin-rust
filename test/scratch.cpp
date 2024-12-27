@@ -1,70 +1,29 @@
 
-#include <quspin/basis/grp/hardcore.hpp>
-#include <quspin/dtype/dtype.hpp>
-#include <quspin/operator.hpp>
-#include <quspin/qmatrix/detail/qmatrix.hpp>
+#include <iostream>
+#include <memory>
+#include <variant>
+#include <vector>
 
-namespace qusoin {
-
-class QMatrix : public DTypeObject<detail::qmatrices> {
-    static detail::qmatrices default_value() {
-      return detail::qmatrices(detail::qmatrix<double, int32_t, uint8_t>());
-    }
-
-    template<typename Hamiltonian, typename Basis>
-    detail::qmatrices create_internals(const Hamiltonian &ham,
-                                       const Basis &basis) {
-      const auto &internals = ;
-      const auto &basis_states = basis.internals();
-
-      detail::qmatrices result;
-
-      if (basis.size() < std::numeric_limits<int32_t>::max()) {
-        result = std::move(std::visit(
-            [](const auto &ham, const auto &basis, const auto &dtype) {
-              using qmatrix_t = detail::value_type_t<decltype(dtype)>;
-              using cindex_t =
-                  typename std::decay_t<decltype(ham)>::cindex_type;
-
-              detail::qmatrix<qmatrix_t, int32_t, cindex_t> qmat(ham, basis);
-              return qmat;
-            },
-            ham.internals(), basis.internals(), dtype.internals()));
-      } else if (basis.size() < std::numeric_limits<int64_t>::max()) {
-        result = std::move(std::visit(
-            [](const auto &ham, const auto &basis, const auto &dtype) {
-              using qmatrix_t = detail::value_type_t<decltype(dtype)>;
-              using cindex_t =
-                  typename std::decay_t<decltype(ham)>::cindex_type;
-
-              detail::qmatrix<qmatrix_t, int64_t, cindex_t> qmat(ham, basis);
-              return qmat;
-            },
-            ham.internals(), basis.internals(), dtype.internals()));
-      } else {
-        throw std::invalid_argument("Invalid basis size");
-      }
-
-      return result;
-    }
-
+template<typename T>
+class A {
   public:
 
-    QMatrix() : DTypeObject<detail::qmatrices>(default_value()) {}
+    std::vector<T> value;
 
-    QMatrix(const PauliHamiltonian &ham, const HardcoreBasis &basis,
-            const DType dtype)
-        : DTypeObject<detail::qmatrices>(
-              std::move(create_internals(ham, basis))) {}
+    A() = default;
 
-    QMatrix(const detail::qmatrices &op);
-    template<typename T, typename I, typename J>
-    QMatrix(const detail::qmatrix<T, I, J> &op);
+    A(std::vector<T> &&value) : value(std::move(value)) {}
 
-    std::size_t size() const;
-    std::size_t num_coeff() const;
+    A(const A &a) = delete;
+    A(A &&a) = default;
+    A &operator=(const A &a) = delete;
+    A &operator=(A &&a) = default;
 };
 
-}  // namespace qusoin
+using ATypes = std::variant<A<int>, A<double>>;
 
-int main() {}
+int main() {
+  ATypes a(std::in_place_type<A<int>>, std::vector<int>{1, 2, 3, 4, 5});
+
+  return 0;
+}

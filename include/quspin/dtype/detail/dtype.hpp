@@ -18,6 +18,10 @@ struct typed_object {
 template<PrimativeTypes T>
 struct dtype : public typed_object<T> {
     dtype() = default;
+    dtype(const dtype &) = default;
+    dtype &operator=(const dtype &) = default;
+    dtype(dtype &&) = default;
+    dtype &operator=(dtype &&) = default;
 
     static T default_value() { return T(); }
 };

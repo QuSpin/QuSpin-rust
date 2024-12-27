@@ -73,7 +73,7 @@ class dynamic_dit_manip {
       std::vector<dit_integer_t> out(niter);
       for (int i = 0; i < niter; ++i) {
         int shift = i * bits;
-        out[i] = integer_cast<dit_integer_t, I>((content >> shift) & mask);
+        out[i] = integer_cast<dit_integer_t, I>((content >> shift) & I(mask));
       }
       return out;
     }

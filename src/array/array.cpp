@@ -34,27 +34,25 @@ template Array::Array(const detail::array<double> &);
 template Array::Array(const detail::array<detail::cfloat> &);
 template Array::Array(const detail::array<detail::cdouble> &);
 
-Array::Array(const std::vector<std::size_t> &shape, const DType &dtype) {
-  DTypeObject<detail::arrays>::internals_ = std::visit(
-      [&shape](const auto &dtype) {
-        using T = typename std::decay_t<decltype(dtype)>::value_type;
-        detail::array<T> arr(shape);
-        return detail::arrays(arr);
-      },
-      dtype.get_variant_obj());
-}
+Array::Array(const std::vector<std::size_t> &shape, const DType &dtype)
+    : DTypeObject<detail::arrays>(std::visit(
+          [&shape](const auto &dtype) {
+            using T = typename std::decay_t<decltype(dtype)>::value_type;
+            detail::array<T> arr(shape);
+            return detail::arrays(arr);
+          },
+          dtype.get_variant_obj())) {}
 
 Array::Array(const std::vector<std::size_t> &shape,
              const std::vector<std::size_t> &stride, const DType &dtype,
-             void *data) {
-  DTypeObject<detail::arrays>::internals_ = std::visit(
-      [&shape, &stride, &data](const auto &dtype) {
-        using T = typename std::decay_t<decltype(dtype)>::value_type;
-        detail::array<T> arr(shape, stride, static_cast<T *>(data));
-        return detail::arrays(arr);
-      },
-      dtype.get_variant_obj());
-}
+             void *data)
+    : DTypeObject<detail::arrays>(std::visit(
+          [&shape, &stride, &data](const auto &dtype) {
+            using T = typename std::decay_t<decltype(dtype)>::value_type;
+            detail::array<T> arr(shape, stride, static_cast<T *>(data));
+            return detail::arrays(arr);
+          },
+          dtype.get_variant_obj())) {}
 
 template Array::Array(std::initializer_list<int8_t>);
 template Array::Array(std::initializer_list<uint8_t>);

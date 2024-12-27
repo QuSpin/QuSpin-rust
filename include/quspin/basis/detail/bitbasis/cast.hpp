@@ -10,14 +10,14 @@ namespace quspin::detail::basis {
 template<typename J, BasisPrimativeTypes I>
   requires std::integral<J> && BasisPrimativeTypes<I>
 J integer_cast(const I s) {
-  if (s > std::numeric_limits<J>::max()) {
-    return -1;
+  if constexpr (std::is_same_v<I, uint32_t> || std::is_same_v<I, uint64_t>) {
+    if (s < std::numeric_limits<J>::max()) {
+      return static_cast<J>(s);
+    } else {
+      throw std::invalid_argument("Integer cast overflow");
+    }
   } else {
-#ifdef USE_BOOST
-    return boost::numeric_cast<J>(s);
-#else
-    return static_cast<J>(s);
-#endif
+    return static_cast<J>(s.to_ullong());
   }
 }
 

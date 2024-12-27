@@ -13,7 +13,7 @@ namespace quspin {
 class DType : public detail::VariantContainer<detail::dtypes> {
     using detail::VariantContainer<detail::dtypes>::internals_;
 
-    static detail::dtypes default_value() {
+    static constexpr detail::dtypes default_value() {
       return detail::dtypes(detail::dtype<double>());
     }
 
@@ -22,9 +22,8 @@ class DType : public detail::VariantContainer<detail::dtypes> {
     DType() : detail::VariantContainer<detail::dtypes>(default_value()) {};
 
     template<typename T>
-    DType(const detail::dtype<T> &dtype) {
-      internals_ = detail::dtypes(dtype);
-    }
+    DType(const detail::dtype<T> &dtype)
+        : detail::VariantContainer<detail::dtypes>(dtype) {}
 
     std::string name() const;
 
@@ -63,41 +62,16 @@ class DTypeObject : public detail::VariantContainer<Variant> {
 
   public:
 
-    DTypeObject() = default;
-    DTypeObject(const DTypeObject &obj) = default;
-    DTypeObject(DTypeObject &obj) = default;
-    DTypeObject(DTypeObject &&obj) = default;
-
     DTypeObject(const Variant &internals)
         : detail::VariantContainer<Variant>(internals) {}
+
+    DTypeObject(Variant &&internals)
+        : detail::VariantContainer<Variant>(std::move(internals)) {}
 
     DType dtype() const {
       return std::visit(
           [](const auto &obj) { return DType::of<decltype(obj)>(); },
           internals_);
-    }
-};
-
-template<typename Variant>
-  requires std::move_constructible<Variant>
-class DTypePointer : public detail::VariantContainer<std::shared_ptr<Variant>> {
-    using detail::VariantContainer<std::shared_ptr<Variant>>::internals_;
-
-  public:
-
-    DTypePointer(Variant &&data)
-        : detail::VariantContainer<std::shared_ptr<Variant>>(
-              std::make_shared<Variant>(std::move(data))) {}
-
-    DTypePointer(const DTypePointer &) = default;
-    DTypePointer(DTypePointer &&) = default;
-    DTypePointer &operator=(const DTypePointer &) = default;
-    DTypePointer &operator=(DTypePointer &&) = default;
-
-    DType dtype() const {
-      return std::visit(
-          [](const auto &obj) { return DType::of<decltype(obj)>(); },
-          *internals_);
     }
 };
 

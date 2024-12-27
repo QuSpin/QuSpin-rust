@@ -79,12 +79,6 @@ class pauli_operator_string {
 
   public:
 
-    pauli_operator_string() = default;
-    pauli_operator_string(pauli_operator_string &&) = default;
-    pauli_operator_string(const pauli_operator_string &) = default;
-    pauli_operator_string &operator=(const pauli_operator_string &) = default;
-    pauli_operator_string &operator=(pauli_operator_string &&) = default;
-
     pauli_operator_string(const std::string &ops,
                           const std::vector<cindex_t> &locs,
                           const cdouble &coeff = 1.0)
@@ -176,13 +170,17 @@ template<typename cindex_t>
 class pauli_hamiltonian {
   private:
 
-    svector<std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 1>>, 64>
+    detail::svector_t<
+        std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 1>>, 64>
         ops_1;
-    svector<std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 2>>, 64>
+    detail::svector_t<
+        std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 2>>, 64>
         ops_2;
-    svector<std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 3>>, 64>
+    detail::svector_t<
+        std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 3>>, 64>
         ops_3;
-    svector<std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 4>>, 64>
+    detail::svector_t<
+        std::pair<cindex_t, fixed_pauli_operator_string<cindex_t, 4>>, 64>
         ops_4;
     std::vector<std::pair<cindex_t, pauli_operator_string<cindex_t>>> ops_other;
 
@@ -258,9 +256,9 @@ class pauli_hamiltonian {
     }
 
     template<typename bitset_t>
-    svector<std::tuple<cdouble, bitset_t, cindex_t>, 256> operator()(
+    detail::svector_t<std::tuple<cdouble, bitset_t, cindex_t>, 256> operator()(
         const bitset_t &state) const noexcept {
-      svector<std::tuple<cdouble, bitset_t, cindex_t>, 256> result;
+      detail::svector_t<std::tuple<cdouble, bitset_t, cindex_t>, 256> result;
       result.reserve(num_ops());
 
       for (const auto &[cindex, op_1] : ops_1) {
@@ -302,13 +300,13 @@ class pauli_hamiltonian {
     }
 };
 
-class PauliHamiltonian {
+using pauli_hamiltonian_t =
+    std::variant<pauli_hamiltonian<uint8_t>, pauli_hamiltonian<uint16_t>>;
+
+class PauliHamiltonian : public detail::VariantContainer<pauli_hamiltonian_t> {
   private:
 
-    using pauli_hamiltonian_t =
-        std::variant<pauli_hamiltonian<uint8_t>, pauli_hamiltonian<uint16_t>>;
-
-    pauli_hamiltonian_t internals_;
+    using detail::VariantContainer<pauli_hamiltonian_t>::internals_;
 
     template<typename cindex_t>
     static pauli_hamiltonian<cindex_t> create_typed_internals(
@@ -363,13 +361,13 @@ class PauliHamiltonian {
         const std::vector<
             std::tuple<std::size_t, std::string, std::vector<std::size_t>,
                        std::complex<double>>> &ham_list)
-        : internals_(create_internals(ham_list)) {}
+        : detail::VariantContainer<pauli_hamiltonian_t>(
+              create_internals(ham_list)) {}
 
     std::size_t size() const {
-      return std::visit([](const auto &ham) { return ham.size(); }, internals_);
+      return std::visit([](const auto &ham) { return ham.size(); },
+                        get_variant_obj());
     }
-
-    pauli_hamiltonian_t internals() const { return internals_; }
 };
 
 }  // namespace quspin

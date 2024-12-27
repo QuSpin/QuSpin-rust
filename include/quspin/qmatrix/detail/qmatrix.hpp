@@ -36,13 +36,17 @@ template<typename forward_iterator_t>
 class row_iterator_value {
   private:
 
+    std::size_t row_;
     forward_iterator_t begin_;
     forward_iterator_t end_;
 
   public:
 
-    row_iterator_value(forward_iterator_t begin, forward_iterator_t end)
-        : begin_(begin), end_(end) {}
+    row_iterator_value(const std::size_t row, forward_iterator_t begin,
+                       forward_iterator_t end)
+        : row_(row), begin_(begin), end_(end) {}
+
+    std::size_t row() const { return row_; }
 
     forward_iterator_t begin() const { return begin_; }
 
@@ -61,11 +65,18 @@ class qmatrix_row_iterator {
     qmatrix_row_iterator(const std::size_t row, const qmatrix_t &qmat)
         : row_(row), qmat_(qmat) {}
 
-    qmatrix_row_iterator(const qmatrix_row_iterator &) = default;
-    qmatrix_row_iterator &operator=(const qmatrix_row_iterator &) = default;
+    qmatrix_row_iterator(const qmatrix_row_iterator &other)
+        : row_(other.row_), qmat_(other.qmat_) {}
 
-    decltype(auto) operator*() {
-      return row_iterator_value(qmat_.row_begin(row_), qmat_.row_end(row_));
+    qmatrix_row_iterator &operator=(const qmatrix_row_iterator &other) {
+      assert(&qmat_ == &other.qmat_);
+      row_ = other.row_;
+      return *this;
+    }
+
+    decltype(auto) operator*() const {
+      auto [row_begin, row_end] = qmat_.row_bounds(row_);
+      return row_iterator_value(row_, row_begin, row_end);
     }
 
     std::size_t row() const { return row_; }
@@ -81,7 +92,32 @@ class qmatrix_row_iterator {
       return tmp;
     }
 
+    std::ptrdiff_t operator-(const qmatrix_row_iterator &other) const {
+      return row_ - other.row_;
+    }
+
+    qmatrix_row_iterator operator+(const std::ptrdiff_t &n) const {
+      return qmatrix_row_iterator(row_ + n, qmat_);
+    }
+
+    bool operator>(const qmatrix_row_iterator &other) const {
+      return row_ > other.row_;
+    }
+
+    bool operator<(const qmatrix_row_iterator &other) const {
+      return row_ < other.row_;
+    }
+
+    bool operator>=(const qmatrix_row_iterator &other) const {
+      return row_ >= other.row_;
+    }
+
+    bool operator<=(const qmatrix_row_iterator &other) const {
+      return row_ <= other.row_;
+    }
+
     bool operator==(const qmatrix_row_iterator &other) const {
+      assert(&qmat_ == &other.qmat_);
       return row_ == other.row_;
     }
 
@@ -222,8 +258,10 @@ class qmatrix : public typed_object<T> {
       using invoke_t = std::invoke_result_t<Operation, bitset_t>;
       using element_t =
           std::decay_t<decltype(*std::declval<invoke_t>().begin())>;
-      static_assert(std::is_same_v<element_t, std::tuple<T, bitset_t, J>>,
-                    "Operation must return a tuple of type (T, I, J)");
+      static_assert(
+          std::is_same_v<element_t,
+                         std::tuple<std::complex<double>, bitset_t, J>>,
+          "Operation must return a tuple of type (T, I, J)");
 
       indptr_.resize(basis.size() + 1);
       dim_ = basis.size();
@@ -342,17 +380,19 @@ class qmatrix : public typed_object<T> {
 
     template<typename Container, typename K>
     void _dot_1d(const bool overwrite_out, const Container &coeff,
-                 const array<K> input, array<K> output) {
+                 const array<K> input, array<K> output) const {
 #pragma omp parallel for firstprivate(coeff)
-      for (auto row_it : *this) {
+      for (const auto &row_it : (*this)) {
         Container sum(coeff.size());
 
+        std::array<size_t, 1> row_index = {
+            static_cast<std::size_t>(row_it.row())};
+
         for (const auto &[data, index, cindex] : row_it) {
-          std::array<size_t, 1> col_index = {index};
+          std::array<size_t, 1> col_index = {static_cast<std::size_t>(index)};
           sum[cindex] += data * input[col_index];
         }
 
-        std::array<size_t, 1> row_index = {row_it.row()};
         output[row_index] =
             std::inner_product(sum.begin(), sum.end(), coeff.begin(),
                                (overwrite_out ? K(0) : output[row_index]));
@@ -361,8 +401,8 @@ class qmatrix : public typed_object<T> {
 
     template<typename Container, typename K>
     void _dot_2d(const bool overwrite_out, const Container &coeff,
-                 const array<K> input, array<K> output) {
-      if (output.strides(0) > output.strices(1)) {
+                 const array<K> input, array<K> output) const {
+      if (output.strides(0) > output.strides(1)) {
         if (overwrite_out) {
 #pragma omp parallel for
           for (std::size_t row_index = 0; row_index < dim(); ++row_index) {
@@ -373,12 +413,14 @@ class qmatrix : public typed_object<T> {
           }
         }
 #pragma omp parallel for firstprivate(coeff)
-        for (auto row_it : *this) {
+        for (const auto &row_it : (*this)) {
+          const std::size_t row_index = static_cast<std::size_t>(row_it.row());
           for (const auto &[data, index, cindex] : row_it) {
             for (std::size_t vec = 0; vec < input.shape(1); ++vec) {
               const K coeff_data = coeff[static_cast<std::size_t>(cindex)];
-              std::array<size_t, 2> in_index = {index, vec};
-              std::array<size_t, 2> out_index = {row_it.row(), vec};
+              std::array<size_t, 2> in_index = {static_cast<std::size_t>(index),
+                                                vec};
+              std::array<size_t, 2> out_index = {row_index, vec};
               output[out_index] += data * input[in_index] * coeff_data;
             }
           }
@@ -394,12 +436,14 @@ class qmatrix : public typed_object<T> {
           }
         }
 #pragma omp parallel for firstprivate(coeff)
-        for (auto row_it : *this) {
+        for (const auto &row_it : (*this)) {
+          const std::size_t row_index = row_it.row();
           for (std::size_t vec = 0; vec < input.shape(1); ++vec) {
             for (const auto &[data, index, cindex] : row_it) {
               const K coeff_data = coeff[static_cast<std::size_t>(cindex)];
-              std::array<size_t, 2> in_index = {index, vec};
-              std::array<size_t, 2> out_index = {row_it.row(), vec};
+              std::array<size_t, 2> in_index = {static_cast<std::size_t>(index),
+                                                vec};
+              std::array<size_t, 2> out_index = {row_index, vec};
               output[out_index] += data * input[in_index] * coeff_data;
             }
           }
@@ -410,7 +454,7 @@ class qmatrix : public typed_object<T> {
     template<typename Container, PrimativeTypes K>
       requires PrimativeTypes<K> && std::convertible_to<upcast_t<T, K>, K>
     void dot(const bool overwrite_out, const Container &coeff,
-             const array<K> input, array<K> output) {
+             const array<K> input, array<K> output) const {
       if (coeff.size() != num_coeff()) {
         throw std::runtime_error("Invalid number of coefficients");
       }
@@ -434,7 +478,7 @@ class qmatrix : public typed_object<T> {
 
     template<typename Container, typename K>
     void _dot_transpose_1d(const K overwrite_out, const Container &coeff,
-                           const array<K> input, array<K> output) {
+                           const array<K> input, array<K> output) const {
       if (overwrite_out) {
 #pragma omp parallel for
         for (std::size_t row_index = 0; row_index < dim(); ++row_index) {
@@ -444,10 +488,11 @@ class qmatrix : public typed_object<T> {
       }
 
 #pragma omp parallel for firstprivate(coeff)
-      for (const auto &row_it : *this) {
+      for (const auto &row_it : (*this)) {
+        std::array<size_t, 1> row_index = {row_it.row()};
+
         for (const auto &[data, index, cindex] : row_it) {
           std::array<size_t, 1> col_index = {index};
-          std::array<size_t, 1> row_index = {row_it.row()};
           atomic_iadd(output[row_index],
                       data * input[col_index] * coeff[cindex]);
         }
@@ -456,7 +501,7 @@ class qmatrix : public typed_object<T> {
 
     template<typename Container, typename K>
     void _dot_transpose_2d(const bool overwrite_out, const Container &coeff,
-                           const array<K> input, array<K> output) {
+                           const array<K> input, array<K> output) const {
       if (output.strides(0) > output.strices(1)) {
         if (overwrite_out) {
 #pragma omp parallel for
@@ -468,12 +513,14 @@ class qmatrix : public typed_object<T> {
           }
         }
 #pragma omp parallel for firstprivate(coeff)
-        for (auto row_it : *this) {
+        for (const auto &row_it : (*this)) {
+          const std::size_t row_index = row_it.row();
           for (const auto &[data, index, cindex] : row_it) {
             for (std::size_t vec = 0; vec < input.shape(1); ++vec) {
               const K coeff_data = coeff[static_cast<std::size_t>(cindex)];
-              std::array<std::size_t, 2> in_index = {row_it.row(), vec};
-              std::array<std::size_t, 2> out_index = {index, vec};
+              std::array<std::size_t, 2> in_index = {row_index, vec};
+              std::array<std::size_t, 2> out_index = {
+                  static_cast<std::size_t>(index), vec};
               atomic_iadd(output[out_index],
                           data * input[in_index] * coeff_data);
             }
@@ -490,12 +537,14 @@ class qmatrix : public typed_object<T> {
           }
         }
 #pragma omp parallel for firstprivate(coeff)
-        for (auto row_it : *this) {
+        for (auto row_it : (*this)) {
+          const std::size_t row_index = row_it.row();
           for (std::size_t vec = 0; vec < input.shape(1); ++vec) {
             for (const auto &[data, index, cindex] : row_it) {
               const K coeff_data = coeff[static_cast<std::size_t>(cindex)];
-              std::array<std::size_t, 2> in_index = {row_it.row(), vec};
-              std::array<std::size_t, 2> out_index = {index, vec};
+              std::array<std::size_t, 2> in_index = {row_index, vec};
+              std::array<std::size_t, 2> out_index = {
+                  static_cast<std::size_t>(index), vec};
               atomic_iadd(output[out_index],
                           data * input[in_index] * coeff_data);
             }
@@ -507,7 +556,7 @@ class qmatrix : public typed_object<T> {
     template<typename Container, PrimativeTypes K>
       requires PrimativeTypes<K> && std::convertible_to<upcast_t<T, K>, K>
     void dot_transpose(const bool overwrite_out, const Container &coeff,
-                       const array<K> input, array<K> output) {
+                       const array<K> input, array<K> output) const {
       if (coeff.size() != num_coeff()) {
         throw std::runtime_error("Invalid number of coefficients");
       }
@@ -536,9 +585,13 @@ class qmatrix : public typed_object<T> {
 
     std::size_t num_coeff() const { return num_coeff_; }
 
-    decltype(auto) begin() const { return qmatrix_row_iterator(0, *this); }
+    decltype(auto) begin() const {
+      return qmatrix_row_iterator(static_cast<std::size_t>(0), *this);
+    }
 
-    decltype(auto) end() const { return qmatrix_row_iterator(dim_, *this); }
+    decltype(auto) end() const {
+      return qmatrix_row_iterator(static_cast<std::size_t>(dim_), *this);
+    }
 
     decltype(auto) row_bounds(const std::size_t row) const {
       assert(row < dim_);
@@ -724,18 +777,30 @@ qmatrix<T, I, J> qmatrix<T, I, J>::operator-(const qmatrix &rhs) const {
   return binary_op(std::minus<T>(), *this, rhs);
 }
 
-using qmatrices = std::variant<
-    qmatrix<int8_t, int32_t, uint8_t>, qmatrix<int16_t, int32_t, uint8_t>,
-    qmatrix<float, int32_t, uint8_t>, qmatrix<double, int32_t, uint8_t>,
-    qmatrix<cfloat, int32_t, uint8_t>, qmatrix<cdouble, int32_t, uint8_t>,
-    qmatrix<int8_t, int64_t, uint8_t>, qmatrix<int16_t, int64_t, uint8_t>,
-    qmatrix<float, int64_t, uint8_t>, qmatrix<double, int64_t, uint8_t>,
-    qmatrix<cfloat, int64_t, uint8_t>, qmatrix<cdouble, int64_t, uint8_t>,
-    qmatrix<int8_t, int32_t, uint16_t>, qmatrix<int16_t, int32_t, uint16_t>,
-    qmatrix<float, int32_t, uint16_t>, qmatrix<double, int32_t, uint16_t>,
-    qmatrix<cfloat, int32_t, uint16_t>, qmatrix<cdouble, int32_t, uint16_t>,
-    qmatrix<int8_t, int64_t, uint16_t>, qmatrix<int16_t, int64_t, uint16_t>,
-    qmatrix<float, int64_t, uint16_t>, qmatrix<double, int64_t, uint16_t>,
-    qmatrix<cfloat, int64_t, uint16_t>, qmatrix<cdouble, int64_t, uint16_t>>;
+using qmatrices =
+    std::variant<std::shared_ptr<qmatrix<int8_t, int32_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<int16_t, int32_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<float, int32_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<double, int32_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<cfloat, int32_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<cdouble, int32_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<int8_t, int64_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<int16_t, int64_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<float, int64_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<double, int64_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<cfloat, int64_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<cdouble, int64_t, uint8_t>>,
+                 std::shared_ptr<qmatrix<int8_t, int32_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<int16_t, int32_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<float, int32_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<double, int32_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<cfloat, int32_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<cdouble, int32_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<int8_t, int64_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<int16_t, int64_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<float, int64_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<double, int64_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<cfloat, int64_t, uint16_t>>,
+                 std::shared_ptr<qmatrix<cdouble, int64_t, uint16_t>>>;
 
 }}  // namespace quspin::detail

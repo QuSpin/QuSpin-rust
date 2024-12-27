@@ -17,6 +17,7 @@
 namespace quspin::detail::basis {
 
 template<typename bitset_t>
+  requires std::unsigned_integral<bitset_t>
 class space {
   private:
 
@@ -29,6 +30,12 @@ class space {
 
     space(std::size_t Ns) : Ns(Ns), basis_states(Ns) {}
 
+    space(const space&) = default;
+    space& operator=(const space&) = default;
+
+    space(space&&) = default;
+    space& operator=(space&&) = default;
+
     std::size_t size() const { return Ns; }
 
     bitset_t state_at(const std::size_t index) const {
@@ -40,7 +47,7 @@ class space {
       return static_cast<std::size_t>(Ns - bits - 1);
     }
 
-    const bitset_t& operator[](std::size_t index) const {
+    const bitset_t operator[](std::size_t index) const {
       return static_cast<bitset_t>(Ns - index - 1);
     }
 
@@ -167,7 +174,6 @@ class symmetric_subspace {
     symmetric_subspace(const symmetric_subspace& other) = delete;
     symmetric_subspace& operator=(const symmetric_subspace& other) = delete;
 
-    // default move constructor and assignment operator
     symmetric_subspace(symmetric_subspace&& other) = default;
     symmetric_subspace& operator=(symmetric_subspace&& other) = default;
 
@@ -226,14 +232,15 @@ class symmetric_subspace {
         throw std::runtime_error("Invalid initial state");
       }
 
-      using container_t = svector<std::pair<bitset_t, norm_t>, 128>;
-      svector<container_t, 128> new_basis_states_thread(omp_get_max_threads());
+      using container_t = svector_t<std::pair<bitset_t, norm_t>, 128>;
+      svector_t<container_t, 128> new_basis_states_thread(
+          omp_get_max_threads());
 
 #pragma omp parallel
 #pragma omp single
       {
         while (!stack.empty()) {
-          const bitset_t& state = stack.back();
+          const bitset_t state = stack.back();
           stack.pop_back();
 
 #pragma omp task depend(in : state) firstprivate(state) \

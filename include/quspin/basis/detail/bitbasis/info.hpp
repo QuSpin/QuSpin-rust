@@ -12,13 +12,37 @@ namespace quspin::detail::basis {
 template<typename I>
 struct bit_info {};
 
-template<BasisPrimativeTypes I>
-struct bit_info<I> {
+template<>
+struct bit_info<uint32_t> {
   public:
 
     using bit_index_type = int;
-    using value_type = I;
-    static constexpr bit_index_type bits = std::numeric_limits<I>::digits;
+    using value_type = uint32_t;
+    static constexpr bit_index_type bits = 32;
+    static constexpr bit_index_type ld_bits =
+        std::bit_width(static_cast<std::size_t>(bits - 1));
+    static constexpr bit_index_type bytes = bits / 8;
+};
+
+template<>
+struct bit_info<uint64_t> {
+  public:
+
+    using bit_index_type = int;
+    using value_type = uint64_t;
+    static constexpr bit_index_type bits = 64;
+    static constexpr bit_index_type ld_bits =
+        std::bit_width(static_cast<std::size_t>(bits - 1));
+    static constexpr bit_index_type bytes = bits / 8;
+};
+
+template<std::size_t num_bits>
+struct bit_info<std::bitset<num_bits>> {
+  public:
+
+    using bit_index_type = int;
+    using value_type = std::bitset<num_bits>;
+    static constexpr bit_index_type bits = num_bits;
     static constexpr bit_index_type ld_bits =
         std::bit_width(static_cast<std::size_t>(bits - 1));
     static constexpr bit_index_type bytes = bits / 8;
@@ -34,8 +58,6 @@ static_assert(bit_info<uint32_t>::bytes == 4);
 static_assert(bit_info<uint64_t>::bits == 64);
 static_assert(bit_info<uint64_t>::ld_bits == 6);
 static_assert(bit_info<uint64_t>::bytes == 8);
-
-#ifdef USE_BOOST
 
 static_assert(bit_info<uint128_t>::bits == 128);
 static_assert(bit_info<uint128_t>::ld_bits == 7);
@@ -68,7 +90,5 @@ static_assert(bit_info<uint8192_t>::bytes == 1024);
 static_assert(bit_info<uint16384_t>::bits == 16384);
 static_assert(bit_info<uint16384_t>::ld_bits == 14);
 static_assert(bit_info<uint16384_t>::bytes == 2048);
-
-#endif
 
 }  // namespace quspin::detail::basis

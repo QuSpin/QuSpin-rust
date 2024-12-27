@@ -22,8 +22,15 @@ concept ComplexTypes = std::same_as<std::decay_t<T>, std::complex<float>> ||
 template<typename T>
 concept PrimativeTypes = RealTypes<T> || ComplexTypes<T>;
 
+template<typename T>
+concept QMatrixValueTypes =
+    (std::same_as<T, int8_t> || std::same_as<T, int16_t> ||
+     std::same_as<T, float> || std::same_as<T, double> ||
+     std::same_as<T, std::complex<float>> ||
+     std::same_as<T, std::complex<double>>);
+
 template<typename T, typename I, typename J>
-concept QMatrixTypes = PrimativeTypes<T> &&
+concept QMatrixTypes = QMatrixValueTypes<T> &&
                        (std::same_as<I, int32_t> || std::same_as<I, int64_t>) &&
                        (std::same_as<J, uint8_t> || std::same_as<J, uint16_t>);
 

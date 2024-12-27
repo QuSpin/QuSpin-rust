@@ -5,8 +5,9 @@
 #include <complex>
 #include <limits>
 #include <quspin/basis/grp/hardcore.hpp>
+#include <quspin/dtype/dtype.hpp>
 #include <quspin/operator.hpp>
-#include <quspin/qmatrix/detail/qmatrix.hpp>
+#include <quspin/qmatrix/qmatrix.hpp>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -49,11 +50,11 @@ int test_basis() {
   quspin::HardcoreBasis my_subspace(32, true);
   std::vector<std::vector<std::size_t>> seeds = {{1}};
 
-  std::visit([&my_subspace, &seeds](
-                 const auto &op) { my_subspace.construct_from(op, seeds); },
-             ham.internals());
+  my_subspace.construct_from(ham, seeds);
 
   std::cout << "size: " << my_subspace.size() << std::endl;
+
+  // quspin::QMatrix(ham, my_subspace, quspin::Double);
 
   return 0;
 }

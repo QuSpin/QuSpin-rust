@@ -192,7 +192,7 @@ void gen_benes_ex(tr_benes<I>* self, const ta_index<I>& c_tgt,
     stage = a_stage[stage_idx];
     src_set = 0;
     src_idx = 0;
-    mask = ((int)lo_bit) << stage;
+    mask = integer_cast<int>(lo_bit) << stage;
     cfg_src = 0;
     cfg_tgt = 0;
     for (main_idx = 0; main_idx <= bit_info<I>::bits - 1;

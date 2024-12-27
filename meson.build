@@ -31,18 +31,7 @@ add_global_arguments(
 
 include = include_directories('include')
 
-boost = dependency('boost', required: false)
-
 dependencies = []
-
-if boost.found()
-    if host_machine.system() == 'windows'
-        add_project_arguments('/DUSE_BOOST', language: 'cpp')
-    else
-        add_project_arguments('-DUSE_BOOST', language: 'cpp')
-    endif
-    dependencies += boost
-endif
 
 src_files = files(
     'src' / 'array' / 'array.cpp',

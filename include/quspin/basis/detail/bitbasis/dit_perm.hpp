@@ -1,6 +1,7 @@
 // Copyright 2024 Phillip Weinberg
 #pragma once
 
+#include <array>
 #include <concepts>
 #include <quspin/basis/detail/bitbasis/benes.hpp>
 #include <quspin/basis/detail/bitbasis/dit_manip.hpp>
@@ -67,8 +68,8 @@ class dynamic_perm_dit_values {
   private:
 
     std::size_t lhss_;
-    svector<uint8_t, 6> perm_;
-    svector<std::size_t, 64> locs_;
+    svector_t<uint8_t, 6> perm_;
+    svector_t<std::size_t, 64> locs_;
 
   public:
 
@@ -101,14 +102,20 @@ template<typename bitset_t, std::size_t lhss>
 class perm_dit_values {
   private:
 
-    boost::container::static_vector<uint8_t, lhss> perm;
-    boost::container::static_vector<std::size_t, bit_info<bitset_t>::bits> locs;
+    std::array<uint8_t, lhss> perm;
+    std::array<std::size_t, bit_info<bitset_t>::bits> locs;
+    const std::size_t num_locs;
 
   public:
 
     template<typename Container>
     perm_dit_values(const Container& perm, const Container& locs)
-        : perm(perm.begin(), perm.end()), locs(locs.begin(), locs.end()) {}
+        : num_locs(std::distance(locs.begin(), locs.end())) {
+      assert(perm.size() == lhss);
+      assert(num_locs <= bit_info<bitset_t>::bits);
+      std::copy(perm.begin(), perm.end(), this->perm.begin());
+      std::copy(locs.begin(), locs.end(), this->locs.begin());
+    }
 
     perm_dit_values(const perm_dit_values& other) = default;
     perm_dit_values& operator=(const perm_dit_values& other) = default;
@@ -119,7 +126,8 @@ class perm_dit_values {
       dit_manip<lhss> manip;
 
       bitset_t out = s;
-      for (const auto loc : locs) {
+      for (std::size_t i = 0; i < num_locs; i++) {
+        const std::size_t loc = locs[i];
         const std::size_t sub_str = manip.get_sub_bitstring(s, loc);
         out = manip.set_sub_bitstring(out, perm[sub_str], loc);
       }
@@ -182,12 +190,16 @@ template<typename bitset_t, std::size_t lhss>
 class higher_spin_inv {
   private:
 
-    boost::container::static_vector<std::size_t, bit_info<bitset_t>::bits>
-        locs_;
+    std::array<std::size_t, bit_info<bitset_t>::bits> locs_;
+    const std::size_t num_locs;
 
   public:
 
-    higher_spin_inv(const std::vector<int>& locs) : locs_(locs) {}
+    higher_spin_inv(const std::vector<int>& locs)
+        : num_locs(std::distance(locs.begin(), locs.end())) {
+      assert(num_locs <= bit_info<bitset_t>::bits);
+      std::copy(locs.begin(), locs.end(), this->locs_.begin());
+    }
 
     higher_spin_inv(const higher_spin_inv& other) = default;
     higher_spin_inv& operator=(const higher_spin_inv& other) = default;
@@ -197,7 +209,8 @@ class higher_spin_inv {
     inline bitset_t app(const bitset_t& s) const {
       dit_manip<lhss> manip(lhss);
       bitset_t out = 0;
-      for (const auto loc : locs_) {
+      for (std::size_t i = 0; i < num_locs; i++) {
+        const auto loc = locs_[i];
         const auto local_spin = manip.get_sub_bitstring(s, loc);
         out = manip.set_sub_bitstring(out, lhss - local_spin - 1, loc);
       }
