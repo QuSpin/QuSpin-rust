@@ -62,7 +62,7 @@ std::vector<bitflip_grp_element<bitset_t>> create_bitflip_grp(
   std::vector<bitflip_grp_element<bitset_t>> grp;
   bitset_t mask = 0;
   for (const auto loc : locs) {
-    mask |= (1 << loc);
+    mask |= (bitset_t(1) << loc);
   }
   perm_dit_mask<bitset_t> perm_mask(mask);
   grp.emplace_back(std::complex<double>(z, 0.0), perm_mask);

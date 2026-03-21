@@ -1,6 +1,7 @@
 // Copyright 2024 Phillip Weinberg
 #pragma once
 
+#include <quspin/basis/detail/bitbasis/cast.hpp>
 #include <quspin/basis/detail/bitbasis/info.hpp>
 
 namespace quspin::detail::basis::benes {

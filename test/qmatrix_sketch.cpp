@@ -4,7 +4,7 @@
 #include <cmath>
 #include <complex>
 #include <limits>
-#include <quspin/basis/grp/hardcore.hpp>
+#include <quspin/basis/hardcore.hpp>
 #include <quspin/dtype/dtype.hpp>
 #include <quspin/operator.hpp>
 #include <quspin/qmatrix/qmatrix.hpp>
@@ -54,7 +54,7 @@ int test_basis() {
 
   std::cout << "size: " << my_subspace.size() << std::endl;
 
-  // quspin::QMatrix(ham, my_subspace, quspin::Double);
+  quspin::QMatrix(ham, my_subspace, quspin::Double);
 
   return 0;
 }

@@ -39,8 +39,8 @@ src_files = files(
     'src' / 'scalar' / 'scalar.cpp',
     'src' / 'scalar' / 'reference.cpp',
     'src' / 'dtype' / 'dtype.cpp',
-    'src' / 'qmatrix' / 'kernel' / 'sum.cpp',
     'src' / 'qmatrix' / 'qmatrix.cpp',
+    'src' / 'basis' / 'hardcore.cpp',
 )
 
 if host_machine.system() == 'windows'
@@ -85,7 +85,8 @@ test_files = [
     ('test' / 'detail' / 'select.cpp'),
     # ('test' / 'basis_scratch.cpp'),
     ('test' / 'qmatrix_sketch.cpp'),
-    ('test' / 'scratch.cpp')
+    ('test' / 'scratch.cpp'),
+    ('test' / 'bitset.cpp')
 ]
 
 foreach test_file : test_files

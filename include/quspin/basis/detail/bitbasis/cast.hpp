@@ -10,7 +10,7 @@ namespace quspin::detail::basis {
 template<typename J, BasisPrimativeTypes I>
   requires std::integral<J> && BasisPrimativeTypes<I>
 J integer_cast(const I s) {
-  if constexpr (std::is_same_v<I, uint32_t> || std::is_same_v<I, uint64_t>) {
+  if constexpr (std::is_same_v<I, bits32_t> || std::is_same_v<I, bits64_t>) {
     if (s < std::numeric_limits<J>::max()) {
       return static_cast<J>(s);
     } else {

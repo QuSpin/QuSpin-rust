@@ -9,7 +9,7 @@
 #include <iostream>
 #include <iterator>
 #include <quspin/basis/detail/bitbasis/cast.hpp>
-#include <quspin/basis/grp/hardcore.hpp>
+#include <quspin/basis/hardcore.hpp>
 #include <quspin/detail/cast.hpp>
 #include <quspin/detail/default_containers.hpp>
 #include <sstream>

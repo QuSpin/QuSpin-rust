@@ -4,7 +4,7 @@
 #include <iostream>
 #include <memory>
 #include <quspin/array/array.hpp>
-#include <quspin/basis/grp/hardcore.hpp>
+#include <quspin/basis/hardcore.hpp>
 #include <quspin/detail/default_containers.hpp>
 #include <quspin/detail/error.hpp>
 #include <quspin/detail/type_concepts.hpp>
@@ -30,9 +30,7 @@ class QMatrix : public DTypeObject<detail::qmatrices> {
           std::make_shared<qmat_t>(std::forward<Args>(args)...));
     }
 
-    static detail::qmatrices default_value() {
-      return detail::qmatrices(make_qmatrices<double, int32_t, uint8_t>());
-    }
+    static detail::qmatrices default_value();
 
     template<typename Hamiltonian, typename Basis>
     detail::qmatrices create_internals(const Hamiltonian &ham,
@@ -83,57 +81,10 @@ class QMatrix : public DTypeObject<detail::qmatrices> {
     QMatrix &operator=(QMatrix &&) = default;
 
     // TODO switch to using shared pointer for variant
-    std::size_t dim() const {
-      return detail::visit_or_error<std::size_t>(
-          [](const auto &qmat) {
-            return detail::ErrorOr<std::size_t>(qmat->dim());
-          },
-          internals_);
-    };
-
-    std::size_t num_coeff() const {
-      return detail::visit_or_error<std::size_t>(
-          [](const auto &qmat) {
-            return detail::ErrorOr<std::size_t>(qmat->num_coeff());
-          },
-          internals_);
-    };
-
+    std::size_t dim() const;
+    std::size_t num_coeff() const;
     Array dot(const bool overwrite_out, const Array &coeff, const Array &input,
-              Array &output) const {
-      detail::visit_or_error<std::monostate>(
-          [overwrite_out](const auto qmat, const auto &coeff, const auto &input,
-                          const auto &output) {
-            using out_t = typename std::decay_t<decltype(output)>::value_type;
-            using in_t = typename std::decay_t<decltype(input)>::value_type;
-            using coeff_t = typename std::decay_t<decltype(coeff)>::value_type;
-            using qmat_t = typename std::decay_t<decltype(qmat)>::element_type;
-            using mat_t = typename qmat_t::value_type;
-
-            if constexpr (std::is_same_v<out_t, in_t> &&
-                          std::is_same_v<in_t, coeff_t> &&
-                          std::convertible_to<detail::upcast_t<mat_t, out_t>,
-                                              out_t>) {
-              const detail::svector_t<coeff_t, 256> coeff_vec(coeff.begin(),
-                                                              coeff.end());
-              try {
-                qmat->dot(overwrite_out, coeff_vec, input, output);
-                return detail::ReturnVoidError();
-              } catch (const std::runtime_error &e) {
-                return detail::ReturnVoidError(
-                    detail::Error(detail::ErrorType::ValueError, e.what()));
-              }
-            } else {
-              return detail::ReturnVoidError(
-                  detail::Error(detail::ErrorType::ValueError,
-                                "Invalid type for output array"));
-            }
-          },
-          internals_, coeff.get_variant_obj(), input.get_variant_obj(),
-          output.get_variant_obj());
-
-      return output;
-    }
+              Array &output) const;
 };
 
 }  // namespace quspin

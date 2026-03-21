@@ -17,7 +17,7 @@
 namespace quspin::detail::basis {
 
 template<typename bitset_t>
-  requires std::unsigned_integral<bitset_t>
+  requires std::same_as<bitset_t, bits32_t> || std::same_as<bitset_t, bits64_t>
 class space {
   private:
 
