@@ -17,21 +17,19 @@
 /// mat.dim   # int
 /// mat.nnz   # int
 /// ```
-pub mod dispatch;
-
 use numpy::{PyArray1, PyArrayMethods};
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use quspin_core::qmatrix::build::{build_from_basis, build_from_symmetric};
+use quspin_core::qmatrix::dispatch::{IntoQMatrixInner, QMatrixInner};
+use quspin_core::{with_plain_basis, with_sym_basis};
 
 use crate::basis::hardcore::PyHardcoreBasis;
 use crate::dtype::MatrixDType;
 use crate::error::Error;
 use crate::hamiltonian::PyHardcoreHamiltonian;
-use crate::hamiltonian::dispatch::HardcoreHamiltonianInner;
 use crate::with_value_dtype;
-use dispatch::{IntoQMatrixInner, QMatrixInner};
-use quspin_core::{with_plain_basis, with_sym_basis};
+use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
 
 // ---------------------------------------------------------------------------
 // PyQMatrix
