@@ -1,0 +1,13 @@
+[package]
+name = "quspin-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bitbasis = { path = "../bitbasis" }
+num-complex = { workspace = true }
+ndarray = { workspace = true }
+rayon = { workspace = true }
+ruint = { workspace = true }
+smallvec = { workspace = true }
+thiserror = { workspace = true }

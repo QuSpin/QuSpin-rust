@@ -1,0 +1,8 @@
+[package]
+name = "bitbasis"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+num-complex = { workspace = true }
+ruint = { workspace = true }

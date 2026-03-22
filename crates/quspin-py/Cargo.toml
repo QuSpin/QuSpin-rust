@@ -1,0 +1,16 @@
+[package]
+name = "quspin-py"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+quspin-core = { path = "../quspin-core" }
+num-complex = { workspace = true }
+ndarray = { workspace = true }
+pyo3 = { workspace = true, features = ["extension-module", "abi3-py310"] }
+numpy = { workspace = true }
+paste = { workspace = true }

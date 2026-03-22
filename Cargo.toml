@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    "crates/bitbasis",
+    "crates/quspin-core",
+    "crates/quspin-py",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+num-complex = "0.4"
+ndarray = "0.16"
+rayon = "1"
+ruint = "1"
+smallvec = { version = "1", features = ["union"] }
+thiserror = "2"
+pyo3 = "0.23"
+numpy = "0.23"
+paste = "1"

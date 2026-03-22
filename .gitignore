@@ -1,4 +1,8 @@
 /build*
+/target
+Cargo.lock
+*.so
+*.pyd
 /.vscode
 /cpm_modules
 .DS_Store
