@@ -1,0 +1,247 @@
+use super::{CIndex, Entry, Index, QMatrix};
+use crate::primitive::Primitive;
+use std::ops::{Add, Sub};
+
+// ---------------------------------------------------------------------------
+// Binary operations (add / sub)
+// ---------------------------------------------------------------------------
+
+/// Sorted row-merge of two `QMatrix` instances under a binary operator.
+///
+/// Both matrices must have the same `dim`.  Within each row, entries are
+/// assumed sorted by (col, cindex) — as guaranteed by `QMatrix::from_csr`.
+/// The merge walks both rows simultaneously (like a merge-step in merge sort),
+/// combining entries at the same (col, cindex) key via `op` and dropping
+/// zeros.
+///
+/// Mirrors `binary_op` from `qmatrix.hpp` (sequential single-thread branch).
+fn binary_op<V, I, C, Op>(
+    op: Op,
+    lhs: &QMatrix<V, I, C>,
+    rhs: &QMatrix<V, I, C>,
+) -> QMatrix<V, I, C>
+where
+    V: Primitive + PartialEq,
+    I: Index,
+    C: CIndex,
+    Op: Fn(V, V) -> V,
+{
+    assert_eq!(lhs.dim(), rhs.dim(), "QMatrix dimensions must match");
+
+    let dim = lhs.dim();
+    let mut indptr = Vec::with_capacity(dim + 1);
+    let mut data: Vec<Entry<V, I, C>> = Vec::new();
+
+    indptr.push(I::from_usize(0));
+
+    let zero = V::default();
+
+    for r in 0..dim {
+        let mut li = lhs.row(r).iter().peekable();
+        let mut ri = rhs.row(r).iter().peekable();
+
+        while let (Some(le), Some(re)) = (li.peek(), ri.peek()) {
+            let result = if le.lt_col_cindex(re) {
+                let e = *le;
+                li.next();
+                let v = op(e.value, zero);
+                if v != zero {
+                    Some(Entry::new(v, e.col, e.cindex))
+                } else {
+                    None
+                }
+            } else if re.lt_col_cindex(le) {
+                let e = *re;
+                ri.next();
+                let v = op(zero, e.value);
+                if v != zero {
+                    Some(Entry::new(v, e.col, e.cindex))
+                } else {
+                    None
+                }
+            } else {
+                // same (col, cindex)
+                let le = *le;
+                let re = *re;
+                li.next();
+                ri.next();
+                let v = op(le.value, re.value);
+                if v != zero {
+                    Some(Entry::new(v, le.col, le.cindex))
+                } else {
+                    None
+                }
+            };
+            if let Some(e) = result {
+                data.push(e);
+            }
+        }
+
+        // Drain remaining lhs entries.
+        for e in li {
+            let v = op(e.value, zero);
+            if v != zero {
+                data.push(Entry::new(v, e.col, e.cindex));
+            }
+        }
+
+        // Drain remaining rhs entries.
+        for e in ri {
+            let v = op(zero, e.value);
+            if v != zero {
+                data.push(Entry::new(v, e.col, e.cindex));
+            }
+        }
+
+        indptr.push(I::from_usize(data.len()));
+    }
+
+    QMatrix::from_csr(indptr, data)
+}
+
+impl<V, I, C> Add for QMatrix<V, I, C>
+where
+    V: Primitive + PartialEq + Add<Output = V>,
+    I: Index,
+    C: CIndex,
+{
+    type Output = QMatrix<V, I, C>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        binary_op(|a, b| a + b, &self, &rhs)
+    }
+}
+
+impl<V, I, C> Sub for QMatrix<V, I, C>
+where
+    V: Primitive + PartialEq + Sub<Output = V>,
+    I: Index,
+    C: CIndex,
+{
+    type Output = QMatrix<V, I, C>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        binary_op(|a, b| a - b, &self, &rhs)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use num_complex::Complex;
+
+    fn mat_a() -> QMatrix<f64, i64, u8> {
+        // [[1, 2], [3, 0]]
+        let indptr = vec![0i64, 2, 3];
+        let data = vec![
+            Entry::new(1.0f64, 0i64, 0u8),
+            Entry::new(2.0f64, 1i64, 0u8),
+            Entry::new(3.0f64, 0i64, 0u8),
+        ];
+        QMatrix::from_csr(indptr, data)
+    }
+
+    fn mat_b() -> QMatrix<f64, i64, u8> {
+        // [[0, 1], [1, 4]]
+        let indptr = vec![0i64, 1, 3];
+        let data = vec![
+            Entry::new(1.0f64, 1i64, 0u8),
+            Entry::new(1.0f64, 0i64, 0u8),
+            Entry::new(4.0f64, 1i64, 0u8),
+        ];
+        QMatrix::from_csr(indptr, data)
+    }
+
+    #[test]
+    fn add_matrices() {
+        // A + B = [[1,3],[4,4]]
+        let a = mat_a();
+        let b = mat_b();
+        let c = a + b;
+        assert_eq!(c.dim(), 2);
+
+        let r0 = c.row(0);
+        assert_eq!(r0.len(), 2);
+        assert!((r0[0].value - 1.0).abs() < 1e-12); // col 0
+        assert!((r0[1].value - 3.0).abs() < 1e-12); // col 1
+
+        let r1 = c.row(1);
+        assert_eq!(r1.len(), 2);
+        assert!((r1[0].value - 4.0).abs() < 1e-12); // col 0
+        assert!((r1[1].value - 4.0).abs() < 1e-12); // col 1
+    }
+
+    #[test]
+    fn sub_matrices() {
+        // A - B = [[1,1],[2,-4]]
+        let a = mat_a();
+        let b = mat_b();
+        let c = a - b;
+
+        let r0 = c.row(0);
+        assert_eq!(r0.len(), 2);
+        assert!((r0[0].value - 1.0).abs() < 1e-12);
+        assert!((r0[1].value - 1.0).abs() < 1e-12);
+
+        let r1 = c.row(1);
+        assert_eq!(r1.len(), 2);
+        assert!((r1[0].value - 2.0).abs() < 1e-12);
+        assert!((r1[1].value - (-4.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn add_cancels_to_zero_drops_entry() {
+        // A + (-A) should have no non-zero entries
+        let indptr = vec![0i64, 1];
+        let data_a = vec![Entry::new(1.0f64, 0i64, 0u8)];
+        let data_neg = vec![Entry::new(-1.0f64, 0i64, 0u8)];
+        let a = QMatrix::<f64, i64, u8>::from_csr(indptr.clone(), data_a);
+        let neg_a = QMatrix::<f64, i64, u8>::from_csr(indptr, data_neg);
+        let sum = a + neg_a;
+        assert_eq!(sum.nnz(), 0);
+    }
+
+    #[test]
+    fn dot_after_add() {
+        // (A+B)|v⟩ = A|v⟩ + B|v⟩
+        let _a = mat_a();
+        let _b = mat_b();
+        let coeff = vec![Complex::new(1.0, 0.0)];
+        let v = vec![1.0f64, 1.0];
+
+        let mut av = vec![0.0f64; 2];
+        let mut bv = vec![0.0f64; 2];
+        QMatrix::from_csr(
+            vec![0i64, 2, 3],
+            vec![
+                Entry::new(1.0f64, 0i64, 0u8),
+                Entry::new(2.0f64, 1i64, 0u8),
+                Entry::new(3.0f64, 0i64, 0u8),
+            ],
+        )
+        .dot(true, &coeff, &v, &mut av)
+        .unwrap();
+        QMatrix::from_csr(
+            vec![0i64, 1, 3],
+            vec![
+                Entry::new(1.0f64, 1i64, 0u8),
+                Entry::new(1.0f64, 0i64, 0u8),
+                Entry::new(4.0f64, 1i64, 0u8),
+            ],
+        )
+        .dot(true, &coeff, &v, &mut bv)
+        .unwrap();
+
+        let c = mat_a() + mat_b();
+        let mut cv = vec![0.0f64; 2];
+        c.dot(true, &coeff, &v, &mut cv).unwrap();
+
+        for i in 0..2 {
+            assert!((cv[i] - (av[i] + bv[i])).abs() < 1e-12);
+        }
+    }
+}
