@@ -1,15 +1,15 @@
-/// Python-facing `PyPauliHamiltonian` pyclass.
+/// Python-facing `PyHardcoreHamiltonian` pyclass.
 ///
-/// Wraps a `PauliHamiltonianInner` enum that selects between
-/// `PauliHamiltonian<u8>` (≤ 255 cindices / site indices) and
-/// `PauliHamiltonian<u16>` (larger).  The cindex type is chosen at
+/// Wraps a `HardcoreHamiltonianInner` enum that selects between
+/// `HardcoreHamiltonian<u8>` (≤ 255 cindices / site indices) and
+/// `HardcoreHamiltonian<u16>` (larger).  The cindex type is chosen at
 /// construction time based on the maximum cindex and site index seen in the
 /// input.
 ///
 /// ## Python constructor
 ///
 /// ```python
-/// H = PyPauliHamiltonian([
+/// H = PyHardcoreHamiltonian([
 ///     [("xx", [(J, 0, 1), (J, 1, 2)])],  # cindex = 0
 ///     [("z",  [(h, 0), (h, 1)])],         # cindex = 1
 /// ])
@@ -22,28 +22,28 @@
 /// - `n_sites` is inferred from `max_site_index + 1`.
 pub mod dispatch;
 
-pub use dispatch::PauliHamiltonianInner;
+pub use dispatch::HardcoreHamiltonianInner;
 
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList, PyTuple};
-use quspin_core::operator::{OpEntry, PauliHamiltonian, PauliOp};
+use quspin_core::operator::{HardcoreHamiltonian, OpEntry, PauliOp};
 use smallvec::SmallVec;
 
 use crate::error::Error;
 
 // ---------------------------------------------------------------------------
-// PyPauliHamiltonian
+// PyHardcoreHamiltonian
 // ---------------------------------------------------------------------------
 
-#[pyclass(name = "PyPauliHamiltonian")]
-pub struct PyPauliHamiltonian {
-    pub inner: PauliHamiltonianInner,
+#[pyclass(name = "PyHardcoreHamiltonian")]
+pub struct PyHardcoreHamiltonian {
+    pub inner: HardcoreHamiltonianInner,
     /// Number of distinct cindex values (= length of the outer terms list).
     pub num_cindices: usize,
 }
 
 #[pymethods]
-impl PyPauliHamiltonian {
+impl PyHardcoreHamiltonian {
     /// Construct from a Python list-of-lists.
     ///
     /// `terms[cindex_idx]` is a list of `(op_str, coupling_list)` pairs.
@@ -132,16 +132,16 @@ impl PyPauliHamiltonian {
                 .into_iter()
                 .map(|r| OpEntry::new(r.cindex as u16, r.coeff, r.ops))
                 .collect();
-            PauliHamiltonianInner::Ham16(PauliHamiltonian::new(entries, n_sites))
+            HardcoreHamiltonianInner::Ham16(HardcoreHamiltonian::new(entries, n_sites))
         } else {
             let entries: Vec<OpEntry<u8>> = raw
                 .into_iter()
                 .map(|r| OpEntry::new(r.cindex as u8, r.coeff, r.ops))
                 .collect();
-            PauliHamiltonianInner::Ham8(PauliHamiltonian::new(entries, n_sites))
+            HardcoreHamiltonianInner::Ham8(HardcoreHamiltonian::new(entries, n_sites))
         };
 
-        Ok(PyPauliHamiltonian {
+        Ok(PyHardcoreHamiltonian {
             inner,
             num_cindices,
         })

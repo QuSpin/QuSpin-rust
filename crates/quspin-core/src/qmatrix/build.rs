@@ -1,6 +1,6 @@
 use super::{CIndex, Entry, Index, QMatrix};
 use crate::basis::{BasisSpace, SymmetricSubspace};
-use crate::operator::PauliHamiltonian;
+use crate::operator::HardcoreHamiltonian;
 use crate::primitive::Primitive;
 use bitbasis::BitInt;
 
@@ -8,7 +8,7 @@ use bitbasis::BitInt;
 // Build from non-symmetric basis (FullSpace or Subspace)
 // ---------------------------------------------------------------------------
 
-/// Construct a `QMatrix` from a `PauliHamiltonian` and a non-symmetric basis.
+/// Construct a `QMatrix` from a `HardcoreHamiltonian` and a non-symmetric basis.
 ///
 /// For each row (basis state), applies the Hamiltonian and looks up the
 /// resulting state in the basis.  Contributions to the same (col, cindex) pair
@@ -20,8 +20,8 @@ use bitbasis::BitInt;
 /// - `B` — basis integer type
 /// - `V` — matrix element type
 /// - `I` — CSR index type
-/// - `C` — operator-string index type (must match `PauliHamiltonian<C>`)
-pub fn build_from_basis<B, V, I, C, S>(ham: &PauliHamiltonian<C>, basis: &S) -> QMatrix<V, I, C>
+/// - `C` — operator-string index type (must match `HardcoreHamiltonian<C>`)
+pub fn build_from_basis<B, V, I, C, S>(ham: &HardcoreHamiltonian<C>, basis: &S) -> QMatrix<V, I, C>
 where
     B: BitInt,
     V: Primitive,
@@ -71,7 +71,7 @@ where
 // Build from symmetric basis
 // ---------------------------------------------------------------------------
 
-/// Construct a `QMatrix` from a `PauliHamiltonian` and a `SymmetricSubspace`.
+/// Construct a `QMatrix` from a `HardcoreHamiltonian` and a `SymmetricSubspace`.
 ///
 /// For each row, the Hamiltonian is applied to the representative state.
 /// Each resulting state is mapped to its representative via `check_refstate`,
@@ -79,7 +79,7 @@ where
 ///
 /// Mirrors `qmatrix::calculate_row` for `symmetric_subspace`.
 pub fn build_from_symmetric<B, V, I, C>(
-    ham: &PauliHamiltonian<C>,
+    ham: &HardcoreHamiltonian<C>,
     basis: &SymmetricSubspace<B>,
 ) -> QMatrix<V, I, C>
 where
@@ -144,13 +144,13 @@ mod tests {
     use num_complex::Complex;
     use smallvec::smallvec;
 
-    fn xx_ham() -> PauliHamiltonian<u8> {
+    fn xx_ham() -> HardcoreHamiltonian<u8> {
         use crate::operator::{OpEntry, PauliOp};
         // H = Σ_i X_i X_{i+1}, two-site chain
         // Term 0: X_0 X_1, cindex=0, coeff=1
         let ops0 = smallvec![(PauliOp::X, 0u32), (PauliOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops0)];
-        PauliHamiltonian::new(terms, 2)
+        HardcoreHamiltonian::new(terms, 2)
     }
 
     #[test]
@@ -188,7 +188,7 @@ mod tests {
         use crate::operator::{OpEntry, PauliOp};
         let ops = smallvec![(PauliOp::X, 0u32), (PauliOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)];
-        let ham = PauliHamiltonian::new(terms, 2);
+        let ham = HardcoreHamiltonian::new(terms, 2);
 
         let mut sub = Subspace::<u32>::new();
         // seed with |01⟩=1

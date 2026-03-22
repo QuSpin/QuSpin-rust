@@ -1,28 +1,28 @@
-/// Type-erased `PauliHamiltonianInner`.
+/// Type-erased `HardcoreHamiltonianInner`.
 ///
-/// Selects between `PauliHamiltonian<u8>` (≤ 255 cindices / site indices) and
-/// `PauliHamiltonian<u16>` (larger).  The cindex type is chosen at
-/// construction time by `PyPauliHamiltonian::new`.
-use quspin_core::operator::PauliHamiltonian;
+/// Selects between `HardcoreHamiltonian<u8>` (≤ 255 cindices / site indices) and
+/// `HardcoreHamiltonian<u16>` (larger).  The cindex type is chosen at
+/// construction time by `PyHardcoreHamiltonian::new`.
+use quspin_core::operator::HardcoreHamiltonian;
 
-/// Type-erased `PauliHamiltonian`: either u8 or u16 cindex type.
-pub enum PauliHamiltonianInner {
-    Ham8(PauliHamiltonian<u8>),
-    Ham16(PauliHamiltonian<u16>),
+/// Type-erased `HardcoreHamiltonian`: either u8 or u16 cindex type.
+pub enum HardcoreHamiltonianInner {
+    Ham8(HardcoreHamiltonian<u8>),
+    Ham16(HardcoreHamiltonian<u16>),
 }
 
-impl PauliHamiltonianInner {
+impl HardcoreHamiltonianInner {
     pub fn n_sites(&self) -> usize {
         match self {
-            PauliHamiltonianInner::Ham8(h) => h.n_sites(),
-            PauliHamiltonianInner::Ham16(h) => h.n_sites(),
+            HardcoreHamiltonianInner::Ham8(h) => h.n_sites(),
+            HardcoreHamiltonianInner::Ham16(h) => h.n_sites(),
         }
     }
 
     pub fn num_cindices(&self) -> usize {
         match self {
-            PauliHamiltonianInner::Ham8(h) => h.num_terms(),
-            PauliHamiltonianInner::Ham16(h) => h.num_terms(),
+            HardcoreHamiltonianInner::Ham8(h) => h.num_terms(),
+            HardcoreHamiltonianInner::Ham16(h) => h.num_terms(),
         }
     }
 }

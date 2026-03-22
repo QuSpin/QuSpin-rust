@@ -6,8 +6,8 @@ import pytest
 from quspin._rs import (
     PyGrpElement,
     PyHardcoreBasis,
+    PyHardcoreHamiltonian,
     PyLatticeElement,
-    PyPauliHamiltonian,
     PyQMatrix,
     PySymmetryGrp,
 )
@@ -28,8 +28,8 @@ XX_ZZ_TERMS = [
 ]
 
 
-def make_ham() -> PyPauliHamiltonian:
-    return PyPauliHamiltonian(XX_ZZ_TERMS)
+def make_ham() -> PyHardcoreHamiltonian:
+    return PyHardcoreHamiltonian(XX_ZZ_TERMS)
 
 
 def make_full_basis() -> PyHardcoreBasis:
@@ -37,7 +37,7 @@ def make_full_basis() -> PyHardcoreBasis:
 
 
 # ---------------------------------------------------------------------------
-# PyPauliHamiltonian
+# PyHardcoreHamiltonian
 # ---------------------------------------------------------------------------
 
 
@@ -51,18 +51,18 @@ class TestPauliHamiltonian:
         assert h.num_cindices == 2
 
     def test_single_cindex(self):
-        h = PyPauliHamiltonian([[("z", [(1.0, 0), (1.0, 1)])]])
+        h = PyHardcoreHamiltonian([[("z", [(1.0, 0), (1.0, 1)])]])
         assert h.n_sites == 2
         assert h.num_cindices == 1
 
     def test_bad_op_char(self):
         with pytest.raises(Exception):
-            PyPauliHamiltonian([[("q", [(1.0, 0)])]])
+            PyHardcoreHamiltonian([[("q", [(1.0, 0)])]])
 
     def test_wrong_site_count(self):
         # op_str "xx" expects 2 sites but coupling has only 1
         with pytest.raises(Exception):
-            PyPauliHamiltonian([[("xx", [(1.0, 0)])]])
+            PyHardcoreHamiltonian([[("xx", [(1.0, 0)])]])
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ class TestHardcoreBasisSubspace:
 
     def test_single_state_trivial_ham(self):
         # A Hamiltonian with only Z operators doesn't mix states, so seed = 1 state.
-        h = PyPauliHamiltonian([[("z", [(1.0, 0)])]])
+        h = PyHardcoreHamiltonian([[("z", [(1.0, 0)])]])
         basis = PyHardcoreBasis.subspace(["0"], h)
         assert basis.size == 1
 
@@ -137,33 +137,33 @@ class TestQMatrixBuild:
     def test_build_returns_qmatrix(self):
         h = make_ham()
         basis = make_full_basis()
-        mat = PyQMatrix.build(h, basis, np.dtype("float64"))
+        mat = PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("float64"))
         assert isinstance(mat, PyQMatrix)
 
     def test_dim_matches_basis(self):
         h = make_ham()
         basis = make_full_basis()
-        mat = PyQMatrix.build(h, basis, np.dtype("float64"))
+        mat = PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("float64"))
         assert mat.dim == basis.size
 
     def test_nnz_positive(self):
         h = make_ham()
         basis = make_full_basis()
-        mat = PyQMatrix.build(h, basis, np.dtype("float64"))
+        mat = PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("float64"))
         assert mat.nnz > 0
 
     def test_all_supported_dtypes(self):
         h = make_ham()
         basis = make_full_basis()
         for dt in ["int8", "int16", "float32", "float64", "complex64", "complex128"]:
-            mat = PyQMatrix.build(h, basis, np.dtype(dt))
+            mat = PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype(dt))
             assert mat.dim == basis.size
 
     def test_unsupported_dtype_raises(self):
         h = make_ham()
         basis = make_full_basis()
         with pytest.raises(Exception):
-            PyQMatrix.build(h, basis, np.dtype("int32"))
+            PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("int32"))
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ class TestQMatrixDot:
     def _build(self, dtype=np.float64):
         h = make_ham()
         basis = make_full_basis()
-        return PyQMatrix.build(h, basis, np.dtype(dtype))
+        return PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype(dtype))
 
     def test_dot_overwrite(self):
         mat = self._build()
@@ -236,7 +236,7 @@ class TestQMatrixArithmetic:
     def _build(self):
         h = make_ham()
         basis = make_full_basis()
-        return PyQMatrix.build(h, basis, np.dtype("float64"))
+        return PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("float64"))
 
     def test_add_same_nnz_or_more(self):
         mat = self._build()
@@ -300,6 +300,6 @@ class TestSymmetricBasis:
         h = make_ham()
         seeds = ["1100"]  # sites 0,1 occupied (0b0011)
         basis = PyHardcoreBasis.symmetric(seeds, h, grp)
-        mat = PyQMatrix.build(h, basis, np.dtype("complex128"))
+        mat = PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("complex128"))
         assert mat.dim == basis.size
         assert mat.nnz >= 0

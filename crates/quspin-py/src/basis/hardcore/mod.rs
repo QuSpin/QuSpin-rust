@@ -10,8 +10,8 @@ use quspin_core::basis::{
 };
 
 use crate::error::Error;
-use crate::hamiltonian::PyPauliHamiltonian;
-use crate::hamiltonian::dispatch::PauliHamiltonianInner;
+use crate::hamiltonian::PyHardcoreHamiltonian;
+use crate::hamiltonian::dispatch::HardcoreHamiltonianInner;
 
 use super::symmetry::PySymmetryGrp;
 use dispatch::HardcoreBasisInner;
@@ -121,7 +121,7 @@ impl PyHardcoreBasis {
     ///   seeds: Python list of integer seed states.
     ///   ham:   The Hamiltonian defining connectivity.
     #[staticmethod]
-    pub fn subspace(seeds: &Bound<'_, PyAny>, ham: &PyPauliHamiltonian) -> PyResult<Self> {
+    pub fn subspace(seeds: &Bound<'_, PyAny>, ham: &PyHardcoreHamiltonian) -> PyResult<Self> {
         let n_sites = ham.inner.n_sites();
         let seed_list = extract_seed_list(seeds)?;
 
@@ -131,10 +131,10 @@ impl PyHardcoreBasis {
                 for s in &seed_list {
                     let seed = seed_as::<$B>(s);
                     match &ham.inner {
-                        PauliHamiltonianInner::Ham8(h) => {
+                        HardcoreHamiltonianInner::Ham8(h) => {
                             basis.build(seed, |state| h.apply(state).into_iter());
                         }
-                        PauliHamiltonianInner::Ham16(h) => {
+                        HardcoreHamiltonianInner::Ham16(h) => {
                             basis.build(seed, |state| h.apply(state).into_iter());
                         }
                     }
@@ -156,7 +156,7 @@ impl PyHardcoreBasis {
     #[staticmethod]
     pub fn symmetric(
         seeds: &Bound<'_, PyAny>,
-        ham: &PyPauliHamiltonian,
+        ham: &PyHardcoreHamiltonian,
         grp: &PySymmetryGrp,
     ) -> PyResult<Self> {
         let n_sites = ham.inner.n_sites();
@@ -169,10 +169,10 @@ impl PyHardcoreBasis {
                 for s in &seed_list {
                     let seed = seed_as::<$B>(s);
                     match &ham.inner {
-                        PauliHamiltonianInner::Ham8(h) => {
+                        HardcoreHamiltonianInner::Ham8(h) => {
                             basis.build(seed, |state| h.apply(state).into_iter());
                         }
-                        PauliHamiltonianInner::Ham16(h) => {
+                        HardcoreHamiltonianInner::Ham16(h) => {
                             basis.build(seed, |state| h.apply(state).into_iter());
                         }
                     }

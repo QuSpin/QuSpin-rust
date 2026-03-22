@@ -27,8 +27,8 @@ use quspin_core::qmatrix::build::{build_from_basis, build_from_symmetric};
 use crate::basis::hardcore::PyHardcoreBasis;
 use crate::dtype::MatrixDType;
 use crate::error::Error;
-use crate::hamiltonian::PyPauliHamiltonian;
-use crate::hamiltonian::dispatch::PauliHamiltonianInner;
+use crate::hamiltonian::PyHardcoreHamiltonian;
+use crate::hamiltonian::dispatch::HardcoreHamiltonianInner;
 use crate::{with_plain_basis, with_sym_basis, with_value_dtype};
 use dispatch::{IntoQMatrixInner, QMatrixInner};
 
@@ -50,13 +50,13 @@ impl PyQMatrix {
     /// Build a sparse quantum matrix from a Hamiltonian and a basis.
     ///
     /// Args:
-    ///   ham:   The `PyPauliHamiltonian` defining operator strings.
+    ///   ham:   The `PyHardcoreHamiltonian` defining operator strings.
     ///   basis: The `PyHardcoreBasis` defining the Hilbert space.
     ///   dtype: NumPy dtype object for matrix element storage.
     #[staticmethod]
-    pub fn build(
+    pub fn build_hardcore_hamiltonian(
         py: Python<'_>,
-        ham: &PyPauliHamiltonian,
+        ham: &PyHardcoreHamiltonian,
         basis: &PyHardcoreBasis,
         dtype: &Bound<'_, numpy::PyArrayDescr>,
     ) -> PyResult<Self> {
@@ -66,10 +66,10 @@ impl PyQMatrix {
             with_value_dtype!(v_dtype, V, {
                 with_sym_basis!(&basis.inner, B, sym_basis, {
                     match &ham.inner {
-                        PauliHamiltonianInner::Ham8(h) => {
+                        HardcoreHamiltonianInner::Ham8(h) => {
                             build_from_symmetric::<B, V, i64, u8>(h, sym_basis).into_qmatrix_inner()
                         }
-                        PauliHamiltonianInner::Ham16(h) => {
+                        HardcoreHamiltonianInner::Ham16(h) => {
                             build_from_symmetric::<B, V, i64, u16>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
@@ -80,11 +80,11 @@ impl PyQMatrix {
             with_value_dtype!(v_dtype, V, {
                 with_plain_basis!(&basis.inner, B, plain_basis, {
                     match &ham.inner {
-                        PauliHamiltonianInner::Ham8(h) => {
+                        HardcoreHamiltonianInner::Ham8(h) => {
                             build_from_basis::<B, V, i64, u8, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }
-                        PauliHamiltonianInner::Ham16(h) => {
+                        HardcoreHamiltonianInner::Ham16(h) => {
                             build_from_basis::<B, V, i64, u16, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }

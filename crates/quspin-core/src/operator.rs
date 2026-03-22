@@ -122,7 +122,7 @@ impl<C: Copy> OpEntry<C> {
 }
 
 // ---------------------------------------------------------------------------
-// PauliHamiltonian
+// HardcoreHamiltonian
 // ---------------------------------------------------------------------------
 
 /// A collection of operator strings forming a Pauli Hamiltonian.
@@ -133,17 +133,17 @@ impl<C: Copy> OpEntry<C> {
 ///
 /// Mirrors `pauli_hamiltonian<cindex_t>` from `operator.hpp`.
 #[derive(Clone, Debug)]
-pub struct PauliHamiltonian<C> {
+pub struct HardcoreHamiltonian<C> {
     terms: Vec<OpEntry<C>>,
     /// Number of sites (max site index + 1).
     n_sites: usize,
 }
 
-impl<C: Copy + Ord> PauliHamiltonian<C> {
+impl<C: Copy + Ord> HardcoreHamiltonian<C> {
     /// Construct from a list of `OpEntry` terms.  Terms are sorted by `cindex`.
     pub fn new(mut terms: Vec<OpEntry<C>>, n_sites: usize) -> Self {
         terms.sort_by_key(|e| e.cindex);
-        PauliHamiltonian { terms, n_sites }
+        HardcoreHamiltonian { terms, n_sites }
     }
 
     pub fn n_sites(&self) -> usize {
@@ -275,14 +275,14 @@ mod tests {
         assert!((amp - Complex::new(0.5, 0.0)).norm() < 1e-12);
     }
 
-    // --- PauliHamiltonian::apply ---
+    // --- HardcoreHamiltonian::apply ---
 
     #[test]
     fn hamiltonian_single_x_term() {
         // H = 0.5 * X_0, cindex=0
         let ops: SmallVec<[(PauliOp, u32); 4]> = smallvec::smallvec![(PauliOp::X, 0)];
         let terms = vec![OpEntry::<u8>::new(0, Complex::new(0.5, 0.0), ops)];
-        let ham = PauliHamiltonian::new(terms, 1);
+        let ham = HardcoreHamiltonian::new(terms, 1);
 
         let state: u32 = 0;
         let result = ham.apply(state);
@@ -298,7 +298,7 @@ mod tests {
         // H = P_0 applied to state |1⟩ (occupied): P gives amplitude 0, should be filtered
         let ops: SmallVec<[(PauliOp, u32); 4]> = smallvec::smallvec![(PauliOp::P, 0)];
         let terms = vec![OpEntry::<u8>::new(0, Complex::new(1.0, 0.0), ops)];
-        let ham = PauliHamiltonian::new(terms, 1);
+        let ham = HardcoreHamiltonian::new(terms, 1);
         let result = ham.apply(1u32);
         assert!(result.is_empty());
     }
