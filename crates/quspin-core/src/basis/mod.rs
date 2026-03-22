@@ -2,7 +2,7 @@ pub mod group;
 pub mod space;
 pub mod sym;
 
-pub use group::{GrpElement, GrpOpKind, SymmetryGrp};
+pub use group::{GrpElement, GrpOpKind, LatticeElement, SymmetryGrp};
 pub use space::{FullSpace, Subspace};
 pub use sym::SymmetricSubspace;
 

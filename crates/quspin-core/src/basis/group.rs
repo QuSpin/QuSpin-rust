@@ -2,18 +2,41 @@ use bitbasis::{BitInt, DynamicHigherSpinInv, DynamicPermDitValues, PermDitLocati
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
-// GrpOpKind — closed enum of all supported bit operations
+// LatticeElement — a site-permutation with an associated character
 // ---------------------------------------------------------------------------
 
-/// All supported symmetry bit-operations.
+/// A lattice symmetry element (translation, reflection, …).
+///
+/// Always wraps a `PermDitLocations`; stored separately from local elements
+/// because the lattice field of `SymmetryGrp` is always this type.
+pub struct LatticeElement {
+    pub grp_char: Complex<f64>,
+    pub op: PermDitLocations,
+}
+
+impl LatticeElement {
+    pub fn new(grp_char: Complex<f64>, op: PermDitLocations) -> Self {
+        LatticeElement { grp_char, op }
+    }
+
+    /// Apply this element: returns `(op.app(state), coeff * grp_char)`.
+    #[inline]
+    pub fn apply<B: BitInt>(&self, state: B, coeff: Complex<f64>) -> (B, Complex<f64>) {
+        (self.op.app(state), coeff * self.grp_char)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GrpOpKind — closed enum of local symmetry operations
+// ---------------------------------------------------------------------------
+
+/// Local symmetry bit-operations (not lattice permutations).
 ///
 /// Using a closed enum avoids heap allocation for each group element while
-/// keeping the `Grp` type uniform.
+/// keeping the `GrpElement` type uniform.
 ///
-/// Mirrors the heterogeneous `grp_element` instantiations in `grp_element.hpp`.
+/// Mirrors the non-lattice `grp_element` instantiations in `grp_element.hpp`.
 pub enum GrpOpKind<B: BitInt> {
-    /// Site permutation (lattice translation, reflection, …).
-    Lattice(PermDitLocations),
     /// XOR with a fixed mask (Z₂ bit-flip symmetry).
     Bitflip(PermDitMask<B>),
     /// Permutation of dit *values* at given sites (local on-site symmetry).
@@ -27,7 +50,6 @@ impl<B: BitInt> GrpOpKind<B> {
     #[inline]
     pub fn app(&self, state: B) -> B {
         match self {
-            GrpOpKind::Lattice(op) => op.app(state),
             GrpOpKind::Bitflip(op) => op.app(state),
             GrpOpKind::LocalValue(op) => op.app(state),
             GrpOpKind::SpinInversion(op) => op.app(state),
@@ -36,15 +58,13 @@ impl<B: BitInt> GrpOpKind<B> {
 }
 
 // ---------------------------------------------------------------------------
-// GrpElement — a symmetry operation with an associated character
+// GrpElement — a local symmetry operation with an associated character
 // ---------------------------------------------------------------------------
 
-/// A single symmetry group element: a bit-operation and its character
-/// (eigenvalue / phase factor).
+/// A single local symmetry group element: a bit-operation and its character.
 ///
-/// `apply` maps `(state, accumulated_coeff)` → `(new_state, new_coeff)`.
-///
-/// Mirrors `grp_element<bit_op, bitset_t>` from `single_grp_element.hpp`.
+/// Mirrors `grp_element<bit_op, bitset_t>` from `single_grp_element.hpp`
+/// for the non-lattice operations.
 pub struct GrpElement<B: BitInt> {
     pub grp_char: Complex<f64>,
     pub op: GrpOpKind<B>,
@@ -79,12 +99,12 @@ impl<B: BitInt> GrpElement<B> {
 ///
 /// Mirrors `grp<grp_result_t, lattice_t, local_t>` from `grp.hpp`.
 pub struct SymmetryGrp<B: BitInt> {
-    lattice: Vec<GrpElement<B>>,
+    lattice: Vec<LatticeElement>,
     local: Vec<GrpElement<B>>,
 }
 
 impl<B: BitInt> SymmetryGrp<B> {
-    pub fn new(lattice: Vec<GrpElement<B>>, local: Vec<GrpElement<B>>) -> Self {
+    pub fn new(lattice: Vec<LatticeElement>, local: Vec<GrpElement<B>>) -> Self {
         SymmetryGrp { lattice, local }
     }
 
@@ -151,18 +171,23 @@ impl<B: BitInt> SymmetryGrp<B> {
 mod tests {
     use super::*;
 
-    // Build a Z₂ bitflip group on a 2-site chain (sites 0 and 1).
+    // Build a Z₂ bitflip group on a 2-site chain.
+    // Identity permutation goes in lattice; bitflip goes in local.
     fn bitflip_grp_2site() -> SymmetryGrp<u32> {
-        let mask: u32 = 0b11; // flip both sites
+        let id_lat = LatticeElement::new(
+            Complex::new(1.0, 0.0),
+            PermDitLocations::new(2, &[0, 1]), // identity on 2 sites
+        );
+        let mask: u32 = 0b11;
         let op = GrpOpKind::Bitflip(PermDitMask::new(mask));
         let el = GrpElement::new(Complex::new(1.0, 0.0), op);
-        SymmetryGrp::new(vec![el], vec![])
+        SymmetryGrp::new(vec![id_lat], vec![el])
     }
 
     #[test]
     fn bitflip_get_refstate() {
         let grp = bitflip_grp_2site();
-        // state |01⟩ = 1, its image under full bitflip = |10⟩ = 2 (larger)
+        // Images of |01⟩: {id(|01⟩), id(flip(|01⟩))} = {1, 2}. Representative = 2.
         let (ref_state, _coeff) = grp.get_refstate(0b01u32);
         assert_eq!(ref_state, 0b10u32);
     }
@@ -170,26 +195,24 @@ mod tests {
     #[test]
     fn bitflip_check_refstate_norm() {
         let grp = bitflip_grp_2site();
-        // |00⟩ maps to |11⟩: distinct states, norm = 0 (state ≠ image for all images)
+        // Images of |00⟩: {0, 3}. count(== |00⟩) = 1 (identity maps it to itself).
         let (_ref, norm_00) = grp.check_refstate(0b00u32);
-        assert_eq!(norm_00, 0.0);
+        assert_eq!(norm_00, 1.0);
 
-        // |01⟩ maps to |10⟩: also never equals itself in images, norm = 0
+        // Images of |01⟩: {1, 2}. count(== |01⟩) = 1.
         let (_ref, norm_01) = grp.check_refstate(0b01u32);
-        assert_eq!(norm_01, 0.0);
+        assert_eq!(norm_01, 1.0);
     }
 
     #[test]
     fn lattice_permutation_translation() {
         // 3-site translation: site 0→1, 1→2, 2→0 (lhss=2, spin-1/2)
-        let op = GrpOpKind::Lattice(PermDitLocations::new(2, &[1, 2, 0]));
-        let el = GrpElement::new(Complex::new(1.0, 0.0), op);
-        let grp = SymmetryGrp::new(vec![el], vec![]);
+        let lat_el =
+            LatticeElement::new(Complex::new(1.0, 0.0), PermDitLocations::new(2, &[1, 2, 0]));
+        let grp = SymmetryGrp::<u32>::new(vec![lat_el], vec![]);
 
-        // state |100⟩ = 1: site 0 set, sites 1,2 clear
-        // after T: site 1 set = |010⟩ = 2
+        // state |001⟩=1, T(|001⟩)=|010⟩=2, so ref = 2
         let (ref_state, _) = grp.get_refstate(0b001u32);
-        // |001⟩=1, T(|001⟩)=|010⟩=2, so ref = 2
         assert_eq!(ref_state, 0b010u32);
     }
 }

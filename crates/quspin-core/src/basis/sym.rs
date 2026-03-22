@@ -124,8 +124,8 @@ impl<B: BitInt> BasisSpace<B> for SymmetricSubspace<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::group::{GrpElement, GrpOpKind};
-    use bitbasis::PermDitMask;
+    use crate::basis::group::{GrpElement, GrpOpKind, LatticeElement};
+    use bitbasis::{PermDitLocations, PermDitMask};
     use num_complex::Complex;
 
     /// X operator on all sites of an N-site chain.
@@ -137,49 +137,38 @@ mod tests {
         }
     }
 
+    /// Identity lattice element for an N-site spin-1/2 chain.
+    fn id_lattice(n_sites: usize) -> LatticeElement {
+        let locs: Vec<usize> = (0..n_sites).collect();
+        LatticeElement::new(Complex::new(1.0, 0.0), PermDitLocations::new(2, &locs))
+    }
+
     /// Z₂ bit-flip group on the full N-site chain.
+    /// Identity goes in lattice; the bitflip goes in local.
     fn bitflip_grp(n_sites: u32) -> SymmetryGrp<u32> {
         let mask = (1u32 << n_sites) - 1;
         let op = GrpOpKind::Bitflip(PermDitMask::new(mask));
         let el = GrpElement::new(Complex::new(1.0, 0.0), op);
-        SymmetryGrp::new(vec![el], vec![])
+        SymmetryGrp::new(vec![id_lattice(n_sites as usize)], vec![el])
     }
 
     #[test]
     fn symmetric_subspace_bitflip_2site() {
         // 2-site chain, Z₂ bitflip symmetry.
-        // States: {00, 01, 10, 11} = {0,1,2,3}.
-        // Orbits: {0,3}, {1,2}.  Representatives (largest): 3, 2.
-        // Both have norm=0 (each maps to a different state, so count of images equal to self = 0)
-        // Wait, check_refstate counts times s == input. Bitflip maps 0→3, 3→0.
-        // For state=3: images are {3} (bitflip of 3 = 0 ≠ 3). Norm = 0.
-        // For state=2: images are {2} (bitflip of 2 = 1 ≠ 2). Norm = 0.
-        // Hmm, with norm=0 nothing gets added. Let me reconsider.
-        // The lattice group here has ONE element: the bitflip. So iter_images yields
-        // just one image per state. check_refstate counts images equal to input.
-        // bitflip(3)=0 ≠ 3 → norm=0.
-        // bitflip(2)=1 ≠ 2 → norm=0.
-        // So with this group definition, nothing is added. This is actually correct
-        // physics: these states are not symmetry eigenstates by themselves.
-        // For a real symmetric subspace, we'd also need the identity element in the group.
-        // Let's test with identity included.
-        let mask = (1u32 << 2) - 1; // flip both sites
-        let id_op = GrpOpKind::Bitflip(PermDitMask::new(0u32)); // XOR with 0 = identity
+        // Lattice: identity permutation.  Local: full bitflip.
+        // Images of state s: {id(s), id(flip(s))} = {s, flip(s)}.
+        // Orbits: {0↔3}, {1↔2}.  Representatives (largest): 3, 2.
+        // check_refstate(3): images = {3, 0}. count(==3) = 1. norm = 1.
+        // check_refstate(2): images = {2, 1}. count(==2) = 1. norm = 1.
+        let mask = (1u32 << 2) - 1;
         let flip_op = GrpOpKind::Bitflip(PermDitMask::new(mask));
         let grp = SymmetryGrp::new(
-            vec![
-                GrpElement::new(Complex::new(1.0, 0.0), id_op),
-                GrpElement::new(Complex::new(1.0, 0.0), flip_op),
-            ],
-            vec![],
+            vec![id_lattice(2)],
+            vec![GrpElement::new(Complex::new(1.0, 0.0), flip_op)],
         );
         let mut sym = SymmetricSubspace::new(grp);
         sym.build(0u32, x_op(2));
 
-        // States: {0↔3} ref=3 norm=1 (identity maps each to itself, bitflip maps to other)
-        // check_refstate(3): images from {id, flip} = {3, 0}. count(==3) = 1. norm=1.
-        // check_refstate(2): images = {2, 1}. count(==2) = 1. norm=1.
-        // Representatives: 3 and 2.
         assert_eq!(sym.size(), 2);
         assert!(sym.index(3u32).is_some());
         assert!(sym.index(2u32).is_some());
@@ -187,21 +176,19 @@ mod tests {
 
     #[test]
     fn symmetric_subspace_no_symmetry_matches_subspace() {
-        // With a trivial group (identity only), the symmetric subspace should
-        // match the plain subspace (all states reachable from seed).
-        let id_op = GrpOpKind::Bitflip(PermDitMask::new(0u32));
-        let grp = SymmetryGrp::new(vec![GrpElement::new(Complex::new(1.0, 0.0), id_op)], vec![]);
+        // With a trivial group (identity lattice only, no local ops), every
+        // state is its own representative with norm = 1.
+        let grp = SymmetryGrp::<u32>::new(vec![id_lattice(3)], vec![]);
         let mut sym = SymmetricSubspace::new(grp);
         sym.build(0u32, x_op(3));
 
-        // All 2^3 = 8 states should be present (each is its own representative).
+        // All 2^3 = 8 states should be present.
         assert_eq!(sym.size(), 8);
     }
 
     #[test]
     fn symmetric_subspace_sorted_ascending() {
-        let id_op = GrpOpKind::Bitflip(PermDitMask::new(0u32));
-        let grp = SymmetryGrp::new(vec![GrpElement::new(Complex::new(1.0, 0.0), id_op)], vec![]);
+        let grp = SymmetryGrp::<u32>::new(vec![id_lattice(3)], vec![]);
         let mut sym = SymmetricSubspace::new(grp);
         sym.build(0u32, x_op(3));
 
@@ -212,9 +199,6 @@ mod tests {
 
     #[test]
     fn symmetric_subspace_bitflip_grp_helper() {
-        // Use the helper that only has the non-identity bitflip.
-        // Verify the group halves the number of representatives vs full space.
-        // With identity+flip (via the full helper), we'd get 4 reps from 8 states.
-        let _ = bitflip_grp(3); // just verify construction doesn't panic
+        let _ = bitflip_grp(3); // verify construction doesn't panic
     }
 }
