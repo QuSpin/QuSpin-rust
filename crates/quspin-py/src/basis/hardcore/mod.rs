@@ -223,8 +223,15 @@ fn extract_seed_list(seeds: &Bound<'_, PyAny>) -> Result<Vec<u128>, Error> {
 }
 
 /// Cast a `u128` seed to the concrete basis integer type `B`.
+///
+/// For types narrower than 128 bits only the low bits are used; shifting by
+/// 64 would overflow on types with `BITS ≤ 64`, so we skip the high half.
 fn seed_as<B: BitInt>(seed: u128) -> B {
     let lo = seed as u64;
-    let hi = (seed >> 64) as u64;
-    B::from_u64(lo) | (B::from_u64(hi) << 64)
+    if B::BITS as usize <= 64 {
+        B::from_u64(lo)
+    } else {
+        let hi = (seed >> 64) as u64;
+        B::from_u64(lo) | (B::from_u64(hi) << 64)
+    }
 }

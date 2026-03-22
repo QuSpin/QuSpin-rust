@@ -38,6 +38,8 @@ use crate::error::Error;
 #[pyclass(name = "PyPauliHamiltonian")]
 pub struct PyPauliHamiltonian {
     pub inner: PauliHamiltonianInner,
+    /// Number of distinct cindex values (= length of the outer terms list).
+    pub num_cindices: usize,
 }
 
 #[pymethods]
@@ -123,6 +125,7 @@ impl PyPauliHamiltonian {
             }
         }
 
+        let num_cindices = max_cindex + 1;
         let needs_u16 = max_cindex > 255 || max_site > 255;
         let inner = if needs_u16 {
             let entries: Vec<OpEntry<u16>> = raw
@@ -138,7 +141,10 @@ impl PyPauliHamiltonian {
             PauliHamiltonianInner::Ham8(PauliHamiltonian::new(entries, n_sites))
         };
 
-        Ok(PyPauliHamiltonian { inner })
+        Ok(PyPauliHamiltonian {
+            inner,
+            num_cindices,
+        })
     }
 
     /// Number of sites (inferred from the maximum site index + 1).
@@ -150,7 +156,7 @@ impl PyPauliHamiltonian {
     /// Number of distinct cindex values (outer list length).
     #[getter]
     pub fn num_cindices(&self) -> usize {
-        self.inner.num_cindices()
+        self.num_cindices
     }
 }
 
