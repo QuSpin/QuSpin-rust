@@ -1140,6 +1140,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pyo3-stubgen"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/88/db/df405145366251eded9194a1bf2fdba544f44a4b5d571c519f7916ddec61/pyo3_stubgen-0.3.0.tar.gz", hash = "sha256:57434fb833d5a3e54942e6f5fde486b56412bf02319cf528068254da58b95327", size = 5935, upload-time = "2024-06-30T16:46:39.281Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/97/fb/92a4a232d31c00276085d03e6f96f28b940cc802cf69b07b8d892def293d/pyo3_stubgen-0.3.0-py3-none-any.whl", hash = "sha256:a05c32ddf1981be043fa5015f24d625b4eb631c27769e0db475acf4b28e5acc3", size = 5611, upload-time = "2024-06-30T16:46:38.196Z" },
+]
+
+[[package]]
 name = "pyright"
 version = "1.1.408"
 source = { registry = "https://pypi.org/simple" }
@@ -1324,6 +1336,7 @@ dev = [
     { name = "pre-commit" },
     { name = "pycobertura" },
     { name = "pyinstrument" },
+    { name = "pyo3-stubgen" },
     { name = "pyright", extra = ["nodejs"] },
     { name = "pytest" },
     { name = "pytest-xdist" },
@@ -1345,6 +1358,7 @@ dev = [
     { name = "pre-commit", specifier = ">=4.0.1" },
     { name = "pycobertura", specifier = ">=4.1.0" },
     { name = "pyinstrument", specifier = ">=5.1.2" },
+    { name = "pyo3-stubgen", specifier = ">=0.3.0" },
     { name = "pyright", extras = ["nodejs"], specifier = ">=1.1.408" },
     { name = "pytest", specifier = ">=8.3.3" },
     { name = "pytest-xdist", specifier = ">=3.5.0" },
