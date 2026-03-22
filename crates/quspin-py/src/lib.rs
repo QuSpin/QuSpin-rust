@@ -2,6 +2,7 @@ pub mod dispatch;
 pub mod dtype;
 pub mod error;
 pub mod hamiltonian;
+pub mod symmetry;
 
 use pyo3::prelude::*;
 
