@@ -3,7 +3,7 @@
 /// Selects between `HardcoreHamiltonian<u8>` (≤ 255 cindices / site indices) and
 /// `HardcoreHamiltonian<u16>` (larger).  The cindex type is chosen at
 /// construction time by `PyHardcoreHamiltonian::new`.
-use quspin_core::operator::HardcoreHamiltonian;
+use quspin_core::hamiltonian::hardcore::HardcoreHamiltonian;
 
 /// Type-erased `HardcoreHamiltonian`: either u8 or u16 cindex type.
 pub enum HardcoreHamiltonianInner {

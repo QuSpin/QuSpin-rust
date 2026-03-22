@@ -1,4 +1,4 @@
-use super::{BasisSpace, group::SymmetryGrp};
+use super::{BasisSpace, symmetry::SymmetryGrp};
 use bitbasis::BitInt;
 use std::collections::HashMap;
 
@@ -124,7 +124,7 @@ impl<B: BitInt> BasisSpace<B> for SymmetricSubspace<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::group::{GrpElement, GrpOpKind, LatticeElement};
+    use crate::basis::symmetry::{GrpElement, GrpOpKind, LatticeElement};
     use bitbasis::{PermDitLocations, PermDitMask};
     use num_complex::Complex;
 
@@ -140,7 +140,11 @@ mod tests {
     /// Identity lattice element for an N-site spin-1/2 chain.
     fn id_lattice(n_sites: usize) -> LatticeElement {
         let locs: Vec<usize> = (0..n_sites).collect();
-        LatticeElement::new(Complex::new(1.0, 0.0), PermDitLocations::new(2, &locs))
+        LatticeElement::new(
+            Complex::new(1.0, 0.0),
+            PermDitLocations::new(2, &locs),
+            n_sites,
+        )
     }
 
     /// Z₂ bit-flip group on the full N-site chain.
@@ -148,8 +152,8 @@ mod tests {
     fn bitflip_grp(n_sites: u32) -> SymmetryGrp<u32> {
         let mask = (1u32 << n_sites) - 1;
         let op = GrpOpKind::Bitflip(PermDitMask::new(mask));
-        let el = GrpElement::new(Complex::new(1.0, 0.0), op);
-        SymmetryGrp::new(vec![id_lattice(n_sites as usize)], vec![el])
+        let el = GrpElement::new(Complex::new(1.0, 0.0), op, n_sites as usize);
+        SymmetryGrp::new(vec![id_lattice(n_sites as usize)], vec![el]).unwrap()
     }
 
     #[test]
@@ -164,8 +168,9 @@ mod tests {
         let flip_op = GrpOpKind::Bitflip(PermDitMask::new(mask));
         let grp = SymmetryGrp::new(
             vec![id_lattice(2)],
-            vec![GrpElement::new(Complex::new(1.0, 0.0), flip_op)],
-        );
+            vec![GrpElement::new(Complex::new(1.0, 0.0), flip_op, 2)],
+        )
+        .unwrap();
         let mut sym = SymmetricSubspace::new(grp);
         sym.build(0u32, x_op(2));
 
@@ -178,7 +183,7 @@ mod tests {
     fn symmetric_subspace_no_symmetry_matches_subspace() {
         // With a trivial group (identity lattice only, no local ops), every
         // state is its own representative with norm = 1.
-        let grp = SymmetryGrp::<u32>::new(vec![id_lattice(3)], vec![]);
+        let grp = SymmetryGrp::<u32>::new(vec![id_lattice(3)], vec![]).unwrap();
         let mut sym = SymmetricSubspace::new(grp);
         sym.build(0u32, x_op(3));
 
@@ -188,7 +193,7 @@ mod tests {
 
     #[test]
     fn symmetric_subspace_sorted_ascending() {
-        let grp = SymmetryGrp::<u32>::new(vec![id_lattice(3)], vec![]);
+        let grp = SymmetryGrp::<u32>::new(vec![id_lattice(3)], vec![]).unwrap();
         let mut sym = SymmetricSubspace::new(grp);
         sym.build(0u32, x_op(3));
 

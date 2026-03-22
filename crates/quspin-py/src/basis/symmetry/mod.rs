@@ -19,8 +19,9 @@ use bitbasis::{BitInt, PermDitLocations};
 use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::basis::group::{GrpElement, LatticeElement, SymmetryGrp};
+use quspin_core::basis::symmetry::{GrpElement, LatticeElement, SymmetryGrp};
 
+use crate::error::Error;
 use dispatch::GrpOpDesc;
 
 // ---------------------------------------------------------------------------
@@ -38,7 +39,11 @@ pub struct PyLatticeElement {
 
 impl PyLatticeElement {
     pub fn to_lattice_element(&self) -> LatticeElement {
-        LatticeElement::new(self.grp_char, PermDitLocations::new(self.lhss, &self.perm))
+        LatticeElement::new(
+            self.grp_char,
+            PermDitLocations::new(self.lhss, &self.perm),
+            self.perm.len(),
+        )
     }
 }
 
@@ -71,6 +76,7 @@ impl PyLatticeElement {
 #[pyclass(name = "PyGrpElement")]
 pub struct PyGrpElement {
     pub grp_char: Complex<f64>,
+    pub n_sites: usize,
     pub op: GrpOpDesc,
 }
 
@@ -80,12 +86,15 @@ impl PyGrpElement {
     ///
     /// Args:
     ///   grp_char: Group character.
-    ///   locs:     List of site indices whose bits are flipped.
+    ///   n_sites:  Number of sites in the system.
+    ///   locs:     Site indices whose bits are flipped.  If omitted, all sites are flipped.
     #[staticmethod]
-    pub fn bitflip(grp_char: Complex<f64>, locs: Vec<usize>) -> Self {
+    #[pyo3(signature = (grp_char, n_sites, locs=None))]
+    pub fn bitflip(grp_char: Complex<f64>, n_sites: usize, locs: Option<Vec<usize>>) -> Self {
         PyGrpElement {
             grp_char,
-            op: GrpOpDesc::Bitflip { locs },
+            n_sites,
+            op: GrpOpDesc::Bitflip { n_sites, locs },
         }
     }
 
@@ -93,19 +102,27 @@ impl PyGrpElement {
     ///
     /// Args:
     ///   grp_char: Group character.
+    ///   n_sites:  Number of sites in the system.
     ///   lhss:     Local Hilbert space size.
     ///   perm:     Value permutation: v → perm[v].  Length must equal lhss.
     ///   locs:     Sites to which the permutation is applied.
     #[staticmethod]
     pub fn local_value(
         grp_char: Complex<f64>,
+        n_sites: usize,
         lhss: usize,
         perm: Vec<u8>,
         locs: Vec<usize>,
     ) -> Self {
         PyGrpElement {
             grp_char,
-            op: GrpOpDesc::LocalValue { lhss, perm, locs },
+            n_sites,
+            op: GrpOpDesc::LocalValue {
+                n_sites,
+                lhss,
+                perm,
+                locs,
+            },
         }
     }
 
@@ -113,13 +130,24 @@ impl PyGrpElement {
     ///
     /// Args:
     ///   grp_char: Group character.
+    ///   n_sites:  Number of sites in the system.
     ///   lhss:     Local Hilbert space size.
     ///   locs:     Sites to which the inversion is applied.
     #[staticmethod]
-    pub fn spin_inversion(grp_char: Complex<f64>, lhss: usize, locs: Vec<usize>) -> Self {
+    pub fn spin_inversion(
+        grp_char: Complex<f64>,
+        n_sites: usize,
+        lhss: usize,
+        locs: Vec<usize>,
+    ) -> Self {
         PyGrpElement {
             grp_char,
-            op: GrpOpDesc::SpinInversion { lhss, locs },
+            n_sites,
+            op: GrpOpDesc::SpinInversion {
+                n_sites,
+                lhss,
+                locs,
+            },
         }
     }
 }
@@ -134,18 +162,19 @@ impl PyGrpElement {
 /// `SymmetryGrp<B>` for the concrete basis integer type `B`.
 #[pyclass(name = "PySymmetryGrp")]
 pub struct PySymmetryGrp {
+    pub n_sites: usize,
     pub lattice: Vec<(Complex<f64>, Vec<usize>, usize)>,
     pub local: Vec<(Complex<f64>, GrpOpDesc)>,
 }
 
 impl PySymmetryGrp {
     /// Instantiate a `SymmetryGrp<B>` for the concrete basis integer type.
-    pub fn into_symmetry_grp<B: BitInt>(&self) -> SymmetryGrp<B> {
+    pub fn into_symmetry_grp<B: BitInt>(&self) -> PyResult<SymmetryGrp<B>> {
         let lattice: Vec<LatticeElement> = self
             .lattice
             .iter()
             .map(|(char_, perm, lhss)| {
-                LatticeElement::new(*char_, PermDitLocations::new(*lhss, perm))
+                LatticeElement::new(*char_, PermDitLocations::new(*lhss, perm), perm.len())
             })
             .collect();
 
@@ -155,7 +184,7 @@ impl PySymmetryGrp {
             .map(|(char_, op)| op.clone().into_grp_element::<B>(*char_))
             .collect();
 
-        SymmetryGrp::new(lattice, local)
+        SymmetryGrp::new(lattice, local).map_err(|e| Error(e).into())
     }
 }
 
@@ -163,30 +192,56 @@ impl PySymmetryGrp {
 impl PySymmetryGrp {
     /// Construct from lists of `PyLatticeElement` and `PyGrpElement` objects.
     ///
-    /// Data is extracted from the Python objects immediately; the Python
-    /// objects do not need to remain alive after this call.
+    /// Validates that all elements agree on `n_sites`.
+    /// Data is extracted from the Python objects immediately.
     #[new]
     pub fn new(
         py: Python<'_>,
         lattice: &Bound<'_, PyList>,
         local: &Bound<'_, PyList>,
     ) -> PyResult<Self> {
+        let mut n_sites_opt: Option<usize> = None;
+
+        let mut check = |n: usize| -> PyResult<()> {
+            match n_sites_opt {
+                None => {
+                    n_sites_opt = Some(n);
+                    Ok(())
+                }
+                Some(existing) if existing != n => {
+                    Err(pyo3::exceptions::PyValueError::new_err(format!(
+                        "n_sites mismatch in symmetry group: element has {n} but expected {existing}"
+                    )))
+                }
+                _ => Ok(()),
+            }
+        };
+
         let mut lattice_data = Vec::with_capacity(lattice.len());
         for item in lattice.iter() {
             let el: PyRef<'_, PyLatticeElement> = item.extract()?;
+            check(el.perm.len())?;
             lattice_data.push((el.grp_char, el.perm.clone(), el.lhss));
         }
 
         let mut local_data = Vec::with_capacity(local.len());
         for item in local.iter() {
             let el: PyRef<'_, PyGrpElement> = item.extract()?;
+            check(el.n_sites)?;
             local_data.push((el.grp_char, el.op.clone()));
         }
 
         let _ = py;
         Ok(PySymmetryGrp {
+            n_sites: n_sites_opt.unwrap_or(0),
             lattice: lattice_data,
             local: local_data,
         })
+    }
+
+    /// Number of sites in the system.
+    #[getter]
+    pub fn n_sites(&self) -> usize {
+        self.n_sites
     }
 }

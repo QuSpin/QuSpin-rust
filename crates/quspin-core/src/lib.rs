@@ -1,6 +1,6 @@
 pub mod basis;
 pub mod error;
-pub mod operator;
+pub mod hamiltonian;
 pub mod primitive;
 pub mod qmatrix;
 

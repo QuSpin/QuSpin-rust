@@ -26,7 +26,7 @@ pub use dispatch::HardcoreHamiltonianInner;
 
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList, PyTuple};
-use quspin_core::operator::{HardcoreHamiltonian, HardcoreOp, OpEntry};
+use quspin_core::hamiltonian::hardcore::{HardcoreHamiltonian, HardcoreOp, OpEntry};
 use smallvec::SmallVec;
 
 use crate::error::Error;

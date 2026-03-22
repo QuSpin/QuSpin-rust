@@ -1,3 +1,4 @@
+use crate::error::QuSpinError;
 use bitbasis::{BitInt, DynamicHigherSpinInv, DynamicPermDitValues, PermDitLocations, PermDitMask};
 use num_complex::Complex;
 
@@ -11,12 +12,21 @@ use num_complex::Complex;
 /// because the lattice field of `SymmetryGrp` is always this type.
 pub struct LatticeElement {
     pub grp_char: Complex<f64>,
+    pub n_sites: usize,
     pub op: PermDitLocations,
 }
 
 impl LatticeElement {
-    pub fn new(grp_char: Complex<f64>, op: PermDitLocations) -> Self {
-        LatticeElement { grp_char, op }
+    pub fn new(grp_char: Complex<f64>, op: PermDitLocations, n_sites: usize) -> Self {
+        LatticeElement {
+            grp_char,
+            n_sites,
+            op,
+        }
+    }
+
+    pub fn n_sites(&self) -> usize {
+        self.n_sites
     }
 
     /// Apply this element: returns `(op.app(state), coeff * grp_char)`.
@@ -67,12 +77,21 @@ impl<B: BitInt> GrpOpKind<B> {
 /// for the non-lattice operations.
 pub struct GrpElement<B: BitInt> {
     pub grp_char: Complex<f64>,
+    pub n_sites: usize,
     pub op: GrpOpKind<B>,
 }
 
 impl<B: BitInt> GrpElement<B> {
-    pub fn new(grp_char: Complex<f64>, op: GrpOpKind<B>) -> Self {
-        GrpElement { grp_char, op }
+    pub fn new(grp_char: Complex<f64>, op: GrpOpKind<B>, n_sites: usize) -> Self {
+        GrpElement {
+            grp_char,
+            n_sites,
+            op,
+        }
+    }
+
+    pub fn n_sites(&self) -> usize {
+        self.n_sites
     }
 
     /// Apply this element: returns `(op.app(state), coeff * grp_char)`.
@@ -99,13 +118,59 @@ impl<B: BitInt> GrpElement<B> {
 ///
 /// Mirrors `grp<grp_result_t, lattice_t, local_t>` from `grp.hpp`.
 pub struct SymmetryGrp<B: BitInt> {
+    n_sites: usize,
     lattice: Vec<LatticeElement>,
     local: Vec<GrpElement<B>>,
 }
 
 impl<B: BitInt> SymmetryGrp<B> {
-    pub fn new(lattice: Vec<LatticeElement>, local: Vec<GrpElement<B>>) -> Self {
-        SymmetryGrp { lattice, local }
+    /// Construct a symmetry group, validating that all elements agree on `n_sites`.
+    ///
+    /// Returns `Err` if any lattice or local element has a different `n_sites`
+    /// than the first element encountered.  Returns `Ok` with `n_sites = 0` if
+    /// both lists are empty.
+    pub fn new(
+        lattice: Vec<LatticeElement>,
+        local: Vec<GrpElement<B>>,
+    ) -> Result<Self, QuSpinError> {
+        let mut n_sites_opt: Option<usize> = None;
+
+        for el in &lattice {
+            let n = el.n_sites;
+            match n_sites_opt {
+                None => n_sites_opt = Some(n),
+                Some(existing) if existing != n => {
+                    return Err(QuSpinError::ValueError(format!(
+                        "n_sites mismatch in symmetry group: lattice element has {n} but expected {existing}"
+                    )));
+                }
+                _ => {}
+            }
+        }
+
+        for el in &local {
+            let n = el.n_sites;
+            match n_sites_opt {
+                None => n_sites_opt = Some(n),
+                Some(existing) if existing != n => {
+                    return Err(QuSpinError::ValueError(format!(
+                        "n_sites mismatch in symmetry group: local element has {n} but expected {existing}"
+                    )));
+                }
+                _ => {}
+            }
+        }
+
+        let n_sites = n_sites_opt.unwrap_or(0);
+        Ok(SymmetryGrp {
+            n_sites,
+            lattice,
+            local,
+        })
+    }
+
+    pub fn n_sites(&self) -> usize {
+        self.n_sites
     }
 
     /// Iterate over all group images of `state` (lattice-only, then local+lattice).
@@ -177,11 +242,12 @@ mod tests {
         let id_lat = LatticeElement::new(
             Complex::new(1.0, 0.0),
             PermDitLocations::new(2, &[0, 1]), // identity on 2 sites
+            2,
         );
         let mask: u32 = 0b11;
         let op = GrpOpKind::Bitflip(PermDitMask::new(mask));
-        let el = GrpElement::new(Complex::new(1.0, 0.0), op);
-        SymmetryGrp::new(vec![id_lat], vec![el])
+        let el = GrpElement::new(Complex::new(1.0, 0.0), op, 2);
+        SymmetryGrp::new(vec![id_lat], vec![el]).unwrap()
     }
 
     #[test]
@@ -207,9 +273,12 @@ mod tests {
     #[test]
     fn lattice_permutation_translation() {
         // 3-site translation: site 0→1, 1→2, 2→0 (lhss=2, spin-1/2)
-        let lat_el =
-            LatticeElement::new(Complex::new(1.0, 0.0), PermDitLocations::new(2, &[1, 2, 0]));
-        let grp = SymmetryGrp::<u32>::new(vec![lat_el], vec![]);
+        let lat_el = LatticeElement::new(
+            Complex::new(1.0, 0.0),
+            PermDitLocations::new(2, &[1, 2, 0]),
+            3,
+        );
+        let grp = SymmetryGrp::<u32>::new(vec![lat_el], vec![]).unwrap();
 
         // state |001⟩=1, T(|001⟩)=|010⟩=2, so ref = 2
         let (ref_state, _) = grp.get_refstate(0b001u32);

@@ -86,6 +86,7 @@ macro_rules! select_symspace_type {
 
 #[pyclass(name = "PyHardcoreBasis")]
 pub struct PyHardcoreBasis {
+    pub n_sites: usize,
     pub inner: HardcoreBasisInner,
 }
 
@@ -112,7 +113,7 @@ impl PyHardcoreBasis {
         } else {
             HardcoreBasisInner::Full64(FullSpace::new(dim))
         };
-        Ok(PyHardcoreBasis { inner })
+        Ok(PyHardcoreBasis { n_sites, inner })
     }
 
     /// Subspace reachable from each seed state under the Hamiltonian.
@@ -144,7 +145,7 @@ impl PyHardcoreBasis {
         }
 
         let inner = select_subspace_type!(n_sites, build_subspace);
-        Ok(PyHardcoreBasis { inner })
+        Ok(PyHardcoreBasis { n_sites, inner })
     }
 
     /// Symmetry-reduced subspace reachable from each seed state.
@@ -160,11 +161,17 @@ impl PyHardcoreBasis {
         grp: &PySymmetryGrp,
     ) -> PyResult<Self> {
         let n_sites = ham.inner.n_sites();
+        if grp.n_sites != n_sites {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "n_sites mismatch: symmetry group has {} sites but Hamiltonian has {}",
+                grp.n_sites, n_sites
+            )));
+        }
         let seed_list = extract_seed_list(seeds)?;
 
         macro_rules! build_symmetric {
             ($B:ty, $inner_variant:ident) => {{
-                let sym_grp = grp.into_symmetry_grp::<$B>();
+                let sym_grp = grp.into_symmetry_grp::<$B>()?;
                 let mut basis = SymmetricSubspace::<$B>::new(sym_grp);
                 for s in &seed_list {
                     let seed = seed_as::<$B>(s);
@@ -182,12 +189,18 @@ impl PyHardcoreBasis {
         }
 
         let inner = select_symspace_type!(n_sites, build_symmetric);
-        Ok(PyHardcoreBasis { inner })
+        Ok(PyHardcoreBasis { n_sites, inner })
     }
 
     // ------------------------------------------------------------------
     // Properties
     // ------------------------------------------------------------------
+
+    /// Number of sites.
+    #[getter]
+    pub fn n_sites(&self) -> usize {
+        self.n_sites
+    }
 
     /// Number of basis states.
     #[getter]
