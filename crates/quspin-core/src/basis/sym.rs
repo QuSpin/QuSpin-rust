@@ -1,5 +1,5 @@
 use super::{BasisSpace, symmetry::SymmetryGrp};
-use bitbasis::BitInt;
+use crate::bitbasis::BitInt;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ impl<B: BitInt> BasisSpace<B> for SymmetricSubspace<B> {
 mod tests {
     use super::*;
     use crate::basis::symmetry::{GrpElement, GrpOpKind, LatticeElement};
-    use bitbasis::{PermDitLocations, PermDitMask};
+    use crate::bitbasis::{PermDitLocations, PermDitMask};
     use num_complex::Complex;
 
     /// X operator on all sites of an N-site chain.

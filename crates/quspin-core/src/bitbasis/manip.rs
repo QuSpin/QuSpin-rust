@@ -1,4 +1,4 @@
-use crate::int::BitInt;
+use super::int::BitInt;
 
 // ---------------------------------------------------------------------------
 // Lookup tables (mirrors constants::bits / constants::mask from dit_manip.hpp)

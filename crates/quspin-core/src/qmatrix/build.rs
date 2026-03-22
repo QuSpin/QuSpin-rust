@@ -1,8 +1,8 @@
 use super::{CIndex, Entry, Index, QMatrix};
 use crate::basis::{BasisSpace, SymmetricSubspace};
+use crate::bitbasis::BitInt;
 use crate::hamiltonian::hardcore::HardcoreHamiltonian;
 use crate::primitive::Primitive;
-use bitbasis::BitInt;
 
 // ---------------------------------------------------------------------------
 // Build from non-symmetric basis (FullSpace or Subspace)

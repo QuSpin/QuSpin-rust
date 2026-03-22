@@ -1,4 +1,4 @@
-use bitbasis::BitInt;
+use crate::bitbasis::BitInt;
 
 /// Uniform interface over `FullSpace`, `Subspace`, and `SymmetricSubspace`.
 ///

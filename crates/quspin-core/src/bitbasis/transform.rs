@@ -1,5 +1,5 @@
-use crate::int::BitInt;
-use crate::manip::{DitManip, DynamicDitManip};
+use super::int::BitInt;
+use super::manip::{DitManip, DynamicDitManip};
 
 // ---------------------------------------------------------------------------
 // PermDitLocations — permute which site goes where

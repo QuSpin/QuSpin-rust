@@ -1,7 +1,6 @@
 /// Python-facing `PyHardcoreBasis` pyclass.
 use crate::error::Error;
 use crate::hamiltonian::PyHardcoreHamiltonian;
-use bitbasis::BitInt;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use quspin_core::basis::hardcore::dispatch::HardcoreBasisInner;
@@ -9,6 +8,7 @@ use quspin_core::basis::{
     space::{FullSpace, Subspace},
     sym::SymmetricSubspace,
 };
+use quspin_core::bitbasis::BitInt;
 use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
 
 use super::symmetry::PySymmetryGrp;

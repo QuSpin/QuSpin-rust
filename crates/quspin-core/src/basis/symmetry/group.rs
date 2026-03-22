@@ -1,5 +1,7 @@
+use crate::bitbasis::{
+    BitInt, DynamicHigherSpinInv, DynamicPermDitValues, PermDitLocations, PermDitMask,
+};
 use crate::error::QuSpinError;
-use bitbasis::{BitInt, DynamicHigherSpinInv, DynamicPermDitValues, PermDitLocations, PermDitMask};
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------

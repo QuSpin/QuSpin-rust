@@ -1,4 +1,5 @@
 pub mod basis;
+pub mod bitbasis;
 pub mod error;
 pub mod hamiltonian;
 pub mod primitive;

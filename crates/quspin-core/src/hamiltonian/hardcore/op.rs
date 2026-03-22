@@ -1,4 +1,4 @@
-use bitbasis::BitInt;
+use crate::bitbasis::BitInt;
 use num_complex::Complex;
 use smallvec::SmallVec;
 

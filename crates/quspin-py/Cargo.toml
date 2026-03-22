@@ -9,7 +9,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 quspin-core = { path = "../quspin-core" }
-bitbasis = { path = "../bitbasis" }
 num-complex = { workspace = true }
 ndarray = { workspace = true }
 ruint = { workspace = true }

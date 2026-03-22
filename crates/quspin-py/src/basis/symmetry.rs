@@ -1,3 +1,8 @@
+use num_complex::Complex;
+use pyo3::prelude::*;
+use pyo3::types::{PyAnyMethods, PyList};
+use quspin_core::basis::SymmetryGrpInner;
+use quspin_core::basis::symmetry::{GrpElement, GrpOpKind, LatticeElement, SymmetryGrp};
 /// Python-facing symmetry group pyclasses.
 ///
 /// `PyLatticeElement` and `PyGrpElement` accept Python-level arguments.
@@ -11,12 +16,9 @@
 /// P   = PyGrpElement.bitflip(grp_char=1.0+0j, n_sites=4)
 /// grp = PySymmetryGrp(lattice=[T], local=[P])
 /// ```
-use bitbasis::{BitInt, DynamicHigherSpinInv, DynamicPermDitValues, PermDitLocations, PermDitMask};
-use num_complex::Complex;
-use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::basis::SymmetryGrpInner;
-use quspin_core::basis::symmetry::{GrpElement, GrpOpKind, LatticeElement, SymmetryGrp};
+use quspin_core::bitbasis::{
+    BitInt, DynamicHigherSpinInv, DynamicPermDitValues, PermDitLocations, PermDitMask,
+};
 
 use crate::error::Error;
 

@@ -37,7 +37,7 @@ repos:
         pass_filenames: false
       - id: cargo-clippy
         name: cargo clippy
-        entry: cargo clippy -p bitbasis -p quspin-core -p quspin-py --all-targets -- -D warnings
+        entry: cargo clippy -p quspin-core -p quspin-py --all-targets -- -D warnings
         language: system
         types: [rust]
         pass_filenames: false

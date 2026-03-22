@@ -1,5 +1,5 @@
 use super::BasisSpace;
-use bitbasis::BitInt;
+use crate::bitbasis::BitInt;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------

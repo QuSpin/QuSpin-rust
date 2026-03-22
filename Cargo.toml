@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "crates/bitbasis",
     "crates/quspin-core",
     "crates/quspin-py",
 ]

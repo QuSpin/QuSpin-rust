@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-bitbasis = { path = "../bitbasis" }
 num-complex = { workspace = true }
 ndarray = { workspace = true }
 rayon = { workspace = true }
