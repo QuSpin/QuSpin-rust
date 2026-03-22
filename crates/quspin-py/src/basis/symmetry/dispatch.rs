@@ -20,7 +20,7 @@ use quspin_core::basis::group::{GrpElement, GrpOpKind};
 pub enum GrpOpDesc {
     Bitflip {
         /// Site indices whose bits are flipped.
-        sites: Vec<usize>,
+        locs: Vec<usize>,
     },
     LocalValue {
         lhss: usize,
@@ -39,8 +39,8 @@ impl GrpOpDesc {
     /// Convert into a `GrpElement<B>` for a concrete basis integer type.
     pub fn into_grp_element<B: BitInt>(self, grp_char: Complex<f64>) -> GrpElement<B> {
         let op = match self {
-            GrpOpDesc::Bitflip { sites } => {
-                let mask = sites.iter().fold(B::from_u64(0), |acc, &site| {
+            GrpOpDesc::Bitflip { locs } => {
+                let mask = locs.iter().fold(B::from_u64(0), |acc, &site| {
                     if site < B::BITS as usize {
                         acc | (B::from_u64(1) << site)
                     } else {

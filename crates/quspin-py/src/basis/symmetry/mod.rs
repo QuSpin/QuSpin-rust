@@ -80,12 +80,12 @@ impl PyGrpElement {
     ///
     /// Args:
     ///   grp_char: Group character.
-    ///   sites:    List of site indices whose bits are flipped.
+    ///   locs:     List of site indices whose bits are flipped.
     #[staticmethod]
-    pub fn bitflip(grp_char: Complex<f64>, sites: Vec<usize>) -> Self {
+    pub fn bitflip(grp_char: Complex<f64>, locs: Vec<usize>) -> Self {
         PyGrpElement {
             grp_char,
-            op: GrpOpDesc::Bitflip { sites },
+            op: GrpOpDesc::Bitflip { locs },
         }
     }
 
