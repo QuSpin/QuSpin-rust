@@ -17,7 +17,7 @@
 ///
 /// - Outer list index → `cindex` value stored in each `OpEntry`.
 /// - Each inner list element is a `(op_str, coupling_list)` pair.
-/// - `op_str` characters are parsed by `PauliOp::from_char`.
+/// - `op_str` characters are parsed by `HardcoreOp::from_char`.
 /// - Each `coupling_list` element is `(coeff, site_0, site_1, ...)`.
 /// - `n_sites` is inferred from `max_site_index + 1`.
 pub mod dispatch;
@@ -26,7 +26,7 @@ pub use dispatch::HardcoreHamiltonianInner;
 
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList, PyTuple};
-use quspin_core::operator::{HardcoreHamiltonian, OpEntry, PauliOp};
+use quspin_core::operator::{HardcoreHamiltonian, HardcoreOp, OpEntry};
 use smallvec::SmallVec;
 
 use crate::error::Error;
@@ -109,9 +109,9 @@ impl PyHardcoreHamiltonian {
                         n_sites = n_sites.max(s + 1);
                     }
 
-                    let mut ops: SmallVec<[(PauliOp, u32); 4]> = SmallVec::new();
+                    let mut ops: SmallVec<[(HardcoreOp, u32); 4]> = SmallVec::new();
                     for (ch, &site) in op_str.chars().zip(sites.iter()) {
-                        let op = PauliOp::from_char(ch).ok_or_else(|| {
+                        let op = HardcoreOp::from_char(ch).ok_or_else(|| {
                             pyo3::exceptions::PyValueError::new_err(format!(
                                 "unknown operator character '{ch}'; \
                                  expected one of x, y, z, +, -, n"
@@ -169,7 +169,7 @@ impl PyHardcoreHamiltonian {
 struct RawEntry {
     cindex: usize,
     coeff: num_complex::Complex<f64>,
-    ops: SmallVec<[(PauliOp, u32); 4]>,
+    ops: SmallVec<[(HardcoreOp, u32); 4]>,
 }
 
 /// Extract a Python scalar as `Complex<f64>`.

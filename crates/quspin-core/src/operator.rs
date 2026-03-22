@@ -3,14 +3,14 @@ use num_complex::Complex;
 use smallvec::SmallVec;
 
 // ---------------------------------------------------------------------------
-// PauliOp
+// HardcoreOp
 // ---------------------------------------------------------------------------
 
 /// A single-site Pauli operator.
 ///
 /// Mirrors `pauli::OperatorType` from `operator.hpp`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PauliOp {
+pub enum HardcoreOp {
     X,
     Y,
     Z,
@@ -22,16 +22,16 @@ pub enum PauliOp {
     N,
 }
 
-impl PauliOp {
-    /// Parse a single ASCII character into a `PauliOp`.
+impl HardcoreOp {
+    /// Parse a single ASCII character into a `HardcoreOp`.
     pub fn from_char(c: char) -> Option<Self> {
         match c {
-            'x' | 'X' => Some(PauliOp::X),
-            'y' | 'Y' => Some(PauliOp::Y),
-            'z' | 'Z' => Some(PauliOp::Z),
-            '+' => Some(PauliOp::P),
-            '-' => Some(PauliOp::M),
-            'n' | 'N' => Some(PauliOp::N),
+            'x' | 'X' => Some(HardcoreOp::X),
+            'y' | 'Y' => Some(HardcoreOp::Y),
+            'z' | 'Z' => Some(HardcoreOp::Z),
+            '+' => Some(HardcoreOp::P),
+            '-' => Some(HardcoreOp::M),
+            'n' | 'N' => Some(HardcoreOp::N),
             _ => None,
         }
     }
@@ -55,12 +55,12 @@ impl PauliOp {
         let n = ((state >> loc as usize) & B::from_u64(1)).to_usize() & 1;
         let s = 1.0 - 2.0 * n as f64; // +1 if empty, -1 if occupied
 
-        let is_x = self == PauliOp::X;
-        let is_y = self == PauliOp::Y;
-        let is_z = self == PauliOp::Z;
-        let is_p = self == PauliOp::P;
-        let is_m = self == PauliOp::M;
-        let is_n = self == PauliOp::N;
+        let is_x = self == HardcoreOp::X;
+        let is_y = self == HardcoreOp::Y;
+        let is_z = self == HardcoreOp::Z;
+        let is_p = self == HardcoreOp::P;
+        let is_m = self == HardcoreOp::M;
+        let is_n = self == HardcoreOp::N;
 
         // Flip the bit for X, Y, P, M.
         let flips = is_x || is_y || is_p || is_m;
@@ -84,7 +84,7 @@ impl PauliOp {
 
 /// A single term in a Pauli Hamiltonian: a coefficient, a cindex (operator
 /// string index used to look up the corresponding matrix coefficient), and
-/// the ordered list of (PauliOp, site) pairs.
+/// the ordered list of (HardcoreOp, site) pairs.
 ///
 /// `SmallVec<[_; 4]>` keeps 1–4-body operators heap-free; longer strings
 /// fall back to heap allocation gracefully.
@@ -96,11 +96,11 @@ pub struct OpEntry<C> {
     pub cindex: C,
     pub coeff: Complex<f64>,
     /// Ordered right-to-left: element 0 is applied last.
-    pub ops: SmallVec<[(PauliOp, u32); 4]>,
+    pub ops: SmallVec<[(HardcoreOp, u32); 4]>,
 }
 
 impl<C: Copy> OpEntry<C> {
-    pub fn new(cindex: C, coeff: Complex<f64>, ops: SmallVec<[(PauliOp, u32); 4]>) -> Self {
+    pub fn new(cindex: C, coeff: Complex<f64>, ops: SmallVec<[(HardcoreOp, u32); 4]>) -> Self {
         OpEntry { cindex, coeff, ops }
     }
 
@@ -186,16 +186,16 @@ impl<C: Copy + Ord> HardcoreHamiltonian<C> {
 mod tests {
     use super::*;
 
-    // --- PauliOp::apply ---
+    // --- HardcoreOp::apply ---
 
     #[test]
     fn pauli_x_flips_bit() {
         // X at site 0: flips bit, amplitude = 1
-        let (ns, amp) = PauliOp::X.apply(0u32, 0);
+        let (ns, amp) = HardcoreOp::X.apply(0u32, 0);
         assert_eq!(ns, 1u32);
         assert_eq!(amp, Complex::new(1.0, 0.0));
 
-        let (ns2, amp2) = PauliOp::X.apply(1u32, 0);
+        let (ns2, amp2) = HardcoreOp::X.apply(1u32, 0);
         assert_eq!(ns2, 0u32);
         assert_eq!(amp2, Complex::new(1.0, 0.0));
     }
@@ -203,11 +203,11 @@ mod tests {
     #[test]
     fn pauli_z_no_flip() {
         // Z at site 0: no flip, amplitude = +1 (empty) or -1 (occupied)
-        let (ns0, amp0) = PauliOp::Z.apply(0u32, 0);
+        let (ns0, amp0) = HardcoreOp::Z.apply(0u32, 0);
         assert_eq!(ns0, 0u32);
         assert_eq!(amp0, Complex::new(1.0, 0.0)); // n=0 → s=+1
 
-        let (ns1, amp1) = PauliOp::Z.apply(1u32, 0);
+        let (ns1, amp1) = HardcoreOp::Z.apply(1u32, 0);
         assert_eq!(ns1, 1u32);
         assert_eq!(amp1, Complex::new(-1.0, 0.0)); // n=1 → s=-1
     }
@@ -215,33 +215,33 @@ mod tests {
     #[test]
     fn pauli_p_creation() {
         // P (σ⁺) at site 0: 0→1 with amp=1, 1→? with amp=0
-        let (ns, amp) = PauliOp::P.apply(0u32, 0);
+        let (ns, amp) = HardcoreOp::P.apply(0u32, 0);
         assert_eq!(ns, 1u32);
         assert_eq!(amp, Complex::new(1.0, 0.0));
 
-        let (_, amp_zero) = PauliOp::P.apply(1u32, 0);
+        let (_, amp_zero) = HardcoreOp::P.apply(1u32, 0);
         assert_eq!(amp_zero, Complex::new(0.0, 0.0));
     }
 
     #[test]
     fn pauli_m_annihilation() {
         // M (σ⁻) at site 0: 1→0 with amp=1, 0→? with amp=0
-        let (ns, amp) = PauliOp::M.apply(1u32, 0);
+        let (ns, amp) = HardcoreOp::M.apply(1u32, 0);
         assert_eq!(ns, 0u32);
         assert_eq!(amp, Complex::new(1.0, 0.0));
 
-        let (_, amp_zero) = PauliOp::M.apply(0u32, 0);
+        let (_, amp_zero) = HardcoreOp::M.apply(0u32, 0);
         assert_eq!(amp_zero, Complex::new(0.0, 0.0));
     }
 
     #[test]
     fn pauli_n_number() {
         // N at site 0: no flip, amplitude = n
-        let (ns0, amp0) = PauliOp::N.apply(0u32, 0);
+        let (ns0, amp0) = HardcoreOp::N.apply(0u32, 0);
         assert_eq!(ns0, 0u32);
         assert_eq!(amp0, Complex::new(0.0, 0.0));
 
-        let (ns1, amp1) = PauliOp::N.apply(1u32, 0);
+        let (ns1, amp1) = HardcoreOp::N.apply(1u32, 0);
         assert_eq!(ns1, 1u32);
         assert_eq!(amp1, Complex::new(1.0, 0.0));
     }
@@ -250,12 +250,12 @@ mod tests {
     fn pauli_y_imaginary() {
         // Y at site 0: flips bit, amplitude = i*s
         // n=0 (empty): s=+1, amplitude = i
-        let (ns0, amp0) = PauliOp::Y.apply(0u32, 0);
+        let (ns0, amp0) = HardcoreOp::Y.apply(0u32, 0);
         assert_eq!(ns0, 1u32);
         assert!((amp0 - Complex::new(0.0, 1.0)).norm() < 1e-12);
 
         // n=1 (occupied): s=-1, amplitude = -i
-        let (ns1, amp1) = PauliOp::Y.apply(1u32, 0);
+        let (ns1, amp1) = HardcoreOp::Y.apply(1u32, 0);
         assert_eq!(ns1, 0u32);
         assert!((amp1 - Complex::new(0.0, -1.0)).norm() < 1e-12);
     }
@@ -265,8 +265,8 @@ mod tests {
     #[test]
     fn op_entry_two_body_xx() {
         // XX at sites (0, 1): flip both bits, amplitude = 1*1 = 1
-        let ops: SmallVec<[(PauliOp, u32); 4]> =
-            smallvec::smallvec![(PauliOp::X, 0), (PauliOp::X, 1),];
+        let ops: SmallVec<[(HardcoreOp, u32); 4]> =
+            smallvec::smallvec![(HardcoreOp::X, 0), (HardcoreOp::X, 1),];
         let entry = OpEntry::<u8>::new(0, Complex::new(0.5, 0.0), ops);
 
         let state: u32 = 0b00;
@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn hamiltonian_single_x_term() {
         // H = 0.5 * X_0, cindex=0
-        let ops: SmallVec<[(PauliOp, u32); 4]> = smallvec::smallvec![(PauliOp::X, 0)];
+        let ops: SmallVec<[(HardcoreOp, u32); 4]> = smallvec::smallvec![(HardcoreOp::X, 0)];
         let terms = vec![OpEntry::<u8>::new(0, Complex::new(0.5, 0.0), ops)];
         let ham = HardcoreHamiltonian::new(terms, 1);
 
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn hamiltonian_zero_amplitude_filtered() {
         // H = P_0 applied to state |1⟩ (occupied): P gives amplitude 0, should be filtered
-        let ops: SmallVec<[(PauliOp, u32); 4]> = smallvec::smallvec![(PauliOp::P, 0)];
+        let ops: SmallVec<[(HardcoreOp, u32); 4]> = smallvec::smallvec![(HardcoreOp::P, 0)];
         let terms = vec![OpEntry::<u8>::new(0, Complex::new(1.0, 0.0), ops)];
         let ham = HardcoreHamiltonian::new(terms, 1);
         let result = ham.apply(1u32);

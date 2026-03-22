@@ -145,10 +145,10 @@ mod tests {
     use smallvec::smallvec;
 
     fn xx_ham() -> HardcoreHamiltonian<u8> {
-        use crate::operator::{OpEntry, PauliOp};
+        use crate::operator::{HardcoreOp, OpEntry};
         // H = Σ_i X_i X_{i+1}, two-site chain
         // Term 0: X_0 X_1, cindex=0, coeff=1
-        let ops0 = smallvec![(PauliOp::X, 0u32), (PauliOp::X, 1u32)];
+        let ops0 = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops0)];
         HardcoreHamiltonian::new(terms, 2)
     }
@@ -185,8 +185,8 @@ mod tests {
         // 1-particle sector of 2-site XX: states {|01⟩=1, |10⟩=2}
         // XX connects them: H|01⟩=|10⟩, H|10⟩=|01⟩
         // Subspace sorted ascending: state_at(0)=1, state_at(1)=2
-        use crate::operator::{OpEntry, PauliOp};
-        let ops = smallvec![(PauliOp::X, 0u32), (PauliOp::X, 1u32)];
+        use crate::operator::{HardcoreOp, OpEntry};
+        let ops = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)];
         let ham = HardcoreHamiltonian::new(terms, 2);
 
