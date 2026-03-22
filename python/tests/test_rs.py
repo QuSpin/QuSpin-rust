@@ -283,7 +283,7 @@ class TestSymmetricBasis:
         assert basis.size <= full_basis.size
 
     def test_bitflip_symmetry(self):
-        P = PyGrpElement.bitflip(grp_char=1.0 + 0j, mask=0b1111)
+        P = PyGrpElement.bitflip(grp_char=1.0 + 0j, sites=[0, 1, 2, 3])
         grp = PySymmetryGrp([], [P])
         h = make_ham()
         # Use the canonical representative: the larger of each (state, partner) pair.

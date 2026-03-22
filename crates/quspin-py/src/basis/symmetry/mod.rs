@@ -21,7 +21,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
 use quspin_core::basis::group::{GrpElement, LatticeElement, SymmetryGrp};
 
-use dispatch::{GrpOpDesc, python_int_to_limbs};
+use dispatch::GrpOpDesc;
 
 // ---------------------------------------------------------------------------
 // PyLatticeElement
@@ -80,14 +80,13 @@ impl PyGrpElement {
     ///
     /// Args:
     ///   grp_char: Group character.
-    ///   mask:     Python int; the bits that are flipped.
+    ///   sites:    List of site indices whose bits are flipped.
     #[staticmethod]
-    pub fn bitflip(grp_char: Complex<f64>, mask: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let mask_limbs = python_int_to_limbs(mask)?;
-        Ok(PyGrpElement {
+    pub fn bitflip(grp_char: Complex<f64>, sites: Vec<usize>) -> Self {
+        PyGrpElement {
             grp_char,
-            op: GrpOpDesc::Bitflip { mask_limbs },
-        })
+            op: GrpOpDesc::Bitflip { sites },
+        }
     }
 
     /// Local dit-value permutation symmetry.
