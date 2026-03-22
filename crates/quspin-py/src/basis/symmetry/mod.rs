@@ -1,24 +1,23 @@
 /// Python-facing symmetry group pyclasses.
 ///
-/// `PyLatticeElement`, `PyGrpElement`, and `PySymmetryGrp` mirror the core
-/// types `LatticeElement`, `GrpElement<B>`, and `SymmetryGrp<B>` but store
-/// their data in a type-erased form (before the basis integer type `B` is
-/// known).  The concrete `B` is selected at basis-construction time, at which
-/// point `PySymmetryGrp::into_symmetry_grp::<B>()` instantiates everything.
+/// `PyLatticeElement` and `PyGrpElement` accept Python-level arguments.
+/// `PySymmetryGrp` resolves the concrete basis integer type `B` at construction
+/// time (based on `n_sites`) and stores an eager `SymmetryGrpInner`.
 ///
 /// ## Python API
 ///
 /// ```python
 /// T   = PyLatticeElement(grp_char=1.0+0j, perm=[1, 2, 3, 0], lhss=2)
-/// P   = PyGrpElement.bitflip(grp_char=1.0+0j, mask=0b1111)
+/// P   = PyGrpElement.bitflip(grp_char=1.0+0j, n_sites=4)
 /// grp = PySymmetryGrp(lattice=[T], local=[P])
 /// ```
 pub mod dispatch;
 
-use bitbasis::{BitInt, PermDitLocations};
+use bitbasis::PermDitLocations;
 use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
+use quspin_core::basis::SymmetryGrpInner;
 use quspin_core::basis::symmetry::{GrpElement, LatticeElement, SymmetryGrp};
 
 use crate::error::Error;
@@ -72,7 +71,7 @@ impl PyLatticeElement {
 /// A local symmetry group element: a bit-operation with a group character.
 ///
 /// Type-erased before the basis integer type is known; converted to
-/// `GrpElement<B>` at basis-construction time via `GrpOpDesc::into_grp_element`.
+/// `GrpElement<B>` inside `PySymmetryGrp::new` via `GrpOpDesc::into_grp_element`.
 #[pyclass(name = "PyGrpElement")]
 pub struct PyGrpElement {
     pub grp_char: Complex<f64>,
@@ -158,34 +157,11 @@ impl PyGrpElement {
 
 /// A symmetry group: a product of lattice and local group elements.
 ///
-/// At basis-construction time, call `into_symmetry_grp::<B>()` to produce a
-/// `SymmetryGrp<B>` for the concrete basis integer type `B`.
+/// The concrete basis integer type `B` is selected at construction time
+/// based on `n_sites`, and the group is stored as a `SymmetryGrpInner`.
 #[pyclass(name = "PySymmetryGrp")]
 pub struct PySymmetryGrp {
-    pub n_sites: usize,
-    pub lattice: Vec<(Complex<f64>, Vec<usize>, usize)>,
-    pub local: Vec<(Complex<f64>, GrpOpDesc)>,
-}
-
-impl PySymmetryGrp {
-    /// Instantiate a `SymmetryGrp<B>` for the concrete basis integer type.
-    pub fn into_symmetry_grp<B: BitInt>(&self) -> PyResult<SymmetryGrp<B>> {
-        let lattice: Vec<LatticeElement> = self
-            .lattice
-            .iter()
-            .map(|(char_, perm, lhss)| {
-                LatticeElement::new(*char_, PermDitLocations::new(*lhss, perm), perm.len())
-            })
-            .collect();
-
-        let local: Vec<GrpElement<B>> = self
-            .local
-            .iter()
-            .map(|(char_, op)| op.clone().into_grp_element::<B>(*char_))
-            .collect();
-
-        SymmetryGrp::new(lattice, local).map_err(|e| Error(e).into())
-    }
+    pub inner: SymmetryGrpInner,
 }
 
 #[pymethods]
@@ -193,7 +169,8 @@ impl PySymmetryGrp {
     /// Construct from lists of `PyLatticeElement` and `PyGrpElement` objects.
     ///
     /// Validates that all elements agree on `n_sites`.
-    /// Data is extracted from the Python objects immediately.
+    /// Selects the concrete `B` type based on `n_sites` and eagerly builds
+    /// the `SymmetryGrp<B>`, stored as a `SymmetryGrpInner`.
     #[new]
     pub fn new(
         py: Python<'_>,
@@ -217,31 +194,67 @@ impl PySymmetryGrp {
             }
         };
 
-        let mut lattice_data = Vec::with_capacity(lattice.len());
+        let mut lattice_elements: Vec<LatticeElement> = Vec::with_capacity(lattice.len());
         for item in lattice.iter() {
             let el: PyRef<'_, PyLatticeElement> = item.extract()?;
             check(el.perm.len())?;
-            lattice_data.push((el.grp_char, el.perm.clone(), el.lhss));
+            lattice_elements.push(el.to_lattice_element());
         }
 
-        let mut local_data = Vec::with_capacity(local.len());
+        // Collect local elements as (grp_char, GrpOpDesc) for deferred B-dispatch.
+        let mut local_descs: Vec<(Complex<f64>, GrpOpDesc)> = Vec::with_capacity(local.len());
         for item in local.iter() {
             let el: PyRef<'_, PyGrpElement> = item.extract()?;
             check(el.n_sites)?;
-            local_data.push((el.grp_char, el.op.clone()));
+            local_descs.push((el.grp_char, el.op.clone()));
         }
 
         let _ = py;
-        Ok(PySymmetryGrp {
-            n_sites: n_sites_opt.unwrap_or(0),
-            lattice: lattice_data,
-            local: local_data,
-        })
+        let n_sites = n_sites_opt.unwrap_or(0);
+
+        // Select B and build SymmetryGrpInner.
+        macro_rules! build_inner {
+            ($B:ty, $from_grp:ident) => {{
+                let local_elements: Vec<GrpElement<$B>> = local_descs
+                    .into_iter()
+                    .map(|(char_, op)| op.into_grp_element::<$B>(char_))
+                    .collect();
+                let grp = SymmetryGrp::<$B>::new(lattice_elements, local_elements)
+                    .map_err(|e| PyErr::from(Error(e)))?;
+                SymmetryGrpInner::$from_grp(grp)
+            }};
+        }
+
+        let inner = if n_sites <= 32 {
+            build_inner!(u32, from_grp_32)
+        } else if n_sites <= 64 {
+            build_inner!(u64, from_grp_64)
+        } else if n_sites <= 128 {
+            build_inner!(ruint::Uint<128, 2>, from_grp_128)
+        } else if n_sites <= 256 {
+            build_inner!(ruint::Uint<256, 4>, from_grp_256)
+        } else if n_sites <= 512 {
+            build_inner!(ruint::Uint<512, 8>, from_grp_512)
+        } else if n_sites <= 1024 {
+            build_inner!(ruint::Uint<1024, 16>, from_grp_1024)
+        } else if n_sites <= 2048 {
+            build_inner!(ruint::Uint<2048, 32>, from_grp_2048)
+        } else if n_sites <= 4096 {
+            build_inner!(ruint::Uint<4096, 64>, from_grp_4096)
+        } else if n_sites <= 8192 {
+            build_inner!(ruint::Uint<8192, 128>, from_grp_8192)
+        } else {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "n_sites={n_sites} exceeds the maximum supported value of 8192"
+            )));
+        };
+
+        Ok(PySymmetryGrp { inner })
     }
 
     /// Number of sites in the system.
     #[getter]
     pub fn n_sites(&self) -> usize {
-        self.n_sites
+        self.inner.n_sites()
     }
 }

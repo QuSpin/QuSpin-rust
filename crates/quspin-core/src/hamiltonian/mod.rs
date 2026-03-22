@@ -1,3 +1,3 @@
 pub mod hardcore;
 
-pub use hardcore::{HardcoreHamiltonian, HardcoreOp, OpEntry};
+pub use hardcore::{HardcoreHamiltonian, HardcoreHamiltonianInner, HardcoreOp, OpEntry};

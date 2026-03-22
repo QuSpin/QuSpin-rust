@@ -29,8 +29,9 @@ use crate::dtype::MatrixDType;
 use crate::error::Error;
 use crate::hamiltonian::PyHardcoreHamiltonian;
 use crate::hamiltonian::dispatch::HardcoreHamiltonianInner;
-use crate::{with_plain_basis, with_sym_basis, with_value_dtype};
+use crate::with_value_dtype;
 use dispatch::{IntoQMatrixInner, QMatrixInner};
+use quspin_core::{with_plain_basis, with_sym_basis};
 
 // ---------------------------------------------------------------------------
 // PyQMatrix
@@ -122,7 +123,7 @@ impl PyQMatrix {
         output: &Bound<'_, PyAny>,
         overwrite: bool,
     ) -> PyResult<()> {
-        use crate::with_qmatrix;
+        use quspin_core::with_qmatrix;
         with_qmatrix!(&self.inner, V, _C, mat, {
             let c = coeff.downcast::<PyArray1<V>>().map_err(|_| {
                 pyo3::exceptions::PyTypeError::new_err(
@@ -174,7 +175,7 @@ impl PyQMatrix {
         output: &Bound<'_, PyAny>,
         overwrite: bool,
     ) -> PyResult<()> {
-        use crate::with_qmatrix;
+        use quspin_core::with_qmatrix;
         with_qmatrix!(&self.inner, V, _C, mat, {
             let c = coeff.downcast::<PyArray1<V>>().map_err(|_| {
                 pyo3::exceptions::PyTypeError::new_err(
@@ -216,13 +217,21 @@ impl PyQMatrix {
 
     /// Element-wise addition (clones both operands).
     pub fn __add__(&self, other: &PyQMatrix) -> PyResult<PyQMatrix> {
-        let result = self.inner.clone().try_add(other.inner.clone())?;
+        let result = self
+            .inner
+            .clone()
+            .try_add(other.inner.clone())
+            .map_err(Error)?;
         Ok(PyQMatrix { inner: result })
     }
 
     /// Element-wise subtraction (clones both operands).
     pub fn __sub__(&self, other: &PyQMatrix) -> PyResult<PyQMatrix> {
-        let result = self.inner.clone().try_sub(other.inner.clone())?;
+        let result = self
+            .inner
+            .clone()
+            .try_sub(other.inner.clone())
+            .map_err(Error)?;
         Ok(PyQMatrix { inner: result })
     }
 

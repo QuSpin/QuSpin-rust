@@ -1,5 +1,8 @@
 pub mod build;
+pub mod dispatch;
 pub mod ops;
+
+pub use dispatch::{IntoQMatrixInner, QMatrixInner};
 
 use crate::error::QuSpinError;
 use crate::primitive::Primitive;

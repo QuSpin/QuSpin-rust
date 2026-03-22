@@ -1,3 +1,7 @@
+pub mod dispatch;
+
+pub use dispatch::SymmetryGrpInner;
+
 use crate::error::QuSpinError;
 use bitbasis::{BitInt, DynamicHigherSpinInv, DynamicPermDitValues, PermDitLocations, PermDitMask};
 use num_complex::Complex;
@@ -10,6 +14,7 @@ use num_complex::Complex;
 ///
 /// Always wraps a `PermDitLocations`; stored separately from local elements
 /// because the lattice field of `SymmetryGrp` is always this type.
+#[derive(Clone)]
 pub struct LatticeElement {
     pub grp_char: Complex<f64>,
     pub n_sites: usize,
@@ -46,6 +51,7 @@ impl LatticeElement {
 /// keeping the `GrpElement` type uniform.
 ///
 /// Mirrors the non-lattice `grp_element` instantiations in `grp_element.hpp`.
+#[derive(Clone)]
 pub enum GrpOpKind<B: BitInt> {
     /// XOR with a fixed mask (Z₂ bit-flip symmetry).
     Bitflip(PermDitMask<B>),
@@ -75,6 +81,7 @@ impl<B: BitInt> GrpOpKind<B> {
 ///
 /// Mirrors `grp_element<bit_op, bitset_t>` from `single_grp_element.hpp`
 /// for the non-lattice operations.
+#[derive(Clone)]
 pub struct GrpElement<B: BitInt> {
     pub grp_char: Complex<f64>,
     pub n_sites: usize,
@@ -117,6 +124,7 @@ impl<B: BitInt> GrpElement<B> {
 /// followed by all lattice ops.
 ///
 /// Mirrors `grp<grp_result_t, lattice_t, local_t>` from `grp.hpp`.
+#[derive(Clone)]
 pub struct SymmetryGrp<B: BitInt> {
     n_sites: usize,
     lattice: Vec<LatticeElement>,

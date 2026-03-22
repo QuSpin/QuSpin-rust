@@ -6,5 +6,5 @@ pub mod traits;
 
 pub use space::{FullSpace, Subspace};
 pub use sym::SymmetricSubspace;
-pub use symmetry::{GrpElement, GrpOpKind, LatticeElement, SymmetryGrp};
+pub use symmetry::{GrpElement, GrpOpKind, LatticeElement, SymmetryGrp, SymmetryGrpInner};
 pub use traits::BasisSpace;

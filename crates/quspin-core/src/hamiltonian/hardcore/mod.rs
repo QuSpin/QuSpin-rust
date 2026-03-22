@@ -1,5 +1,7 @@
+pub mod dispatch;
 pub mod op;
 
+pub use dispatch::HardcoreHamiltonianInner;
 pub use op::{HardcoreOp, OpEntry};
 
 use bitbasis::BitInt;
