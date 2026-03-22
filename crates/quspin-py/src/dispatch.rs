@@ -50,16 +50,18 @@ type B8192 = ruint::Uint<8192, 128>;
 /// Type-erased wrapper for the three basis-space variants over all supported
 /// integer widths.
 ///
-/// 16 variants total:
+/// 20 variants total:
 /// - 2 `Full` variants (u32, u64)
-/// - 7 `Sub` variants (128–8192 bit ruint integers)
-/// - 7 `Sym` variants (128–8192 bit ruint integers)
+/// - 9 `Sub` variants (u32, u64, and 128–8192 bit ruint integers)
+/// - 9 `Sym` variants (u32, u64, and 128–8192 bit ruint integers)
 pub enum HardcoreBasisInner {
     // Full Hilbert spaces (small n_sites only).
     Full32(FullSpace<u32>),
     Full64(FullSpace<u64>),
 
     // Subspaces (particle-number or energy sector).
+    Sub32(Subspace<u32>),
+    Sub64(Subspace<u64>),
     Sub128(Subspace<B128>),
     Sub256(Subspace<B256>),
     Sub512(Subspace<B512>),
@@ -69,6 +71,8 @@ pub enum HardcoreBasisInner {
     Sub8192(Subspace<B8192>),
 
     // Symmetry-reduced subspaces.
+    Sym32(SymmetricSubspace<u32>),
+    Sym64(SymmetricSubspace<u64>),
     Sym128(SymmetricSubspace<B128>),
     Sym256(SymmetricSubspace<B256>),
     Sym512(SymmetricSubspace<B512>),
@@ -85,6 +89,8 @@ impl HardcoreBasisInner {
         match self {
             HardcoreBasisInner::Full32(b) => b.size(),
             HardcoreBasisInner::Full64(b) => b.size(),
+            HardcoreBasisInner::Sub32(b) => b.size(),
+            HardcoreBasisInner::Sub64(b) => b.size(),
             HardcoreBasisInner::Sub128(b) => b.size(),
             HardcoreBasisInner::Sub256(b) => b.size(),
             HardcoreBasisInner::Sub512(b) => b.size(),
@@ -92,6 +98,8 @@ impl HardcoreBasisInner {
             HardcoreBasisInner::Sub2048(b) => b.size(),
             HardcoreBasisInner::Sub4096(b) => b.size(),
             HardcoreBasisInner::Sub8192(b) => b.size(),
+            HardcoreBasisInner::Sym32(b) => b.size(),
+            HardcoreBasisInner::Sym64(b) => b.size(),
             HardcoreBasisInner::Sym128(b) => b.size(),
             HardcoreBasisInner::Sym256(b) => b.size(),
             HardcoreBasisInner::Sym512(b) => b.size(),
@@ -106,7 +114,9 @@ impl HardcoreBasisInner {
     pub fn is_symmetric(&self) -> bool {
         matches!(
             self,
-            HardcoreBasisInner::Sym128(_)
+            HardcoreBasisInner::Sym32(_)
+                | HardcoreBasisInner::Sym64(_)
+                | HardcoreBasisInner::Sym128(_)
                 | HardcoreBasisInner::Sym256(_)
                 | HardcoreBasisInner::Sym512(_)
                 | HardcoreBasisInner::Sym1024(_)
@@ -267,6 +277,14 @@ macro_rules! with_basis {
                 type $B = u64;
                 $body
             }
+            $crate::dispatch::HardcoreBasisInner::Sub32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sub64($basis) => {
+                type $B = u64;
+                $body
+            }
             $crate::dispatch::HardcoreBasisInner::Sub128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
@@ -293,6 +311,14 @@ macro_rules! with_basis {
             }
             $crate::dispatch::HardcoreBasisInner::Sub8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sym32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sym64($basis) => {
+                type $B = u64;
                 $body
             }
             $crate::dispatch::HardcoreBasisInner::Sym128($basis) => {

@@ -1,3 +1,4 @@
+pub mod basis;
 pub mod dispatch;
 pub mod dtype;
 pub mod error;
