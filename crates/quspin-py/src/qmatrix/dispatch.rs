@@ -1,0 +1,231 @@
+/// Type-erased `QMatrixInner`, `IntoQMatrixInner`, and the `with_qmatrix!` macro.
+///
+/// 12 variants: 6 value types × 2 cindex types.  The index type `I` is fixed
+/// to `i64` at the PyO3 boundary.
+///
+/// Naming convention: `QM` prefix, value type abbreviation, cindex type
+/// abbreviation.  For example `QMf64U8` is `QMatrix<f64, i64, u8>`.
+use quspin_core::qmatrix::QMatrix;
+
+// ---------------------------------------------------------------------------
+// QMatrixInner
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+pub enum QMatrixInner {
+    QMi8U8(QMatrix<i8, i64, u8>),
+    QMi8U16(QMatrix<i8, i64, u16>),
+    QMi16U8(QMatrix<i16, i64, u8>),
+    QMi16U16(QMatrix<i16, i64, u16>),
+    QMf32U8(QMatrix<f32, i64, u8>),
+    QMf32U16(QMatrix<f32, i64, u16>),
+    QMf64U8(QMatrix<f64, i64, u8>),
+    QMf64U16(QMatrix<f64, i64, u16>),
+    /// `complex64` (2 × f32).
+    QMc32U8(QMatrix<num_complex::Complex<f32>, i64, u8>),
+    QMc32U16(QMatrix<num_complex::Complex<f32>, i64, u16>),
+    /// `complex128` (2 × f64).
+    QMc64U8(QMatrix<num_complex::Complex<f64>, i64, u8>),
+    QMc64U16(QMatrix<num_complex::Complex<f64>, i64, u16>),
+}
+
+impl QMatrixInner {
+    pub fn dim(&self) -> usize {
+        match self {
+            QMatrixInner::QMi8U8(m) => m.dim(),
+            QMatrixInner::QMi8U16(m) => m.dim(),
+            QMatrixInner::QMi16U8(m) => m.dim(),
+            QMatrixInner::QMi16U16(m) => m.dim(),
+            QMatrixInner::QMf32U8(m) => m.dim(),
+            QMatrixInner::QMf32U16(m) => m.dim(),
+            QMatrixInner::QMf64U8(m) => m.dim(),
+            QMatrixInner::QMf64U16(m) => m.dim(),
+            QMatrixInner::QMc32U8(m) => m.dim(),
+            QMatrixInner::QMc32U16(m) => m.dim(),
+            QMatrixInner::QMc64U8(m) => m.dim(),
+            QMatrixInner::QMc64U16(m) => m.dim(),
+        }
+    }
+
+    pub fn nnz(&self) -> usize {
+        match self {
+            QMatrixInner::QMi8U8(m) => m.nnz(),
+            QMatrixInner::QMi8U16(m) => m.nnz(),
+            QMatrixInner::QMi16U8(m) => m.nnz(),
+            QMatrixInner::QMi16U16(m) => m.nnz(),
+            QMatrixInner::QMf32U8(m) => m.nnz(),
+            QMatrixInner::QMf32U16(m) => m.nnz(),
+            QMatrixInner::QMf64U8(m) => m.nnz(),
+            QMatrixInner::QMf64U16(m) => m.nnz(),
+            QMatrixInner::QMc32U8(m) => m.nnz(),
+            QMatrixInner::QMc32U16(m) => m.nnz(),
+            QMatrixInner::QMc64U8(m) => m.nnz(),
+            QMatrixInner::QMc64U16(m) => m.nnz(),
+        }
+    }
+
+    /// Element-wise addition.  Both operands must have the same dtype.
+    pub fn try_add(self, rhs: Self) -> Result<Self, crate::error::Error> {
+        use quspin_core::error::QuSpinError;
+        macro_rules! add_variant {
+            ($a:expr, $b:expr, $variant:ident) => {
+                match $b {
+                    QMatrixInner::$variant(r) => Ok(QMatrixInner::$variant($a + r)),
+                    _ => Err(crate::error::Error(QuSpinError::ValueError(
+                        "QMatrix dtype mismatch in addition".to_string(),
+                    ))),
+                }
+            };
+        }
+        match self {
+            QMatrixInner::QMi8U8(l) => add_variant!(l, rhs, QMi8U8),
+            QMatrixInner::QMi8U16(l) => add_variant!(l, rhs, QMi8U16),
+            QMatrixInner::QMi16U8(l) => add_variant!(l, rhs, QMi16U8),
+            QMatrixInner::QMi16U16(l) => add_variant!(l, rhs, QMi16U16),
+            QMatrixInner::QMf32U8(l) => add_variant!(l, rhs, QMf32U8),
+            QMatrixInner::QMf32U16(l) => add_variant!(l, rhs, QMf32U16),
+            QMatrixInner::QMf64U8(l) => add_variant!(l, rhs, QMf64U8),
+            QMatrixInner::QMf64U16(l) => add_variant!(l, rhs, QMf64U16),
+            QMatrixInner::QMc32U8(l) => add_variant!(l, rhs, QMc32U8),
+            QMatrixInner::QMc32U16(l) => add_variant!(l, rhs, QMc32U16),
+            QMatrixInner::QMc64U8(l) => add_variant!(l, rhs, QMc64U8),
+            QMatrixInner::QMc64U16(l) => add_variant!(l, rhs, QMc64U16),
+        }
+    }
+
+    /// Element-wise subtraction.  Both operands must have the same dtype.
+    pub fn try_sub(self, rhs: Self) -> Result<Self, crate::error::Error> {
+        use quspin_core::error::QuSpinError;
+        macro_rules! sub_variant {
+            ($a:expr, $b:expr, $variant:ident) => {
+                match $b {
+                    QMatrixInner::$variant(r) => Ok(QMatrixInner::$variant($a - r)),
+                    _ => Err(crate::error::Error(QuSpinError::ValueError(
+                        "QMatrix dtype mismatch in subtraction".to_string(),
+                    ))),
+                }
+            };
+        }
+        match self {
+            QMatrixInner::QMi8U8(l) => sub_variant!(l, rhs, QMi8U8),
+            QMatrixInner::QMi8U16(l) => sub_variant!(l, rhs, QMi8U16),
+            QMatrixInner::QMi16U8(l) => sub_variant!(l, rhs, QMi16U8),
+            QMatrixInner::QMi16U16(l) => sub_variant!(l, rhs, QMi16U16),
+            QMatrixInner::QMf32U8(l) => sub_variant!(l, rhs, QMf32U8),
+            QMatrixInner::QMf32U16(l) => sub_variant!(l, rhs, QMf32U16),
+            QMatrixInner::QMf64U8(l) => sub_variant!(l, rhs, QMf64U8),
+            QMatrixInner::QMf64U16(l) => sub_variant!(l, rhs, QMf64U16),
+            QMatrixInner::QMc32U8(l) => sub_variant!(l, rhs, QMc32U8),
+            QMatrixInner::QMc32U16(l) => sub_variant!(l, rhs, QMc32U16),
+            QMatrixInner::QMc64U8(l) => sub_variant!(l, rhs, QMc64U8),
+            QMatrixInner::QMc64U16(l) => sub_variant!(l, rhs, QMc64U16),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// IntoQMatrixInner
+// ---------------------------------------------------------------------------
+
+/// Convert a concrete `QMatrix<V, i64, C>` to the type-erased `QMatrixInner`.
+pub trait IntoQMatrixInner {
+    fn into_qmatrix_inner(self) -> QMatrixInner;
+}
+
+macro_rules! impl_into_qmatrix_inner {
+    ($V:ty, $C:ty, $variant:ident) => {
+        impl IntoQMatrixInner for QMatrix<$V, i64, $C> {
+            #[inline]
+            fn into_qmatrix_inner(self) -> QMatrixInner {
+                QMatrixInner::$variant(self)
+            }
+        }
+    };
+}
+
+impl_into_qmatrix_inner!(i8, u8, QMi8U8);
+impl_into_qmatrix_inner!(i8, u16, QMi8U16);
+impl_into_qmatrix_inner!(i16, u8, QMi16U8);
+impl_into_qmatrix_inner!(i16, u16, QMi16U16);
+impl_into_qmatrix_inner!(f32, u8, QMf32U8);
+impl_into_qmatrix_inner!(f32, u16, QMf32U16);
+impl_into_qmatrix_inner!(f64, u8, QMf64U8);
+impl_into_qmatrix_inner!(f64, u16, QMf64U16);
+impl_into_qmatrix_inner!(num_complex::Complex<f32>, u8, QMc32U8);
+impl_into_qmatrix_inner!(num_complex::Complex<f32>, u16, QMc32U16);
+impl_into_qmatrix_inner!(num_complex::Complex<f64>, u8, QMc64U8);
+impl_into_qmatrix_inner!(num_complex::Complex<f64>, u16, QMc64U16);
+
+// ---------------------------------------------------------------------------
+// with_qmatrix! macro
+// ---------------------------------------------------------------------------
+
+/// Match on a `&QMatrixInner`, injecting type aliases `$V` and `$C` and
+/// binding `$mat` to the inner `QMatrix` reference.
+#[macro_export]
+macro_rules! with_qmatrix {
+    ($inner:expr, $V:ident, $C:ident, $mat:ident, $body:block) => {
+        match $inner {
+            $crate::qmatrix::dispatch::QMatrixInner::QMi8U8($mat) => {
+                type $V = i8;
+                type $C = u8;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMi8U16($mat) => {
+                type $V = i8;
+                type $C = u16;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMi16U8($mat) => {
+                type $V = i16;
+                type $C = u8;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMi16U16($mat) => {
+                type $V = i16;
+                type $C = u16;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMf32U8($mat) => {
+                type $V = f32;
+                type $C = u8;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMf32U16($mat) => {
+                type $V = f32;
+                type $C = u16;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMf64U8($mat) => {
+                type $V = f64;
+                type $C = u8;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMf64U16($mat) => {
+                type $V = f64;
+                type $C = u16;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMc32U8($mat) => {
+                type $V = ::num_complex::Complex<f32>;
+                type $C = u8;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMc32U16($mat) => {
+                type $V = ::num_complex::Complex<f32>;
+                type $C = u16;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMc64U8($mat) => {
+                type $V = ::num_complex::Complex<f64>;
+                type $C = u8;
+                $body
+            }
+            $crate::qmatrix::dispatch::QMatrixInner::QMc64U16($mat) => {
+                type $V = ::num_complex::Complex<f64>;
+                type $C = u16;
+                $body
+            }
+        }
+    };
+}

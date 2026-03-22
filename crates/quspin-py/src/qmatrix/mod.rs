@@ -17,17 +17,20 @@
 /// mat.dim   # int
 /// mat.nnz   # int
 /// ```
+pub mod dispatch;
+
 use numpy::{PyArray1, PyArrayMethods};
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use quspin_core::qmatrix::build::{build_from_basis, build_from_symmetric};
 
-use crate::basis::PyHardcoreBasis;
-use crate::dispatch::{IntoQMatrixInner, QMatrixInner};
+use crate::basis::hardcore::PyHardcoreBasis;
 use crate::dtype::MatrixDType;
 use crate::error::Error;
-use crate::hamiltonian::{PauliHamiltonianInner, PyPauliHamiltonian};
+use crate::hamiltonian::PyPauliHamiltonian;
+use crate::hamiltonian::dispatch::PauliHamiltonianInner;
 use crate::{with_plain_basis, with_sym_basis, with_value_dtype};
+use dispatch::{IntoQMatrixInner, QMatrixInner};
 
 // ---------------------------------------------------------------------------
 // PyQMatrix
@@ -57,12 +60,9 @@ impl PyQMatrix {
         basis: &PyHardcoreBasis,
         dtype: &Bound<'_, numpy::PyArrayDescr>,
     ) -> PyResult<Self> {
-        // Determine value dtype from the numpy dtype descriptor.
         let v_dtype = MatrixDType::from_descr(py, dtype).map_err(Error::from)?;
 
-        // Dispatch over value type; cindex type is inferred from the Ham variant.
         let mat_inner = if basis.inner.is_symmetric() {
-            // Symmetric basis: build_from_symmetric applies symmetry scaling.
             with_value_dtype!(v_dtype, V, {
                 with_sym_basis!(&basis.inner, B, sym_basis, {
                     match &ham.inner {
@@ -77,7 +77,6 @@ impl PyQMatrix {
                 })
             })
         } else {
-            // Full or subspace: build_from_basis (no symmetry scaling).
             with_value_dtype!(v_dtype, V, {
                 with_plain_basis!(&basis.inner, B, plain_basis, {
                     match &ham.inner {
@@ -210,19 +209,13 @@ impl PyQMatrix {
 
     /// Element-wise addition (clones both operands).
     pub fn __add__(&self, other: &PyQMatrix) -> PyResult<PyQMatrix> {
-        // We need to clone both sides to satisfy the owned Add impl.
-        // TODO: add AddAssign / in-place ops to avoid double allocation.
-        let lhs = clone_qmatrix_inner(&self.inner);
-        let rhs = clone_qmatrix_inner(&other.inner);
-        let result = lhs.try_add(rhs)?;
+        let result = self.inner.clone().try_add(other.inner.clone())?;
         Ok(PyQMatrix { inner: result })
     }
 
     /// Element-wise subtraction (clones both operands).
     pub fn __sub__(&self, other: &PyQMatrix) -> PyResult<PyQMatrix> {
-        let lhs = clone_qmatrix_inner(&self.inner);
-        let rhs = clone_qmatrix_inner(&other.inner);
-        let result = lhs.try_sub(rhs)?;
+        let result = self.inner.clone().try_sub(other.inner.clone())?;
         Ok(PyQMatrix { inner: result })
     }
 
@@ -241,13 +234,4 @@ impl PyQMatrix {
     pub fn nnz(&self) -> usize {
         self.inner.nnz()
     }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Clone a `QMatrixInner` by delegating to `QMatrixInner: Clone`.
-fn clone_qmatrix_inner(inner: &QMatrixInner) -> QMatrixInner {
-    inner.clone()
 }

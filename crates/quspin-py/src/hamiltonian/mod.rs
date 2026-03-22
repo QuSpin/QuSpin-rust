@@ -20,41 +20,16 @@
 /// - `op_str` characters are parsed by `PauliOp::from_char`.
 /// - Each `coupling_list` element is `(coeff, site_0, site_1, ...)`.
 /// - `n_sites` is inferred from `max_site_index + 1`.
+pub mod dispatch;
+
+pub use dispatch::PauliHamiltonianInner;
+
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList, PyTuple};
 use quspin_core::operator::{OpEntry, PauliHamiltonian, PauliOp};
 use smallvec::SmallVec;
 
 use crate::error::Error;
-
-// ---------------------------------------------------------------------------
-// PauliHamiltonianInner
-// ---------------------------------------------------------------------------
-
-/// Type-erased `PauliHamiltonian`: either u8 or u16 cindex type.
-///
-/// `u8` is chosen when all cindex values and all site indices fit in 0–255;
-/// `u16` is chosen otherwise.
-pub enum PauliHamiltonianInner {
-    Ham8(PauliHamiltonian<u8>),
-    Ham16(PauliHamiltonian<u16>),
-}
-
-impl PauliHamiltonianInner {
-    pub fn n_sites(&self) -> usize {
-        match self {
-            PauliHamiltonianInner::Ham8(h) => h.n_sites(),
-            PauliHamiltonianInner::Ham16(h) => h.n_sites(),
-        }
-    }
-
-    pub fn num_cindices(&self) -> usize {
-        match self {
-            PauliHamiltonianInner::Ham8(h) => h.num_terms(),
-            PauliHamiltonianInner::Ham16(h) => h.num_terms(),
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // PyPauliHamiltonian
@@ -73,7 +48,6 @@ impl PyPauliHamiltonian {
     /// Each `coupling_list` element is `(coeff, site_0, site_1, ...)`.
     #[new]
     pub fn new(py: Python<'_>, terms: &Bound<'_, PyList>) -> PyResult<Self> {
-        // Collect all entries as u32 cindex first; decide u8 vs u16 afterward.
         let mut raw: Vec<RawEntry> = Vec::new();
         let mut max_cindex: usize = 0;
         let mut max_site: usize = 0;
@@ -107,7 +81,6 @@ impl PyPauliHamiltonian {
                     )
                 })?;
 
-                // Parse each (coeff, site_0, ..., site_k) coupling.
                 for coupling in coupling_list.iter() {
                     let ctup = coupling.downcast::<PyTuple>().map_err(|_| {
                         pyo3::exceptions::PyValueError::new_err(
@@ -134,7 +107,6 @@ impl PyPauliHamiltonian {
                         n_sites = n_sites.max(s + 1);
                     }
 
-                    // Parse op characters right-to-left into (PauliOp, site).
                     let mut ops: SmallVec<[(PauliOp, u32); 4]> = SmallVec::new();
                     for (ch, &site) in op_str.chars().zip(sites.iter()) {
                         let op = PauliOp::from_char(ch).ok_or_else(|| {
@@ -151,7 +123,6 @@ impl PyPauliHamiltonian {
             }
         }
 
-        // Choose cindex type: u8 if everything fits in 0–255, else u16.
         let needs_u16 = max_cindex > 255 || max_site > 255;
         let inner = if needs_u16 {
             let entries: Vec<OpEntry<u16>> = raw
@@ -196,14 +167,10 @@ struct RawEntry {
 }
 
 /// Extract a Python scalar as `Complex<f64>`.
-///
-/// Accepts Python `complex`, `float`, or `int`.  Returns `ValueError` for
-/// any other type.
 fn extract_complex(
     _py: Python<'_>,
     obj: &Bound<'_, PyAny>,
 ) -> Result<num_complex::Complex<f64>, Error> {
-    // Try complex first, then float (which covers int via Python's number protocol).
     if let Ok(c) = obj.extract::<num_complex::Complex<f64>>() {
         return Ok(c);
     }
