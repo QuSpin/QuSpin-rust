@@ -1,3 +1,6 @@
+pub mod dtype;
+pub mod error;
+
 use pyo3::prelude::*;
 
 #[pymodule]
