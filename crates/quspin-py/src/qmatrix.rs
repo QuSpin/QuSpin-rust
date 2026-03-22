@@ -46,12 +46,23 @@ impl PyQMatrix {
     // Build
     // ------------------------------------------------------------------
 
-    /// Build a sparse quantum matrix from a Hamiltonian and a basis.
+    /// Build a sparse matrix from a Hamiltonian and a basis.
     ///
     /// Args:
-    ///   ham:   The `PyHardcoreHamiltonian` defining operator strings.
-    ///   basis: The `PyHardcoreBasis` defining the Hilbert space.
-    ///   dtype: NumPy dtype object for matrix element storage.
+    ///     ham (PyHardcoreHamiltonian): The Hamiltonian defining operator
+    ///         strings and coupling coefficients.
+    ///     basis (PyHardcoreBasis): The Hilbert space basis (full, subspace,
+    ///         or symmetric).
+    ///     dtype (numpy.dtype): NumPy dtype for matrix element storage.
+    ///         Supported: ``int8``, ``int16``, ``float32``, ``float64``,
+    ///         ``complex64``, ``complex128``.
+    ///
+    /// Returns:
+    ///     PyQMatrix: Sparse matrix representation of the Hamiltonian.
+    ///
+    /// Raises:
+    ///     ValueError: If ``ham.n_sites != basis.n_sites``, or if ``dtype``
+    ///         is not supported.
     #[staticmethod]
     pub fn build_hardcore_hamiltonian(
         py: Python<'_>,
@@ -106,13 +117,23 @@ impl PyQMatrix {
     // dot / dot_transpose
     // ------------------------------------------------------------------
 
-    /// Compute `output[r] = Σ coeff[c] * value * input[col]` for each row.
+    /// Compute a matrix-vector product, accumulating into ``output``.
+    ///
+    /// Computes ``output[row] = Σ_c coeff[c] * Σ_col M[c, row, col] * input[col]``.
     ///
     /// Args:
-    ///   coeff:     1-D numpy array of length `num_coeff`.
-    ///   input:     1-D numpy array of length `dim`.
-    ///   output:    1-D numpy array of length `dim` (modified in-place).
-    ///   overwrite: If `True`, zero `output` before accumulating.
+    ///     coeff (NDArray): 1-D array of length ``num_cindices``. dtype must
+    ///         match the matrix element type.
+    ///     input (NDArray): 1-D array of length ``dim``. dtype must match the
+    ///         matrix element type.
+    ///     output (NDArray): 1-D array of length ``dim``, modified in-place.
+    ///         dtype must match the matrix element type.
+    ///     overwrite (bool): If ``True`` (default), zero ``output`` before
+    ///         accumulating. If ``False``, add to existing values.
+    ///
+    /// Raises:
+    ///     TypeError: If any array dtype does not match the matrix element type.
+    ///     ValueError: If any array is not C-contiguous or has the wrong shape.
     #[pyo3(signature = (coeff, input, output, overwrite=true))]
     pub fn dot(
         &self,
@@ -158,13 +179,23 @@ impl PyQMatrix {
         })
     }
 
-    /// Compute `output[col] += Σ coeff[c] * value * input[r]` (transpose matvec).
+    /// Compute a transpose matrix-vector product, accumulating into ``output``.
+    ///
+    /// Computes ``output[col] = Σ_c coeff[c] * Σ_row M[c, row, col] * input[row]``.
     ///
     /// Args:
-    ///   coeff:     1-D numpy array of length `num_coeff`.
-    ///   input:     1-D numpy array of length `dim`.
-    ///   output:    1-D numpy array of length `dim` (modified in-place).
-    ///   overwrite: If `True`, zero `output` before accumulating.
+    ///     coeff (NDArray): 1-D array of length ``num_cindices``. dtype must
+    ///         match the matrix element type.
+    ///     input (NDArray): 1-D array of length ``dim``. dtype must match the
+    ///         matrix element type.
+    ///     output (NDArray): 1-D array of length ``dim``, modified in-place.
+    ///         dtype must match the matrix element type.
+    ///     overwrite (bool): If ``True`` (default), zero ``output`` before
+    ///         accumulating. If ``False``, add to existing values.
+    ///
+    /// Raises:
+    ///     TypeError: If any array dtype does not match the matrix element type.
+    ///     ValueError: If any array is not C-contiguous or has the wrong shape.
     #[pyo3(signature = (coeff, input, output, overwrite=true))]
     pub fn dot_transpose(
         &self,
@@ -213,7 +244,17 @@ impl PyQMatrix {
     // Arithmetic
     // ------------------------------------------------------------------
 
-    /// Element-wise addition (clones both operands).
+    /// Return the element-wise sum of two matrices.
+    ///
+    /// Args:
+    ///     other (PyQMatrix): Matrix to add. Must have the same dtype and
+    ///         dimension.
+    ///
+    /// Returns:
+    ///     PyQMatrix: New matrix equal to ``self + other``.
+    ///
+    /// Raises:
+    ///     ValueError: If the matrices have incompatible dtypes or dimensions.
     pub fn __add__(&self, other: &PyQMatrix) -> PyResult<PyQMatrix> {
         let result = self
             .inner
@@ -223,7 +264,17 @@ impl PyQMatrix {
         Ok(PyQMatrix { inner: result })
     }
 
-    /// Element-wise subtraction (clones both operands).
+    /// Return the element-wise difference of two matrices.
+    ///
+    /// Args:
+    ///     other (PyQMatrix): Matrix to subtract. Must have the same dtype and
+    ///         dimension.
+    ///
+    /// Returns:
+    ///     PyQMatrix: New matrix equal to ``self - other``.
+    ///
+    /// Raises:
+    ///     ValueError: If the matrices have incompatible dtypes or dimensions.
     pub fn __sub__(&self, other: &PyQMatrix) -> PyResult<PyQMatrix> {
         let result = self
             .inner
@@ -237,7 +288,7 @@ impl PyQMatrix {
     // Properties
     // ------------------------------------------------------------------
 
-    /// Matrix dimension (number of rows / columns).
+    /// Matrix dimension (number of rows and columns).
     #[getter]
     pub fn dim(&self) -> usize {
         self.inner.dim()

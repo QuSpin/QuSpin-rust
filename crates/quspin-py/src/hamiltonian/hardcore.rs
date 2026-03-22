@@ -41,10 +41,24 @@ pub struct PyHardcoreHamiltonian {
 
 #[pymethods]
 impl PyHardcoreHamiltonian {
-    /// Construct from a Python list-of-lists.
+    /// Construct a Hamiltonian from a nested list of operator terms.
     ///
-    /// `terms[cindex_idx]` is a list of `(op_str, coupling_list)` pairs.
-    /// Each `coupling_list` element is `(coeff, site_0, site_1, ...)`.
+    /// Args:
+    ///     terms (list[list[tuple[str, list[tuple]]]]): Outer list indexed by
+    ///         ``cindex``. Each element is a list of ``(op_str, coupling_list)``
+    ///         pairs where:
+    ///
+    ///         - ``op_str`` (str): Operator string, one character per site
+    ///           (``'x'``, ``'y'``, ``'z'``, ``'+'``, ``'-'``, ``'n'``).
+    ///         - ``coupling_list`` (list[tuple]): Each element is
+    ///           ``(coeff, site_0, site_1, ...)`` with one site per character
+    ///           in ``op_str``. ``coeff`` may be ``complex``, ``float``,
+    ///           or ``int``.
+    ///
+    /// Raises:
+    ///     ValueError: If ``op_str`` contains an unknown operator character,
+    ///         if the number of site indices does not match ``len(op_str)``,
+    ///         or if the input structure is malformed.
     #[new]
     pub fn new(py: Python<'_>, terms: &Bound<'_, PyList>) -> PyResult<Self> {
         let mut raw: Vec<RawEntry> = Vec::new();
@@ -144,13 +158,13 @@ impl PyHardcoreHamiltonian {
         })
     }
 
-    /// Number of sites (inferred from the maximum site index + 1).
+    /// Number of sites, inferred from the maximum site index plus one.
     #[getter]
     pub fn n_sites(&self) -> usize {
         self.inner.n_sites()
     }
 
-    /// Number of distinct cindex values (outer list length).
+    /// Number of distinct coefficient indices (outer list length).
     #[getter]
     pub fn num_cindices(&self) -> usize {
         self.num_cindices

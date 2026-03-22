@@ -118,12 +118,15 @@ impl PyLatticeElement {
 
 #[pymethods]
 impl PyLatticeElement {
-    /// Create a lattice element.
+    /// Create a lattice symmetry element.
     ///
     /// Args:
-    ///   grp_char: Group character (complex scalar).
-    ///   perm:     Forward site permutation as a list of ints.
-    ///   lhss:     Local Hilbert space size (2 for spin-1/2).
+    ///     grp_char (complex): Group character (eigenvalue of the symmetry
+    ///         operator, e.g. ``1+0j`` for even parity, ``-1+0j`` for odd).
+    ///     perm (list[int]): Forward site permutation where ``perm[src] = dst``.
+    ///         The length of ``perm`` determines the number of sites.
+    ///     lhss (int): Local Hilbert space size (e.g. ``2`` for spin-1/2,
+    ///         ``3`` for spin-1).
     #[new]
     pub fn new(grp_char: Complex<f64>, perm: Vec<usize>, lhss: usize) -> Self {
         PyLatticeElement {
@@ -151,12 +154,16 @@ pub struct PyGrpElement {
 
 #[pymethods]
 impl PyGrpElement {
-    /// XOR-with-mask (Z₂ bit-flip) symmetry.
+    /// Create a Z₂ bit-flip (XOR-with-mask) symmetry element.
     ///
     /// Args:
-    ///   grp_char: Group character.
-    ///   n_sites:  Number of sites in the system.
-    ///   locs:     Site indices whose bits are flipped.  If omitted, all sites are flipped.
+    ///     grp_char (complex): Group character (eigenvalue of the symmetry operator).
+    ///     n_sites (int): Total number of sites in the system.
+    ///     locs (list[int] | None): Site indices whose bits are flipped.
+    ///         If ``None``, all ``n_sites`` bits are flipped.
+    ///
+    /// Returns:
+    ///     PyGrpElement: A new bit-flip symmetry element.
     #[staticmethod]
     #[pyo3(signature = (grp_char, n_sites, locs=None))]
     pub fn bitflip(grp_char: Complex<f64>, n_sites: usize, locs: Option<Vec<usize>>) -> Self {
@@ -167,14 +174,20 @@ impl PyGrpElement {
         }
     }
 
-    /// Local dit-value permutation symmetry.
+    /// Create a local dit-value permutation symmetry element.
+    ///
+    /// For each site in ``locs``, maps the local occupation value ``v → perm[v]``.
     ///
     /// Args:
-    ///   grp_char: Group character.
-    ///   n_sites:  Number of sites in the system.
-    ///   lhss:     Local Hilbert space size.
-    ///   perm:     Value permutation: v → perm[v].  Length must equal lhss.
-    ///   locs:     Sites to which the permutation is applied.
+    ///     grp_char (complex): Group character (eigenvalue of the symmetry operator).
+    ///     n_sites (int): Total number of sites in the system.
+    ///     lhss (int): Local Hilbert space size (number of distinct dit values).
+    ///     perm (list[int]): Value permutation of length ``lhss``.
+    ///         Entry ``i`` is the image of dit value ``i``.
+    ///     locs (list[int]): Site indices to which the permutation is applied.
+    ///
+    /// Returns:
+    ///     PyGrpElement: A new local-value permutation symmetry element.
     #[staticmethod]
     pub fn local_value(
         grp_char: Complex<f64>,
@@ -195,13 +208,20 @@ impl PyGrpElement {
         }
     }
 
-    /// Spin-inversion symmetry: v → lhss − v − 1 at the given sites.
+    /// Create a spin-inversion symmetry element.
+    ///
+    /// Maps each dit value ``v → lhss - v - 1`` at the specified sites.
+    /// For spin-1/2 (``lhss=2``) this swaps ``0 ↔ 1``; for spin-1 (``lhss=3``)
+    /// it maps ``0 ↔ 2`` and fixes ``1``.
     ///
     /// Args:
-    ///   grp_char: Group character.
-    ///   n_sites:  Number of sites in the system.
-    ///   lhss:     Local Hilbert space size.
-    ///   locs:     Sites to which the inversion is applied.
+    ///     grp_char (complex): Group character (eigenvalue of the symmetry operator).
+    ///     n_sites (int): Total number of sites in the system.
+    ///     lhss (int): Local Hilbert space size.
+    ///     locs (list[int]): Site indices to which the inversion is applied.
+    ///
+    /// Returns:
+    ///     PyGrpElement: A new spin-inversion symmetry element.
     #[staticmethod]
     pub fn spin_inversion(
         grp_char: Complex<f64>,
@@ -236,11 +256,20 @@ pub struct PySymmetryGrp {
 
 #[pymethods]
 impl PySymmetryGrp {
-    /// Construct from lists of `PyLatticeElement` and `PyGrpElement` objects.
+    /// Construct a symmetry group from lattice and local elements.
     ///
-    /// Validates that all elements agree on `n_sites`.
-    /// Selects the concrete `B` type based on `n_sites` and eagerly builds
-    /// the `SymmetryGrp<B>`, stored as a `SymmetryGrpInner`.
+    /// Validates that all elements agree on ``n_sites``, then selects the
+    /// concrete basis integer type and eagerly builds the typed symmetry group.
+    ///
+    /// Args:
+    ///     lattice (list[PyLatticeElement]): Spatial symmetry elements (site
+    ///         permutations). The permutation length determines ``n_sites``.
+    ///     local (list[PyGrpElement]): On-site symmetry elements (bit-flip,
+    ///         value permutation, or spin inversion).
+    ///
+    /// Raises:
+    ///     ValueError: If any two elements disagree on the number of sites, or
+    ///         if ``n_sites`` exceeds 8192.
     #[new]
     pub fn new(
         py: Python<'_>,

@@ -63,10 +63,19 @@ impl PyHardcoreBasis {
     // Constructors
     // ------------------------------------------------------------------
 
-    /// Full Hilbert space of `n_sites` spin-1/2 sites.
+    /// Build the full Hilbert space of ``n_sites`` spin-1/2 sites.
     ///
-    /// Uses `u32` for n_sites ≤ 32 and `u64` for n_sites ≤ 64.
-    /// Larger full spaces are not supported (2^n_sites states is impractical).
+    /// Contains all 2^n_sites computational basis states.
+    /// Only supported for ``n_sites ≤ 64``.
+    ///
+    /// Args:
+    ///     n_sites (int): Number of lattice sites. Maximum value is 64.
+    ///
+    /// Returns:
+    ///     PyHardcoreBasis: Full-space basis with 2^n_sites states.
+    ///
+    /// Raises:
+    ///     ValueError: If ``n_sites > 64``.
     #[staticmethod]
     pub fn full(n_sites: usize) -> PyResult<Self> {
         if n_sites > 64 {
@@ -83,11 +92,26 @@ impl PyHardcoreBasis {
         Ok(PyHardcoreBasis { n_sites, inner })
     }
 
-    /// Subspace reachable from each seed state under the Hamiltonian.
+    /// Build the subspace reachable from seed states under a Hamiltonian.
+    ///
+    /// Starting from each seed, repeatedly applies the Hamiltonian to discover
+    /// all connected basis states (e.g., a fixed-particle-number sector).
     ///
     /// Args:
-    ///   seeds: Python list of integer seed states.
-    ///   ham:   The Hamiltonian defining connectivity.
+    ///     seeds (Iterable[str | list[int]]): Initial states. Each element is
+    ///         either a ``str`` of ``'0'``/``'1'`` characters or a ``list[int]``
+    ///         of ``0``/``1`` values. Position ``i`` gives the occupation of
+    ///         site ``i``.
+    ///     ham (PyHardcoreHamiltonian): The Hamiltonian whose connectivity
+    ///         defines the sector.
+    ///
+    /// Returns:
+    ///     PyHardcoreBasis: Subspace basis containing all states reachable
+    ///     from any seed.
+    ///
+    /// Raises:
+    ///     ValueError: If any seed contains invalid characters or values, or
+    ///         if ``n_sites`` exceeds 8192.
     #[staticmethod]
     pub fn subspace(seeds: &Bound<'_, PyAny>, ham: &PyHardcoreHamiltonian) -> PyResult<Self> {
         let n_sites = ham.inner.n_sites();
@@ -115,12 +139,23 @@ impl PyHardcoreBasis {
         Ok(PyHardcoreBasis { n_sites, inner })
     }
 
-    /// Symmetry-reduced subspace reachable from each seed state.
+    /// Build a symmetry-reduced subspace.
+    ///
+    /// Like ``subspace``, but projects into a symmetry sector defined by ``grp``,
+    /// yielding a smaller basis.
     ///
     /// Args:
-    ///   seeds: Python list of integer seed states.
-    ///   ham:   The Hamiltonian defining connectivity.
-    ///   grp:   The symmetry group.
+    ///     seeds (Iterable[str | list[int]]): Initial states (same format as
+    ///         ``subspace``).
+    ///     ham (PyHardcoreHamiltonian): The Hamiltonian defining connectivity.
+    ///     grp (PySymmetryGrp): The symmetry group defining the sector.
+    ///
+    /// Returns:
+    ///     PyHardcoreBasis: Symmetry-reduced basis.
+    ///
+    /// Raises:
+    ///     ValueError: If ``ham.n_sites != grp.n_sites``, if any seed is
+    ///         malformed, or if ``n_sites`` exceeds 8192.
     #[staticmethod]
     pub fn symmetric(
         seeds: &Bound<'_, PyAny>,
