@@ -129,7 +129,7 @@ impl PyHardcoreBasis {
             ($B:ty, $inner_variant:ident) => {{
                 let mut basis = Subspace::<$B>::new();
                 for s in &seed_list {
-                    let seed = seed_as::<$B>(*s);
+                    let seed = seed_as::<$B>(s);
                     match &ham.inner {
                         PauliHamiltonianInner::Ham8(h) => {
                             basis.build(seed, |state| h.apply(state).into_iter());
@@ -167,7 +167,7 @@ impl PyHardcoreBasis {
                 let sym_grp = grp.into_symmetry_grp::<$B>();
                 let mut basis = SymmetricSubspace::<$B>::new(sym_grp);
                 for s in &seed_list {
-                    let seed = seed_as::<$B>(*s);
+                    let seed = seed_as::<$B>(s);
                     match &ham.inner {
                         PauliHamiltonianInner::Ham8(h) => {
                             basis.build(seed, |state| h.apply(state).into_iter());
@@ -200,38 +200,66 @@ impl PyHardcoreBasis {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Extract a Python iterable of seed states as a `Vec<u128>`.
-fn extract_seed_list(seeds: &Bound<'_, PyAny>) -> Result<Vec<u128>, Error> {
+/// Extract a Python iterable of seed states as a `Vec<Vec<u8>>`.
+///
+/// Each seed must be either:
+/// - a `str` of `'0'`/`'1'` characters — index `i` = site `i`, e.g. `"1100"`
+/// - a `list[int]` of `0`/`1` values — same convention, e.g. `[1, 1, 0, 0]`
+///
+/// Both representations are site-indexed: position 0 = site 0 (LSB).
+fn extract_seed_list(seeds: &Bound<'_, PyAny>) -> Result<Vec<Vec<u8>>, Error> {
     seeds
         .try_iter()
         .map_err(|_| {
             Error(quspin_core::error::QuSpinError::ValueError(
-                "seeds must be an iterable of integers".to_string(),
+                "seeds must be an iterable".to_string(),
             ))
         })?
         .map(|item| {
             item.map_err(|e| Error(quspin_core::error::QuSpinError::ValueError(e.to_string())))
-                .and_then(|obj| {
-                    obj.extract::<u128>().map_err(|_| {
-                        Error(quspin_core::error::QuSpinError::ValueError(
-                            "each seed must be a non-negative integer ≤ 2^128 − 1".to_string(),
-                        ))
-                    })
-                })
+                .and_then(|obj| seed_to_bits(&obj))
         })
         .collect()
 }
 
-/// Cast a `u128` seed to the concrete basis integer type `B`.
-///
-/// For types narrower than 128 bits only the low bits are used; shifting by
-/// 64 would overflow on types with `BITS ≤ 64`, so we skip the high half.
-fn seed_as<B: BitInt>(seed: u128) -> B {
-    let lo = seed as u64;
-    if B::BITS as usize <= 64 {
-        B::from_u64(lo)
+/// Convert a single Python seed (str or list[int]) to a site-occupation bit vector.
+fn seed_to_bits(obj: &Bound<'_, PyAny>) -> Result<Vec<u8>, Error> {
+    if let Ok(s) = obj.extract::<String>() {
+        s.chars()
+            .map(|c| match c {
+                '0' => Ok(0u8),
+                '1' => Ok(1u8),
+                _ => Err(Error(quspin_core::error::QuSpinError::ValueError(format!(
+                    "invalid character '{c}' in seed string; expected '0' or '1'"
+                )))),
+            })
+            .collect()
+    } else if let Ok(bits) = obj.extract::<Vec<u8>>() {
+        for &v in &bits {
+            if v > 1 {
+                return Err(Error(quspin_core::error::QuSpinError::ValueError(
+                    "each element in a seed list must be 0 or 1".to_string(),
+                )));
+            }
+        }
+        Ok(bits)
     } else {
-        let hi = (seed >> 64) as u64;
-        B::from_u64(lo) | (B::from_u64(hi) << 64)
+        Err(Error(quspin_core::error::QuSpinError::ValueError(
+            "each seed must be a str of '0'/'1' or a list of 0/1 ints".to_string(),
+        )))
     }
+}
+
+/// Construct a `B` basis state from a site-occupation bit vector.
+///
+/// `bits[i]` is the occupation (0 or 1) of site `i`.  Bits beyond `B::BITS`
+/// are silently ignored.
+fn seed_as<B: BitInt>(bits: &[u8]) -> B {
+    let mut result = B::from_u64(0);
+    for (i, &v) in bits.iter().enumerate() {
+        if v != 0 && i < B::BITS as usize {
+            result = result | (B::from_u64(1) << i);
+        }
+    }
+    result
 }

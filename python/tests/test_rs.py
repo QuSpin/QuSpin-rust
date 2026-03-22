@@ -93,7 +93,7 @@ class TestHardcoreBasisSubspace:
     def test_half_filling_sector(self):
         # XX is NOT particle-number conserving (it flips pairs of bits), so the
         # subspace reachable from any seed under XX+ZZ spans multiple sectors.
-        seeds = [0b0011]
+        seeds = ["1100"]  # sites 0,1 occupied
         h = make_ham()
         basis = PyHardcoreBasis.subspace(seeds, h)
         assert basis.size >= 1
@@ -102,14 +102,30 @@ class TestHardcoreBasisSubspace:
     def test_single_state_trivial_ham(self):
         # A Hamiltonian with only Z operators doesn't mix states, so seed = 1 state.
         h = PyPauliHamiltonian([[("z", [(1.0, 0)])]])
-        basis = PyHardcoreBasis.subspace([0b0], h)
+        basis = PyHardcoreBasis.subspace(["0"], h)
         assert basis.size == 1
+
+    def test_list_seed_equivalent_to_str_seed(self):
+        h = make_ham()
+        b_str = PyHardcoreBasis.subspace(["1100"], h)
+        b_list = PyHardcoreBasis.subspace([[1, 1, 0, 0]], h)
+        assert b_str.size == b_list.size
 
     def test_multiple_seeds_give_more_states(self):
         h = make_ham()
-        b1 = PyHardcoreBasis.subspace([0b0001], h)
-        b2 = PyHardcoreBasis.subspace([0b0001, 0b0010], h)
+        b1 = PyHardcoreBasis.subspace(["1000"], h)
+        b2 = PyHardcoreBasis.subspace(["1000", "0100"], h)
         assert b2.size >= b1.size
+
+    def test_invalid_seed_str_char(self):
+        h = make_ham()
+        with pytest.raises(Exception):
+            PyHardcoreBasis.subspace(["2100"], h)
+
+    def test_invalid_seed_list_value(self):
+        h = make_ham()
+        with pytest.raises(Exception):
+            PyHardcoreBasis.subspace([[2, 1, 0, 0]], h)
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +277,7 @@ class TestSymmetricBasis:
         T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 3, 0], lhss=2)
         grp = PySymmetryGrp([T], [])
         h = make_ham()
-        seeds = [0b0011]  # one representative from half-filling
+        seeds = ["1100"]  # sites 0,1 occupied (0b0011)
         basis = PyHardcoreBasis.symmetric(seeds, h, grp)
         full_basis = PyHardcoreBasis.subspace(seeds, h)
         assert basis.size <= full_basis.size
@@ -272,7 +288,8 @@ class TestSymmetricBasis:
         h = make_ham()
         # Use the canonical representative: the larger of each (state, partner) pair.
         # 0b1110 = 14 is the partner of 0b0001 = 1; 14 > 1 so 0b1110 is canonical.
-        seeds = [0b1110]
+        # "0111" = site0=0, site1=1, site2=1, site3=1 (0b1110).
+        seeds = ["0111"]
         basis = PyHardcoreBasis.symmetric(seeds, h, grp)
         subspace = PyHardcoreBasis.subspace(seeds, h)
         assert basis.size <= subspace.size
@@ -281,7 +298,7 @@ class TestSymmetricBasis:
         T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 3, 0], lhss=2)
         grp = PySymmetryGrp([T], [])
         h = make_ham()
-        seeds = [0b0011]
+        seeds = ["1100"]  # sites 0,1 occupied (0b0011)
         basis = PyHardcoreBasis.symmetric(seeds, h, grp)
         mat = PyQMatrix.build(h, basis, np.dtype("complex128"))
         assert mat.dim == basis.size
