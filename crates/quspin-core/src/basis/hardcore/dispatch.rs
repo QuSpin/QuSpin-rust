@@ -114,6 +114,37 @@ impl HardcoreBasisInner {
 }
 
 // ---------------------------------------------------------------------------
+// From impls — wrap a concrete basis space without naming the variant
+// ---------------------------------------------------------------------------
+
+macro_rules! impl_from_basis_spaces {
+    ($B:ty, $sub_variant:ident, $sym_variant:ident) => {
+        impl From<Subspace<$B>> for HardcoreBasisInner {
+            #[inline]
+            fn from(b: Subspace<$B>) -> Self {
+                HardcoreBasisInner::$sub_variant(b)
+            }
+        }
+        impl From<SymmetricSubspace<$B>> for HardcoreBasisInner {
+            #[inline]
+            fn from(b: SymmetricSubspace<$B>) -> Self {
+                HardcoreBasisInner::$sym_variant(b)
+            }
+        }
+    };
+}
+
+impl_from_basis_spaces!(u32, Sub32, Sym32);
+impl_from_basis_spaces!(u64, Sub64, Sym64);
+impl_from_basis_spaces!(B128, Sub128, Sym128);
+impl_from_basis_spaces!(B256, Sub256, Sym256);
+impl_from_basis_spaces!(B512, Sub512, Sym512);
+impl_from_basis_spaces!(B1024, Sub1024, Sym1024);
+impl_from_basis_spaces!(B2048, Sub2048, Sym2048);
+impl_from_basis_spaces!(B4096, Sub4096, Sym4096);
+impl_from_basis_spaces!(B8192, Sub8192, Sym8192);
+
+// ---------------------------------------------------------------------------
 // Dispatch macros
 // ---------------------------------------------------------------------------
 

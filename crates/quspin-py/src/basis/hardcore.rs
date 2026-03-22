@@ -14,40 +14,6 @@ use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
 use super::symmetry::PySymmetryGrp;
 
 // ---------------------------------------------------------------------------
-// Builder-selection macros  (must appear before the impl that uses them)
-// ---------------------------------------------------------------------------
-
-/// Select the smallest `B` type that fits `n_sites` bits (Sub* family).
-macro_rules! select_subspace_type {
-    ($n_sites:expr, $mac:ident) => {
-        if $n_sites <= 32 {
-            $mac!(u32, Sub32)
-        } else if $n_sites <= 64 {
-            $mac!(u64, Sub64)
-        } else if $n_sites <= 128 {
-            $mac!(ruint::Uint<128, 2>, Sub128)
-        } else if $n_sites <= 256 {
-            $mac!(ruint::Uint<256, 4>, Sub256)
-        } else if $n_sites <= 512 {
-            $mac!(ruint::Uint<512, 8>, Sub512)
-        } else if $n_sites <= 1024 {
-            $mac!(ruint::Uint<1024, 16>, Sub1024)
-        } else if $n_sites <= 2048 {
-            $mac!(ruint::Uint<2048, 32>, Sub2048)
-        } else if $n_sites <= 4096 {
-            $mac!(ruint::Uint<4096, 64>, Sub4096)
-        } else if $n_sites <= 8192 {
-            $mac!(ruint::Uint<8192, 128>, Sub8192)
-        } else {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "n_sites={} exceeds the maximum supported value of 8192",
-                $n_sites
-            )));
-        }
-    };
-}
-
-// ---------------------------------------------------------------------------
 // PyHardcoreBasis
 // ---------------------------------------------------------------------------
 
@@ -117,25 +83,21 @@ impl PyHardcoreBasis {
         let n_sites = ham.inner.n_sites();
         let seed_list = extract_seed_list(seeds)?;
 
-        macro_rules! build_subspace {
-            ($B:ty, $inner_variant:ident) => {{
-                let mut basis = Subspace::<$B>::new();
-                for s in &seed_list {
-                    let seed = seed_as::<$B>(s);
-                    match &ham.inner {
-                        HardcoreHamiltonianInner::Ham8(h) => {
-                            basis.build(seed, |state| h.apply(state).into_iter());
-                        }
-                        HardcoreHamiltonianInner::Ham16(h) => {
-                            basis.build(seed, |state| h.apply(state).into_iter());
-                        }
+        let inner = crate::select_b_for_n_sites!(n_sites, B, {
+            let mut basis = Subspace::<B>::new();
+            for s in &seed_list {
+                let seed = seed_as::<B>(s);
+                match &ham.inner {
+                    HardcoreHamiltonianInner::Ham8(h) => {
+                        basis.build(seed, |state| h.apply(state).into_iter());
+                    }
+                    HardcoreHamiltonianInner::Ham16(h) => {
+                        basis.build(seed, |state| h.apply(state).into_iter());
                     }
                 }
-                HardcoreBasisInner::$inner_variant(basis)
-            }};
-        }
-
-        let inner = select_subspace_type!(n_sites, build_subspace);
+            }
+            HardcoreBasisInner::from(basis)
+        });
         Ok(PyHardcoreBasis { n_sites, inner })
     }
 
@@ -162,8 +124,6 @@ impl PyHardcoreBasis {
         ham: &PyHardcoreHamiltonian,
         grp: &PySymmetryGrp,
     ) -> PyResult<Self> {
-        use quspin_core::basis::SymmetryGrpInner;
-
         let n_sites = ham.inner.n_sites();
         if grp.n_sites() != n_sites {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
@@ -174,37 +134,21 @@ impl PyHardcoreBasis {
         }
         let seed_list = extract_seed_list(seeds)?;
 
-        // Helper macro: build a SymmetricSubspace<$B> from a concrete sym_grp reference,
-        // then wrap the result in the matching HardcoreBasisInner variant.
-        macro_rules! build_sym {
-            ($sym_grp:expr, $B:ty, $basis_variant:ident) => {{
-                let mut basis = SymmetricSubspace::<$B>::new($sym_grp.clone());
-                for s in &seed_list {
-                    let seed = seed_as::<$B>(s);
-                    match &ham.inner {
-                        HardcoreHamiltonianInner::Ham8(h) => {
-                            basis.build(seed, |state| h.apply(state).into_iter());
-                        }
-                        HardcoreHamiltonianInner::Ham16(h) => {
-                            basis.build(seed, |state| h.apply(state).into_iter());
-                        }
+        let inner = quspin_core::with_sym_grp!(&grp.inner, B, sym_grp, {
+            let mut basis = SymmetricSubspace::<B>::new(sym_grp.clone());
+            for s in &seed_list {
+                let seed = seed_as::<B>(s);
+                match &ham.inner {
+                    HardcoreHamiltonianInner::Ham8(h) => {
+                        basis.build(seed, |state| h.apply(state).into_iter());
+                    }
+                    HardcoreHamiltonianInner::Ham16(h) => {
+                        basis.build(seed, |state| h.apply(state).into_iter());
                     }
                 }
-                HardcoreBasisInner::$basis_variant(basis)
-            }};
-        }
-
-        let inner = match &grp.inner {
-            SymmetryGrpInner::Sym32(g) => build_sym!(g, u32, Sym32),
-            SymmetryGrpInner::Sym64(g) => build_sym!(g, u64, Sym64),
-            SymmetryGrpInner::Sym128(g) => build_sym!(g, ruint::Uint<128, 2>, Sym128),
-            SymmetryGrpInner::Sym256(g) => build_sym!(g, ruint::Uint<256, 4>, Sym256),
-            SymmetryGrpInner::Sym512(g) => build_sym!(g, ruint::Uint<512, 8>, Sym512),
-            SymmetryGrpInner::Sym1024(g) => build_sym!(g, ruint::Uint<1024, 16>, Sym1024),
-            SymmetryGrpInner::Sym2048(g) => build_sym!(g, ruint::Uint<2048, 32>, Sym2048),
-            SymmetryGrpInner::Sym4096(g) => build_sym!(g, ruint::Uint<4096, 64>, Sym4096),
-            SymmetryGrpInner::Sym8192(g) => build_sym!(g, ruint::Uint<8192, 128>, Sym8192),
-        };
+            }
+            HardcoreBasisInner::from(basis)
+        });
 
         Ok(PyHardcoreBasis { n_sites, inner })
     }

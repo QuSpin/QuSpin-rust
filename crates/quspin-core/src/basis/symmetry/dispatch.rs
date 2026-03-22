@@ -33,6 +33,31 @@ pub enum SymmetryGrpInner {
     Sym8192(SymmetryGrp<B8192>),
 }
 
+// ---------------------------------------------------------------------------
+// From impls — wrap a concrete SymmetryGrp<B> without naming the variant
+// ---------------------------------------------------------------------------
+
+macro_rules! impl_from_sym_grp {
+    ($B:ty, $variant:ident) => {
+        impl From<SymmetryGrp<$B>> for SymmetryGrpInner {
+            #[inline]
+            fn from(g: SymmetryGrp<$B>) -> Self {
+                SymmetryGrpInner::$variant(g)
+            }
+        }
+    };
+}
+
+impl_from_sym_grp!(u32, Sym32);
+impl_from_sym_grp!(u64, Sym64);
+impl_from_sym_grp!(B128, Sym128);
+impl_from_sym_grp!(B256, Sym256);
+impl_from_sym_grp!(B512, Sym512);
+impl_from_sym_grp!(B1024, Sym1024);
+impl_from_sym_grp!(B2048, Sym2048);
+impl_from_sym_grp!(B4096, Sym4096);
+impl_from_sym_grp!(B8192, Sym8192);
+
 impl SymmetryGrpInner {
     pub fn n_sites(&self) -> usize {
         match self {

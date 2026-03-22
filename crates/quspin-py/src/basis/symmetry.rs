@@ -311,42 +311,15 @@ impl PySymmetryGrp {
         let _ = py;
         let n_sites = n_sites_opt.unwrap_or(0);
 
-        // Select B and build SymmetryGrpInner.
-        macro_rules! build_inner {
-            ($B:ty, $from_grp:ident) => {{
-                let local_elements: Vec<GrpElement<$B>> = local_descs
-                    .into_iter()
-                    .map(|(char_, op)| op.into_grp_element::<$B>(char_))
-                    .collect();
-                let grp = SymmetryGrp::<$B>::new(lattice_elements, local_elements)
-                    .map_err(|e| PyErr::from(Error(e)))?;
-                SymmetryGrpInner::$from_grp(grp)
-            }};
-        }
-
-        let inner = if n_sites <= 32 {
-            build_inner!(u32, from_grp_32)
-        } else if n_sites <= 64 {
-            build_inner!(u64, from_grp_64)
-        } else if n_sites <= 128 {
-            build_inner!(ruint::Uint<128, 2>, from_grp_128)
-        } else if n_sites <= 256 {
-            build_inner!(ruint::Uint<256, 4>, from_grp_256)
-        } else if n_sites <= 512 {
-            build_inner!(ruint::Uint<512, 8>, from_grp_512)
-        } else if n_sites <= 1024 {
-            build_inner!(ruint::Uint<1024, 16>, from_grp_1024)
-        } else if n_sites <= 2048 {
-            build_inner!(ruint::Uint<2048, 32>, from_grp_2048)
-        } else if n_sites <= 4096 {
-            build_inner!(ruint::Uint<4096, 64>, from_grp_4096)
-        } else if n_sites <= 8192 {
-            build_inner!(ruint::Uint<8192, 128>, from_grp_8192)
-        } else {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "n_sites={n_sites} exceeds the maximum supported value of 8192"
-            )));
-        };
+        let inner = crate::select_b_for_n_sites!(n_sites, B, {
+            let local_elements: Vec<GrpElement<B>> = local_descs
+                .into_iter()
+                .map(|(char_, op)| op.into_grp_element::<B>(char_))
+                .collect();
+            let grp = SymmetryGrp::<B>::new(lattice_elements, local_elements)
+                .map_err(|e| PyErr::from(Error(e)))?;
+            SymmetryGrpInner::from(grp)
+        });
 
         Ok(PySymmetryGrp { inner })
     }
