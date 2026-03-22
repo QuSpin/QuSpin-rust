@@ -9,8 +9,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 quspin-core = { path = "../quspin-core" }
+bitbasis = { path = "../bitbasis" }
 num-complex = { workspace = true }
 ndarray = { workspace = true }
-pyo3 = { workspace = true, features = ["extension-module", "abi3-py310"] }
+ruint = { workspace = true }
+smallvec = { workspace = true }
+pyo3 = { workspace = true, features = ["extension-module", "abi3-py310", "num-complex"] }
 numpy = { workspace = true }
 paste = { workspace = true }
