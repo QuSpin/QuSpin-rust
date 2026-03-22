@@ -132,7 +132,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use num_complex::Complex;
 
     fn mat_a() -> QMatrix<f64, i64, u8> {
         // [[1, 2], [3, 0]]
@@ -210,7 +209,7 @@ mod tests {
         // (A+B)|v⟩ = A|v⟩ + B|v⟩
         let _a = mat_a();
         let _b = mat_b();
-        let coeff = vec![Complex::new(1.0, 0.0)];
+        let coeff = vec![1.0f64];
         let v = vec![1.0f64, 1.0];
 
         let mut av = vec![0.0f64; 2];

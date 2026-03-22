@@ -3,7 +3,6 @@ pub mod ops;
 
 use crate::error::QuSpinError;
 use crate::primitive::Primitive;
-use num_complex::Complex;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
@@ -180,9 +179,6 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
     /// Compute `output[r] = Σ_{col, cindex} coeff[cindex] * value * input[col]`
     /// for each row `r`.
     ///
-    /// The inner accumulation runs in `Complex<f64>`; the result is narrowed
-    /// back to `V` via `V::from_complex` (real types drop the imaginary part).
-    ///
     /// If `overwrite` is `true`, `output` is zeroed before accumulation.
     ///
     /// # Errors
@@ -190,25 +186,18 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
     pub fn dot(
         &self,
         overwrite: bool,
-        coeff: &[Complex<f64>],
+        coeff: &[V],
         input: &[V],
         output: &mut [V],
     ) -> Result<(), QuSpinError> {
         self.check_dot_args(coeff, input, output)?;
 
         for (r, out) in output.iter_mut().enumerate() {
-            let mut acc = Complex::new(0.0_f64, 0.0);
+            let mut acc = V::default();
             for e in self.row(r) {
-                // acc += coeff[cindex] * value * input[col]  (all in Complex<f64>)
-                acc += coeff[e.cindex.as_usize()]
-                    * e.value.to_complex()
-                    * input[e.col.as_usize()].to_complex();
+                acc += coeff[e.cindex.as_usize()] * e.value * input[e.col.as_usize()];
             }
-            *out = if overwrite {
-                V::from_complex(acc)
-            } else {
-                V::from_complex(out.to_complex() + acc)
-            };
+            *out = if overwrite { acc } else { *out + acc };
         }
         Ok(())
     }
@@ -220,13 +209,12 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
     /// Compute `output[col] += Σ_{r} coeff[cindex] * value * input[r]`
     /// (the transpose matrix–vector product).
     ///
-    /// Because rows map to distinct columns without overlap guarantees,
-    /// this implementation is sequential to avoid data races.
-    /// Rayon parallelism (via partial-array reduce) is a deferred optimisation.
+    /// Sequential to avoid data races on `output`; Rayon parallelism
+    /// (via partial-array reduce) is a deferred optimisation.
     pub fn dot_transpose(
         &self,
         overwrite: bool,
-        coeff: &[Complex<f64>],
+        coeff: &[V],
         input: &[V],
         output: &mut [V],
     ) -> Result<(), QuSpinError> {
@@ -236,18 +224,10 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
             output.fill(V::default());
         }
 
-        // Accumulate in a Complex<f64> buffer to avoid repeated from/to casts.
-        let mut buf: Vec<Complex<f64>> = output.iter().map(|v| v.to_complex()).collect();
-
         for (r, inp) in input.iter().enumerate() {
-            let inp_r = inp.to_complex();
             for e in self.row(r) {
-                buf[e.col.as_usize()] += coeff[e.cindex.as_usize()] * e.value.to_complex() * inp_r;
+                output[e.col.as_usize()] += coeff[e.cindex.as_usize()] * e.value * *inp;
             }
-        }
-
-        for (o, b) in output.iter_mut().zip(buf) {
-            *o = V::from_complex(b);
         }
         Ok(())
     }
@@ -256,12 +236,7 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
     // Helpers
     // ------------------------------------------------------------------
 
-    fn check_dot_args(
-        &self,
-        coeff: &[Complex<f64>],
-        input: &[V],
-        output: &[V],
-    ) -> Result<(), QuSpinError> {
+    fn check_dot_args(&self, coeff: &[V], input: &[V], output: &[V]) -> Result<(), QuSpinError> {
         if coeff.len() != self.num_coeff {
             return Err(QuSpinError::ValueError(format!(
                 "coeff length {} != num_coeff {}",
@@ -331,7 +306,7 @@ mod tests {
     fn dot_matvec() {
         // [[2,1],[3,4]] * [1,2] = [4, 11], coeff=[1]
         let m = mat_2x2();
-        let coeff = vec![Complex::new(1.0, 0.0)];
+        let coeff = vec![1.0f64];
         let input = vec![1.0f64, 2.0];
         let mut output = vec![0.0f64; 2];
         m.dot(true, &coeff, &input, &mut output).unwrap();
@@ -343,7 +318,7 @@ mod tests {
     fn dot_accumulate() {
         // overwrite=false: output += result
         let m = mat_2x2();
-        let coeff = vec![Complex::new(1.0, 0.0)];
+        let coeff = vec![1.0f64];
         let input = vec![1.0f64, 2.0];
         let mut output = vec![1.0f64, 1.0]; // pre-existing values
         m.dot(false, &coeff, &input, &mut output).unwrap();
@@ -355,7 +330,7 @@ mod tests {
     fn dot_with_coeff_scaling() {
         // coeff = 2.0 → output = 2 * [[2,1],[3,4]] * [1,2] = [8, 22]
         let m = mat_2x2();
-        let coeff = vec![Complex::new(2.0, 0.0)];
+        let coeff = vec![2.0f64];
         let input = vec![1.0f64, 2.0];
         let mut output = vec![0.0f64; 2];
         m.dot(true, &coeff, &input, &mut output).unwrap();
@@ -367,7 +342,7 @@ mod tests {
     fn dot_transpose_matvec() {
         // [[2,1],[3,4]]^T * [1,1] = [2+3, 1+4] = [5, 5]
         let m = mat_2x2();
-        let coeff = vec![Complex::new(1.0, 0.0)];
+        let coeff = vec![1.0f64];
         let input = vec![1.0f64, 1.0];
         let mut output = vec![0.0f64; 2];
         m.dot_transpose(true, &coeff, &input, &mut output).unwrap();
@@ -378,7 +353,7 @@ mod tests {
     #[test]
     fn dot_wrong_coeff_len_errors() {
         let m = mat_2x2();
-        let coeff = vec![Complex::new(1.0, 0.0), Complex::new(1.0, 0.0)]; // wrong
+        let coeff = vec![1.0f64, 1.0]; // wrong length
         let input = vec![1.0f64, 2.0];
         let mut output = vec![0.0f64; 2];
         assert!(m.dot(true, &coeff, &input, &mut output).is_err());

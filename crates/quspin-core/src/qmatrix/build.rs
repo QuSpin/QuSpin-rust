@@ -215,7 +215,7 @@ mod tests {
         let ham = xx_ham();
         let basis = FullSpace::<u32>::new(4);
         let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
-        let coeff = vec![Complex::new(1.0, 0.0)];
+        let coeff = vec![1.0_f64];
         let psi = vec![1.0_f64, 0.0, 0.0, 0.0];
         let mut hpsi = vec![0.0_f64; 4];
         mat.dot(true, &coeff, &psi, &mut hpsi).unwrap();
