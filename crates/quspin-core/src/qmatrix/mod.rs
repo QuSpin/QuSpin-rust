@@ -106,6 +106,7 @@ impl<V: Copy, I: Copy + Ord, C: Copy + Ord> Entry<V, I, C> {
 /// - `C: CIndex` — operator-string index type (u8 or u16)
 ///
 /// Mirrors `qmatrix<T, I, J>` from `qmatrix.hpp`.
+#[derive(Clone)]
 pub struct QMatrix<V, I, C> {
     dim: usize,
     /// Number of distinct cindex values (max cindex + 1).

@@ -138,6 +138,7 @@ impl HardcoreBasisInner {
 ///
 /// Naming convention: `QM` prefix, then value type abbreviation, then cindex
 /// type abbreviation.  For example `QMf64U8` is `QMatrix<f64, i64, u8>`.
+#[derive(Clone)]
 pub enum QMatrixInner {
     QMi8U8(QMatrix<i8, i64, u8>),
     QMi8U16(QMatrix<i8, i64, u16>),
@@ -189,6 +190,209 @@ impl QMatrixInner {
             QMatrixInner::QMc64U16(m) => m.nnz(),
         }
     }
+
+    /// Element-wise addition.  Both operands must have the same dtype.
+    pub fn try_add(self, rhs: Self) -> Result<Self, crate::error::Error> {
+        use quspin_core::error::QuSpinError;
+        macro_rules! add_variant {
+            ($a:expr, $b:expr, $variant:ident) => {
+                match $b {
+                    QMatrixInner::$variant(r) => Ok(QMatrixInner::$variant($a + r)),
+                    _ => Err(crate::error::Error(QuSpinError::ValueError(
+                        "QMatrix dtype mismatch in addition".to_string(),
+                    ))),
+                }
+            };
+        }
+        match self {
+            QMatrixInner::QMi8U8(l) => add_variant!(l, rhs, QMi8U8),
+            QMatrixInner::QMi8U16(l) => add_variant!(l, rhs, QMi8U16),
+            QMatrixInner::QMi16U8(l) => add_variant!(l, rhs, QMi16U8),
+            QMatrixInner::QMi16U16(l) => add_variant!(l, rhs, QMi16U16),
+            QMatrixInner::QMf32U8(l) => add_variant!(l, rhs, QMf32U8),
+            QMatrixInner::QMf32U16(l) => add_variant!(l, rhs, QMf32U16),
+            QMatrixInner::QMf64U8(l) => add_variant!(l, rhs, QMf64U8),
+            QMatrixInner::QMf64U16(l) => add_variant!(l, rhs, QMf64U16),
+            QMatrixInner::QMc32U8(l) => add_variant!(l, rhs, QMc32U8),
+            QMatrixInner::QMc32U16(l) => add_variant!(l, rhs, QMc32U16),
+            QMatrixInner::QMc64U8(l) => add_variant!(l, rhs, QMc64U8),
+            QMatrixInner::QMc64U16(l) => add_variant!(l, rhs, QMc64U16),
+        }
+    }
+
+    /// Element-wise subtraction.  Both operands must have the same dtype.
+    pub fn try_sub(self, rhs: Self) -> Result<Self, crate::error::Error> {
+        use quspin_core::error::QuSpinError;
+        macro_rules! sub_variant {
+            ($a:expr, $b:expr, $variant:ident) => {
+                match $b {
+                    QMatrixInner::$variant(r) => Ok(QMatrixInner::$variant($a - r)),
+                    _ => Err(crate::error::Error(QuSpinError::ValueError(
+                        "QMatrix dtype mismatch in subtraction".to_string(),
+                    ))),
+                }
+            };
+        }
+        match self {
+            QMatrixInner::QMi8U8(l) => sub_variant!(l, rhs, QMi8U8),
+            QMatrixInner::QMi8U16(l) => sub_variant!(l, rhs, QMi8U16),
+            QMatrixInner::QMi16U8(l) => sub_variant!(l, rhs, QMi16U8),
+            QMatrixInner::QMi16U16(l) => sub_variant!(l, rhs, QMi16U16),
+            QMatrixInner::QMf32U8(l) => sub_variant!(l, rhs, QMf32U8),
+            QMatrixInner::QMf32U16(l) => sub_variant!(l, rhs, QMf32U16),
+            QMatrixInner::QMf64U8(l) => sub_variant!(l, rhs, QMf64U8),
+            QMatrixInner::QMf64U16(l) => sub_variant!(l, rhs, QMf64U16),
+            QMatrixInner::QMc32U8(l) => sub_variant!(l, rhs, QMc32U8),
+            QMatrixInner::QMc32U16(l) => sub_variant!(l, rhs, QMc32U16),
+            QMatrixInner::QMc64U8(l) => sub_variant!(l, rhs, QMc64U8),
+            QMatrixInner::QMc64U16(l) => sub_variant!(l, rhs, QMc64U16),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// IntoQMatrixInner — convert QMatrix<V, i64, C> to the matching variant
+// ---------------------------------------------------------------------------
+
+/// Convert a concrete `QMatrix<V, i64, C>` to the type-erased `QMatrixInner`.
+///
+/// Implemented for all 12 valid (V, C) combinations.  Allows the build
+/// dispatch to produce a `QMatrixInner` without needing to know the variant
+/// name at the dispatch call site.
+pub trait IntoQMatrixInner {
+    fn into_qmatrix_inner(self) -> QMatrixInner;
+}
+
+macro_rules! impl_into_qmatrix_inner {
+    ($V:ty, $C:ty, $variant:ident) => {
+        impl IntoQMatrixInner for QMatrix<$V, i64, $C> {
+            #[inline]
+            fn into_qmatrix_inner(self) -> QMatrixInner {
+                QMatrixInner::$variant(self)
+            }
+        }
+    };
+}
+
+impl_into_qmatrix_inner!(i8, u8, QMi8U8);
+impl_into_qmatrix_inner!(i8, u16, QMi8U16);
+impl_into_qmatrix_inner!(i16, u8, QMi16U8);
+impl_into_qmatrix_inner!(i16, u16, QMi16U16);
+impl_into_qmatrix_inner!(f32, u8, QMf32U8);
+impl_into_qmatrix_inner!(f32, u16, QMf32U16);
+impl_into_qmatrix_inner!(f64, u8, QMf64U8);
+impl_into_qmatrix_inner!(f64, u16, QMf64U16);
+impl_into_qmatrix_inner!(num_complex::Complex<f32>, u8, QMc32U8);
+impl_into_qmatrix_inner!(num_complex::Complex<f32>, u16, QMc32U16);
+impl_into_qmatrix_inner!(num_complex::Complex<f64>, u8, QMc64U8);
+impl_into_qmatrix_inner!(num_complex::Complex<f64>, u16, QMc64U16);
+
+// ---------------------------------------------------------------------------
+// Split basis dispatch macros
+// ---------------------------------------------------------------------------
+
+/// Like `with_basis!` but restricted to Full* and Sub* (non-symmetric) variants.
+///
+/// The `$basis` binding has type `&impl BasisSpace<$B>`.
+#[macro_export]
+macro_rules! with_plain_basis {
+    ($inner:expr, $B:ident, $basis:ident, $body:block) => {
+        match $inner {
+            $crate::dispatch::HardcoreBasisInner::Full32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Full64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sub32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sub64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sub128($basis) => {
+                type $B = ::ruint::Uint<128, 2>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sub256($basis) => {
+                type $B = ::ruint::Uint<256, 4>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sub512($basis) => {
+                type $B = ::ruint::Uint<512, 8>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sub1024($basis) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sub2048($basis) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sub4096($basis) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sub8192($basis) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
+            _ => unreachable!("with_plain_basis! called on a symmetric variant"),
+        }
+    };
+}
+
+/// Like `with_basis!` but restricted to Sym* (symmetric) variants.
+///
+/// The `$basis` binding has type `&SymmetricSubspace<$B>`.
+#[macro_export]
+macro_rules! with_sym_basis {
+    ($inner:expr, $B:ident, $basis:ident, $body:block) => {
+        match $inner {
+            $crate::dispatch::HardcoreBasisInner::Sym32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sym64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sym128($basis) => {
+                type $B = ::ruint::Uint<128, 2>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sym256($basis) => {
+                type $B = ::ruint::Uint<256, 4>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sym512($basis) => {
+                type $B = ::ruint::Uint<512, 8>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sym1024($basis) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sym2048($basis) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sym4096($basis) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                $body
+            }
+            $crate::dispatch::HardcoreBasisInner::Sym8192($basis) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
+            _ => unreachable!("with_sym_basis! called on a non-symmetric variant"),
+        }
+    };
 }
 
 // ---------------------------------------------------------------------------
