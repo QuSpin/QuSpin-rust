@@ -232,6 +232,60 @@ mod tests {
         }
     }
 
+    /// Binomial coefficient C(n, k) — used to compute exact sector dimensions.
+    fn binom(n: usize, k: usize) -> usize {
+        if k > n {
+            return 0;
+        }
+        let k = k.min(n - k);
+        (0..k).fold(1usize, |acc, i| acc * (n - i) / (i + 1))
+    }
+
+    #[test]
+    fn subspace_hopping_conserves_particle_number() {
+        // H = Σ_i (σ⁺_i σ⁻_{i+1} + σ⁻_i σ⁺_{i+1}) hops particles between
+        // adjacent sites. Each term is individually zero unless exactly one
+        // particle moves, so Subspace::build stays within the k-particle sector.
+        // Starting from a seed with k ones the subspace dimension must equal
+        // C(n_sites, k) for all k in 0..=n_sites.
+        use crate::hamiltonian::hardcore::{HardcoreHamiltonian, HardcoreOp, OpEntry};
+        use smallvec::smallvec;
+
+        let n_sites: usize = 6;
+
+        let mut terms: Vec<OpEntry<u8>> = Vec::new();
+        for i in 0..(n_sites - 1) as u32 {
+            // σ⁺_i σ⁻_{i+1}: move particle from i+1 to i
+            terms.push(OpEntry::new(
+                0u8,
+                Complex::new(1.0, 0.0),
+                smallvec![(HardcoreOp::P, i), (HardcoreOp::M, i + 1)],
+            ));
+            // σ⁻_i σ⁺_{i+1}: move particle from i to i+1
+            terms.push(OpEntry::new(
+                0u8,
+                Complex::new(1.0, 0.0),
+                smallvec![(HardcoreOp::M, i), (HardcoreOp::P, i + 1)],
+            ));
+        }
+        let ham = HardcoreHamiltonian::new(terms, n_sites);
+
+        for k in 0..=n_sites {
+            // Seed: lowest k bits set (e.g. k=2, n=6 → 0b000011)
+            let seed = if k == 0 { 0u32 } else { (1u32 << k) - 1 };
+            let mut sub = Subspace::<u32>::new(n_sites);
+            sub.build(seed, |s| ham.apply(s).into_iter());
+
+            let expected = binom(n_sites, k);
+            assert_eq!(
+                sub.size(),
+                expected,
+                "k={k}: expected C({n_sites},{k})={expected}, got {}",
+                sub.size()
+            );
+        }
+    }
+
     #[test]
     fn subspace_build_constrained() {
         // Hopping that only connects states with the same particle number
