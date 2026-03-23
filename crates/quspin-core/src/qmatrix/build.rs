@@ -163,7 +163,7 @@ mod tests {
         // row 2 (state=1=|01⟩): XX|01⟩ = |10⟩=state_at(1) → col 1
         // row 3 (state=0=|00⟩): XX|00⟩ = |11⟩=state_at(0) → col 0
         let ham = xx_ham();
-        let basis = FullSpace::<u32>::new(4);
+        let basis = FullSpace::<u32>::new(2, 4);
         let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
 
         assert_eq!(mat.dim(), 4);
@@ -190,7 +190,7 @@ mod tests {
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)];
         let ham = HardcoreHamiltonian::new(terms, 2);
 
-        let mut sub = Subspace::<u32>::new();
+        let mut sub = Subspace::<u32>::new(2);
         // seed with |01⟩=1
         sub.build(0b01u32, |s| ham.apply(s).into_iter());
         assert_eq!(sub.size(), 2);
@@ -213,7 +213,7 @@ mod tests {
         // For XX on 2-site full space, eigenvalues are ±1 (from XX^2=I).
         // Check: H * H * |ψ⟩ = |ψ⟩ for any |ψ⟩
         let ham = xx_ham();
-        let basis = FullSpace::<u32>::new(4);
+        let basis = FullSpace::<u32>::new(2, 4);
         let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
         let coeff = vec![1.0_f64];
         let psi = vec![1.0_f64, 0.0, 0.0, 0.0];

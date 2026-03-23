@@ -101,6 +101,11 @@ impl<B: BitInt> SymmetricSubspace<B> {
 
 impl<B: BitInt> BasisSpace<B> for SymmetricSubspace<B> {
     #[inline]
+    fn n_sites(&self) -> usize {
+        self.grp.n_sites()
+    }
+
+    #[inline]
     fn size(&self) -> usize {
         self.states.len()
     }

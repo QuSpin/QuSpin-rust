@@ -19,7 +19,6 @@ use super::symmetry::PySymmetryGrp;
 
 #[pyclass(name = "PyHardcoreBasis")]
 pub struct PyHardcoreBasis {
-    pub n_sites: usize,
     pub inner: HardcoreBasisInner,
 }
 
@@ -51,11 +50,11 @@ impl PyHardcoreBasis {
         }
         let dim = 1usize << n_sites;
         let inner = if n_sites <= 32 {
-            HardcoreBasisInner::Full32(FullSpace::new(dim))
+            HardcoreBasisInner::Full32(FullSpace::new(n_sites, dim))
         } else {
-            HardcoreBasisInner::Full64(FullSpace::new(dim))
+            HardcoreBasisInner::Full64(FullSpace::new(n_sites, dim))
         };
-        Ok(PyHardcoreBasis { n_sites, inner })
+        Ok(PyHardcoreBasis { inner })
     }
 
     /// Build the subspace reachable from seed states under a Hamiltonian.
@@ -90,7 +89,7 @@ impl PyHardcoreBasis {
                 "n_sites={n_sites} exceeds the maximum supported value of 8192"
             ))),
             {
-                let mut basis = Subspace::<B>::new();
+                let mut basis = Subspace::<B>::new(n_sites);
                 for s in &seed_list {
                     let seed = seed_from_bytes::<B>(s);
                     match &ham.inner {
@@ -105,7 +104,7 @@ impl PyHardcoreBasis {
                 HardcoreBasisInner::from(basis)
             }
         );
-        Ok(PyHardcoreBasis { n_sites, inner })
+        Ok(PyHardcoreBasis { inner })
     }
 
     /// Build a symmetry-reduced subspace.
@@ -157,7 +156,7 @@ impl PyHardcoreBasis {
             HardcoreBasisInner::from(basis)
         });
 
-        Ok(PyHardcoreBasis { n_sites, inner })
+        Ok(PyHardcoreBasis { inner })
     }
 
     // ------------------------------------------------------------------
@@ -167,7 +166,7 @@ impl PyHardcoreBasis {
     /// Number of sites.
     #[getter]
     pub fn n_sites(&self) -> usize {
-        self.n_sites
+        self.inner.n_sites()
     }
 
     /// Number of basis states.

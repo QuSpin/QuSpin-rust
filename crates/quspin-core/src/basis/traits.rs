@@ -5,6 +5,9 @@ use crate::bitbasis::BitInt;
 /// Mirrors the ad-hoc duck-typed interface used across `space.hpp`,
 /// `subspace::build()`, and `qmatrix` construction in the C++.
 pub trait BasisSpace<B: BitInt> {
+    /// Number of lattice sites.
+    fn n_sites(&self) -> usize;
+
     /// Number of basis states.
     fn size(&self) -> usize;
 

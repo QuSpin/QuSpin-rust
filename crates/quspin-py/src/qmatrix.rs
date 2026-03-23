@@ -70,10 +70,10 @@ impl PyQMatrix {
         basis: &PyHardcoreBasis,
         dtype: &Bound<'_, numpy::PyArrayDescr>,
     ) -> PyResult<Self> {
-        if basis.n_sites != ham.inner.n_sites() {
+        if basis.inner.n_sites() != ham.inner.n_sites() {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "n_sites mismatch: basis has {} sites but Hamiltonian has {}",
-                basis.n_sites,
+                basis.inner.n_sites(),
                 ham.inner.n_sites()
             )));
         }

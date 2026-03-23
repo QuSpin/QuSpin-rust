@@ -18,13 +18,15 @@ use std::collections::HashMap;
 /// (multi-word integers are never practical for a full space).
 #[derive(Clone, Debug)]
 pub struct FullSpace<B: BitInt> {
+    n_sites: usize,
     dim: usize,
     _marker: std::marker::PhantomData<B>,
 }
 
 impl<B: BitInt> FullSpace<B> {
-    pub fn new(dim: usize) -> Self {
+    pub fn new(n_sites: usize, dim: usize) -> Self {
         FullSpace {
+            n_sites,
             dim,
             _marker: std::marker::PhantomData,
         }
@@ -32,6 +34,11 @@ impl<B: BitInt> FullSpace<B> {
 }
 
 impl<B: BitInt> BasisSpace<B> for FullSpace<B> {
+    #[inline]
+    fn n_sites(&self) -> usize {
+        self.n_sites
+    }
+
     #[inline]
     fn size(&self) -> usize {
         self.dim
@@ -67,14 +74,16 @@ impl<B: BitInt> BasisSpace<B> for FullSpace<B> {
 /// Mirrors `subspace<bitset_t>` from `space.hpp`.
 #[derive(Debug)]
 pub struct Subspace<B: BitInt> {
+    n_sites: usize,
     states: Vec<B>,
     index_map: HashMap<B, usize>,
 }
 
 impl<B: BitInt> Subspace<B> {
-    /// Create an empty subspace.
-    pub fn new() -> Self {
+    /// Create an empty subspace for a system with `n_sites` lattice sites.
+    pub fn new(n_sites: usize) -> Self {
         Subspace {
+            n_sites,
             states: Vec::new(),
             index_map: HashMap::new(),
         }
@@ -125,13 +134,12 @@ impl<B: BitInt> Subspace<B> {
     }
 }
 
-impl<B: BitInt> Default for Subspace<B> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<B: BitInt> BasisSpace<B> for Subspace<B> {
+    #[inline]
+    fn n_sites(&self) -> usize {
+        self.n_sites
+    }
+
     #[inline]
     fn size(&self) -> usize {
         self.states.len()
@@ -161,7 +169,7 @@ mod tests {
 
     #[test]
     fn full_space_state_at() {
-        let fs = FullSpace::<u32>::new(4);
+        let fs = FullSpace::<u32>::new(2, 4);
         assert_eq!(fs.state_at(0), 3u32); // dim-0-1 = 3
         assert_eq!(fs.state_at(1), 2u32);
         assert_eq!(fs.state_at(2), 1u32);
@@ -170,7 +178,7 @@ mod tests {
 
     #[test]
     fn full_space_index_roundtrip() {
-        let fs = FullSpace::<u64>::new(8);
+        let fs = FullSpace::<u64>::new(3, 8);
         for i in 0..8 {
             let s = fs.state_at(i);
             assert_eq!(fs.index(s), Some(i));
@@ -179,7 +187,7 @@ mod tests {
 
     #[test]
     fn full_space_out_of_range() {
-        let fs = FullSpace::<u32>::new(4);
+        let fs = FullSpace::<u32>::new(2, 4);
         assert_eq!(fs.index(4u32), None);
         assert_eq!(fs.index(100u32), None);
     }
@@ -200,14 +208,14 @@ mod tests {
     #[test]
     fn subspace_build_full_connectivity() {
         // X on every site connects all 2^3 = 8 states from seed 0
-        let mut sub = Subspace::<u32>::new();
+        let mut sub = Subspace::<u32>::new(3);
         sub.build(0u32, x_op_all_sites(3));
         assert_eq!(sub.size(), 8);
     }
 
     #[test]
     fn subspace_build_sorted_ascending() {
-        let mut sub = Subspace::<u32>::new();
+        let mut sub = Subspace::<u32>::new(3);
         sub.build(0u32, x_op_all_sites(3));
         for i in 0..sub.size() {
             assert_eq!(sub.state_at(i), i as u32);
@@ -216,7 +224,7 @@ mod tests {
 
     #[test]
     fn subspace_index_roundtrip() {
-        let mut sub = Subspace::<u32>::new();
+        let mut sub = Subspace::<u32>::new(3);
         sub.build(0u32, x_op_all_sites(3));
         for i in 0..sub.size() {
             let s = sub.state_at(i);
@@ -243,7 +251,7 @@ mod tests {
             results
         };
         // Start from |01⟩ = 1 (1 particle): should reach |01⟩=1 and |10⟩=2 in 3 sites
-        let mut sub = Subspace::<u32>::new();
+        let mut sub = Subspace::<u32>::new(3);
         sub.build(0b001u32, hop_op);
         // 3-site, 1-particle sector: {001, 010, 100} = {1, 2, 4}
         assert_eq!(sub.size(), 3);

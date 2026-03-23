@@ -70,6 +70,32 @@ pub enum HardcoreBasisInner {
 }
 
 impl HardcoreBasisInner {
+    /// Number of lattice sites.
+    pub fn n_sites(&self) -> usize {
+        match self {
+            HardcoreBasisInner::Full32(b) => b.n_sites(),
+            HardcoreBasisInner::Full64(b) => b.n_sites(),
+            HardcoreBasisInner::Sub32(b) => b.n_sites(),
+            HardcoreBasisInner::Sub64(b) => b.n_sites(),
+            HardcoreBasisInner::Sub128(b) => b.n_sites(),
+            HardcoreBasisInner::Sub256(b) => b.n_sites(),
+            HardcoreBasisInner::Sub512(b) => b.n_sites(),
+            HardcoreBasisInner::Sub1024(b) => b.n_sites(),
+            HardcoreBasisInner::Sub2048(b) => b.n_sites(),
+            HardcoreBasisInner::Sub4096(b) => b.n_sites(),
+            HardcoreBasisInner::Sub8192(b) => b.n_sites(),
+            HardcoreBasisInner::Sym32(b) => b.n_sites(),
+            HardcoreBasisInner::Sym64(b) => b.n_sites(),
+            HardcoreBasisInner::Sym128(b) => b.n_sites(),
+            HardcoreBasisInner::Sym256(b) => b.n_sites(),
+            HardcoreBasisInner::Sym512(b) => b.n_sites(),
+            HardcoreBasisInner::Sym1024(b) => b.n_sites(),
+            HardcoreBasisInner::Sym2048(b) => b.n_sites(),
+            HardcoreBasisInner::Sym4096(b) => b.n_sites(),
+            HardcoreBasisInner::Sym8192(b) => b.n_sites(),
+        }
+    }
+
     /// Number of basis states.
     pub fn size(&self) -> usize {
         match self {
