@@ -18,6 +18,7 @@
 /// are not physically meaningful for hardcore bosons.
 use crate::basis::{
     BasisSpace,
+    seed::{seed_from_bytes, state_to_str},
     space::{FullSpace, Subspace},
     sym::SymmetricSubspace,
 };
@@ -119,6 +120,60 @@ impl HardcoreBasisInner {
             HardcoreBasisInner::Sym2048(b) => b.size(),
             HardcoreBasisInner::Sym4096(b) => b.size(),
             HardcoreBasisInner::Sym8192(b) => b.size(),
+        }
+    }
+
+    /// Return the `i`-th basis state as a `'0'`/`'1'` string (site 0 = index 0).
+    pub fn state_at_str(&self, i: usize) -> String {
+        match self {
+            HardcoreBasisInner::Full32(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Full64(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sub32(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sub64(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sub128(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sub256(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sub512(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sub1024(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sub2048(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sub4096(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sub8192(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sym32(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sym64(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sym128(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sym256(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sym512(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sym1024(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sym2048(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sym4096(b) => state_to_str(b.state_at(i), b.n_sites()),
+            HardcoreBasisInner::Sym8192(b) => state_to_str(b.state_at(i), b.n_sites()),
+        }
+    }
+
+    /// Look up the index of the state encoded as a site-occupation byte slice.
+    ///
+    /// Returns `None` if the state is not in the basis.
+    pub fn index_of_bytes(&self, bytes: &[u8]) -> Option<usize> {
+        match self {
+            HardcoreBasisInner::Full32(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Full64(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sub32(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sub64(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sub128(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sub256(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sub512(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sub1024(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sub2048(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sub4096(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sub8192(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sym32(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sym64(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sym128(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sym256(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sym512(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sym1024(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sym2048(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sym4096(b) => b.index(seed_from_bytes(bytes)),
+            HardcoreBasisInner::Sym8192(b) => b.index(seed_from_bytes(bytes)),
         }
     }
 

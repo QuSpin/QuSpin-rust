@@ -14,6 +14,24 @@
 use crate::bitbasis::BitInt;
 use crate::error::QuSpinError;
 
+/// Convert a `B` basis state to a `'0'`/`'1'` string.
+///
+/// `output[i]` is `'1'` if bit `i` of `state` is set, `'0'` otherwise.
+/// Exactly `n_sites` characters are produced, matching the convention of
+/// `seed_from_str` / `seed_from_bytes`.
+pub fn state_to_str<B: BitInt>(state: B, n_sites: usize) -> String {
+    let one = B::from_u64(1);
+    (0..n_sites)
+        .map(|i| {
+            if (state >> i) & one != B::from_u64(0) {
+                '1'
+            } else {
+                '0'
+            }
+        })
+        .collect()
+}
+
 /// Construct a `B` basis state from a site-occupation byte slice.
 ///
 /// `bytes[i]` is the occupation (0 or 1) of site `i`.

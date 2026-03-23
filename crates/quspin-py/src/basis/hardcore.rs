@@ -160,6 +160,52 @@ impl PyHardcoreBasis {
     }
 
     // ------------------------------------------------------------------
+    // State access
+    // ------------------------------------------------------------------
+
+    /// Return the ``i``-th basis state as a bit string.
+    ///
+    /// Character at position ``j`` is ``'1'`` if site ``j`` is occupied,
+    /// ``'0'`` otherwise.  The ordering matches the seed convention used in
+    /// :meth:`subspace` and :meth:`symmetric`.
+    ///
+    /// Args:
+    ///     i (int): Row index, ``0 ≤ i < size``.
+    ///
+    /// Returns:
+    ///     str: Bit string of length ``n_sites``.
+    ///
+    /// Raises:
+    ///     IndexError: If ``i`` is out of range.
+    pub fn state_at(&self, i: usize) -> PyResult<String> {
+        if i >= self.inner.size() {
+            return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+                "index {i} out of range for basis of size {}",
+                self.inner.size()
+            )));
+        }
+        Ok(self.inner.state_at_str(i))
+    }
+
+    /// Look up the index of a basis state.
+    ///
+    /// Args:
+    ///     state (str | list[int]): Basis state in the same format accepted by
+    ///         :meth:`subspace` — a ``'0'``/``'1'`` string or a list of ``0``/``1``
+    ///         integers, where position ``j`` gives the occupation of site ``j``.
+    ///
+    /// Returns:
+    ///     int | None: The row index of ``state`` in the basis, or ``None`` if
+    ///     the state is not present.
+    ///
+    /// Raises:
+    ///     ValueError: If ``state`` is malformed.
+    pub fn index(&self, state: &Bound<'_, PyAny>) -> PyResult<Option<usize>> {
+        let bytes = extract_seed(state)?;
+        Ok(self.inner.index_of_bytes(&bytes))
+    }
+
+    // ------------------------------------------------------------------
     // Properties
     // ------------------------------------------------------------------
 
