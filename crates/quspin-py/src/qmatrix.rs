@@ -309,6 +309,49 @@ impl PyQMatrix {
         })
     }
 
+    /// Materialise the matrix as a dense 2-D NumPy array.
+    ///
+    /// Returns a C-contiguous ``(dim, dim)`` array where element
+    /// ``[r, col] = Σ_c coeff[c] * M[c, r, col]``.
+    ///
+    /// Args:
+    ///     coeff (NDArray): 1-D array of length ``num_cindices``. dtype must
+    ///         match the matrix element type.
+    ///
+    /// Returns:
+    ///     NDArray: 2-D array of shape ``(dim, dim)`` with the same dtype as
+    ///     the matrix.
+    ///
+    /// Raises:
+    ///     TypeError: If ``coeff`` dtype does not match the matrix element type.
+    ///     ValueError: If ``coeff`` has the wrong length or is not C-contiguous.
+    pub fn to_dense<'py>(&self, py: Python<'py>, coeff: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+        use numpy::{PyArray2, PyArrayMethods};
+        use quspin_core::with_qmatrix;
+        with_qmatrix!(&self.inner, V, _C, mat, {
+            let c = coeff.downcast::<PyArray1<V>>().map_err(|_| {
+                pyo3::exceptions::PyTypeError::new_err(
+                    "coeff dtype does not match the matrix element type",
+                )
+            })?;
+            let c_ro = c.readonly();
+            let c_slice = c_ro
+                .as_slice()
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+
+            let flat = mat.to_dense(c_slice).map_err(Error::from)?;
+            let dim = mat.dim();
+
+            let arr2d = numpy::ndarray::Array2::from_shape_vec((dim, dim), flat).map_err(
+                |e: numpy::ndarray::ShapeError| {
+                    pyo3::exceptions::PyValueError::new_err(e.to_string())
+                },
+            )?;
+            let arr = PyArray2::from_owned_array(py, arr2d);
+            Ok(arr.into_any().into())
+        })
+    }
+
     // ------------------------------------------------------------------
     // Arithmetic
     // ------------------------------------------------------------------

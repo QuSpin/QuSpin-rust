@@ -322,6 +322,61 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
     }
 
     // ------------------------------------------------------------------
+    // to_dense — materialise into a flat row-major dense array
+    // ------------------------------------------------------------------
+
+    /// Fill a pre-allocated row-major dense buffer with the materialised matrix.
+    ///
+    /// `output` must have length `dim * dim`.  It is zeroed before accumulation.
+    /// `output[r * dim + col] = Σ_c coeff[c] * stored_value[c, r, col]`.
+    ///
+    /// This is the low-level fill primitive intended for C-FFI callers, who
+    /// pre-allocate `dim * dim` elements of the matrix dtype and pass a raw
+    /// pointer.  The output size is always known — `dim` is available via
+    /// `quspin_qmatrix_dim()` — so no separate size-query step is needed.
+    ///
+    /// Python callers should use the allocating `to_dense` instead.
+    ///
+    /// # Errors
+    /// Returns `ValueError` if `coeff.len() != num_coeff` or
+    /// `output.len() != dim * dim`.
+    pub fn to_dense_into(&self, coeff: &[V], output: &mut [V]) -> Result<(), QuSpinError> {
+        self.check_coeff(coeff)?;
+        let expected = self.dim * self.dim;
+        if output.len() != expected {
+            return Err(QuSpinError::ValueError(format!(
+                "output length {} != dim * dim = {}",
+                output.len(),
+                expected
+            )));
+        }
+        output.fill(V::default());
+        for r in 0..self.dim {
+            for e in self.row(r) {
+                output[r * self.dim + e.col.as_usize()] += coeff[e.cindex.as_usize()] * e.value;
+            }
+        }
+        Ok(())
+    }
+
+    /// Allocate and return a row-major dense array for the materialised matrix.
+    ///
+    /// Returns a `Vec<V>` of length `dim * dim`.  Element `[r * dim + col]`
+    /// holds `Σ_c coeff[c] * stored_value[c, r, col]`.
+    ///
+    /// Ownership is transferred to the caller.  Python callers receive this
+    /// as a 2-D numpy array (via `PyArray2`); C-FFI callers should use
+    /// `to_dense_into` with a pre-allocated pointer instead.
+    ///
+    /// # Errors
+    /// Returns `ValueError` if `coeff.len() != num_coeff`.
+    pub fn to_dense(&self, coeff: &[V]) -> Result<Vec<V>, QuSpinError> {
+        let mut output = vec![V::default(); self.dim * self.dim];
+        self.to_dense_into(coeff, &mut output)?;
+        Ok(output)
+    }
+
+    // ------------------------------------------------------------------
     // dot — output[r] = Σ_{col,cindex} coeff[cindex] * value * input[col]
     // ------------------------------------------------------------------
 
@@ -621,5 +676,63 @@ mod tests {
     fn to_csr_wrong_coeff_errors() {
         let m = mat_2x2();
         assert!(m.to_csr(&[1.0f64, 2.0], false).is_err());
+    }
+
+    // --- to_dense ---
+
+    #[test]
+    fn to_dense_identity_coeff() {
+        // [[2,1],[3,4]] with coeff=[1] → dense [[2,1],[3,4]]
+        let m = mat_2x2();
+        let d = m.to_dense(&[1.0f64]).unwrap();
+        assert_eq!(d.len(), 4);
+        assert!((d[0] - 2.0).abs() < 1e-12); // [0,0]
+        assert!((d[1] - 1.0).abs() < 1e-12); // [0,1]
+        assert!((d[2] - 3.0).abs() < 1e-12); // [1,0]
+        assert!((d[3] - 4.0).abs() < 1e-12); // [1,1]
+    }
+
+    #[test]
+    fn to_dense_coeff_scaling() {
+        let m = mat_2x2();
+        let d = m.to_dense(&[2.0f64]).unwrap();
+        assert!((d[0] - 4.0).abs() < 1e-12);
+        assert!((d[1] - 2.0).abs() < 1e-12);
+        assert!((d[2] - 6.0).abs() < 1e-12);
+        assert!((d[3] - 8.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn to_dense_merges_same_col() {
+        // mat_merge row 0: col=0 val=2, col=1 c=0 val=3, col=1 c=1 val=-1
+        // coeff=[1,1] → M[0,0]=2, M[0,1]=2, M[1,0]=5, M[1,1]=0
+        let m = mat_merge();
+        let d = m.to_dense(&[1.0f64, 1.0]).unwrap();
+        assert!((d[0] - 2.0).abs() < 1e-12); // [0,0]
+        assert!((d[1] - 2.0).abs() < 1e-12); // [0,1] merged: 3 + (-1) = 2
+        assert!((d[2] - 5.0).abs() < 1e-12); // [1,0]
+        assert!(d[3].abs() < 1e-12); // [1,1] absent → zero
+    }
+
+    #[test]
+    fn to_dense_into_matches_to_dense() {
+        let m = mat_2x2();
+        let expected = m.to_dense(&[1.0f64]).unwrap();
+        let mut buf = vec![0.0f64; m.dim() * m.dim()];
+        m.to_dense_into(&[1.0f64], &mut buf).unwrap();
+        assert_eq!(buf, expected);
+    }
+
+    #[test]
+    fn to_dense_wrong_output_size_errors() {
+        let m = mat_2x2();
+        let mut buf = vec![0.0f64; 3]; // should be 4
+        assert!(m.to_dense_into(&[1.0f64], &mut buf).is_err());
+    }
+
+    #[test]
+    fn to_dense_wrong_coeff_errors() {
+        let m = mat_2x2();
+        assert!(m.to_dense(&[1.0f64, 2.0]).is_err());
     }
 }

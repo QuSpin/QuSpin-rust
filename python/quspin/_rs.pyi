@@ -622,6 +622,33 @@ class PyQMatrix:
         """Number of stored non-zero entries."""
         ...
 
+    def to_dense(
+        self,
+        coeff: npt.NDArray[Any],
+    ) -> npt.NDArray[Any]:
+        """Materialise the matrix as a dense 2-D NumPy array.
+
+        Returns a C-contiguous ``(dim, dim)`` array where element
+        ``[r, col] = Σ_c coeff[c] * M[c, r, col]``.
+
+        Args:
+            coeff (NDArray): 1-D array of length ``num_cindices``. dtype must
+                match the matrix element type.
+
+        Returns:
+            NDArray: 2-D array of shape ``(dim, dim)`` with the same dtype as
+            the matrix.
+
+        Raises:
+            TypeError: If ``coeff`` dtype does not match the matrix element type.
+            ValueError: If ``coeff`` has the wrong length or is not
+                C-contiguous.
+
+        Example:
+            >>> A = mat.to_dense(coeff)  # shape (dim, dim)
+        """
+        ...
+
     def to_csr(
         self,
         coeff: npt.NDArray[Any],
