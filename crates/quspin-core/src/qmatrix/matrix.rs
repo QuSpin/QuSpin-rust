@@ -3,6 +3,17 @@ use crate::primitive::Primitive;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
+/// Relative tolerance for treating a materialised matrix entry as zero.
+///
+/// An accumulated value `acc` is considered negligible when
+/// `|acc| ≤ scale * ZERO_TOL`, where `scale` is the sum of magnitudes of the
+/// individual contributions to that entry.  This catches floating-point
+/// near-cancellations (e.g. `3.0 - 3.0` that rounds to a ULP-level residual)
+/// without a hardcoded absolute threshold.
+///
+/// Matches the tolerance used in `Subspace::build` / `SymmetricSubspace::build`.
+const ZERO_TOL: f64 = 4.0 * f64::EPSILON;
+
 // ---------------------------------------------------------------------------
 // Index / CIndex sealed traits
 // ---------------------------------------------------------------------------
@@ -177,8 +188,9 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
     /// Count the number of structurally non-zero entries that
     /// `to_csr_into` / `to_csr` would emit for the given `coeff`.
     ///
-    /// When `drop_zeros` is `true`, entries whose accumulated value equals
-    /// `V::default()` are excluded from the count.
+    /// When `drop_zeros` is `true`, entries whose accumulated value is
+    /// negligible relative to the sum of contribution magnitudes
+    /// (`|acc| ≤ scale * ZERO_TOL`) are excluded from the count.
     ///
     /// Use this to pre-allocate buffers before calling `to_csr_into` (the
     /// C-FFI two-phase pattern).
@@ -194,11 +206,14 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
             while i < row.len() {
                 let col = row[i].col;
                 let mut acc = V::default();
+                let mut scale = 0.0f64;
                 while i < row.len() && row[i].col == col {
-                    acc += coeff[row[i].cindex.as_usize()] * row[i].value;
+                    let contrib = coeff[row[i].cindex.as_usize()] * row[i].value;
+                    acc += contrib;
+                    scale += contrib.to_complex().norm();
                     i += 1;
                 }
-                if !drop_zeros || acc != V::default() {
+                if !drop_zeros || acc.to_complex().norm() > scale * ZERO_TOL {
                     count += 1;
                 }
             }
@@ -211,8 +226,9 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
     /// Entries with the same `(row, col)` are summed across cindices:
     /// `M[row, col] = Σ_c coeff[c] * stored_value[c, row, col]`.
     ///
-    /// When `drop_zeros` is `true`, entries whose accumulated value equals
-    /// `V::default()` are omitted from `indices` and `data`.
+    /// When `drop_zeros` is `true`, entries whose accumulated value is
+    /// negligible relative to the sum of contribution magnitudes
+    /// (`|acc| ≤ scale * ZERO_TOL`) are omitted from `indices` and `data`.
     ///
     /// # Buffer sizes
     /// - `indptr`: exactly `dim + 1`
@@ -256,11 +272,14 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
             while i < row.len() {
                 let col = row[i].col;
                 let mut acc = V::default();
+                let mut scale = 0.0f64;
                 while i < row.len() && row[i].col == col {
-                    acc += coeff[row[i].cindex.as_usize()] * row[i].value;
+                    let contrib = coeff[row[i].cindex.as_usize()] * row[i].value;
+                    acc += contrib;
+                    scale += contrib.to_complex().norm();
                     i += 1;
                 }
-                if !drop_zeros || acc != V::default() {
+                if !drop_zeros || acc.to_complex().norm() > scale * ZERO_TOL {
                     if pos >= indices.len() {
                         return Err(QuSpinError::ValueError(format!(
                             "output buffer too small: needed more than {} entries",
