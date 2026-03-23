@@ -210,10 +210,10 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
                 while i < row.len() && row[i].col == col {
                     let contrib = coeff[row[i].cindex.as_usize()] * row[i].value;
                     acc += contrib;
-                    scale += contrib.to_complex().norm();
+                    scale += contrib.magnitude();
                     i += 1;
                 }
-                if !drop_zeros || acc.to_complex().norm() > scale * ZERO_TOL {
+                if !drop_zeros || acc.magnitude() > scale * ZERO_TOL {
                     count += 1;
                 }
             }
@@ -276,10 +276,10 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
                 while i < row.len() && row[i].col == col {
                     let contrib = coeff[row[i].cindex.as_usize()] * row[i].value;
                     acc += contrib;
-                    scale += contrib.to_complex().norm();
+                    scale += contrib.magnitude();
                     i += 1;
                 }
-                if !drop_zeros || acc.to_complex().norm() > scale * ZERO_TOL {
+                if !drop_zeros || acc.magnitude() > scale * ZERO_TOL {
                     if pos >= indices.len() {
                         return Err(QuSpinError::ValueError(format!(
                             "output buffer too small: needed more than {} entries",

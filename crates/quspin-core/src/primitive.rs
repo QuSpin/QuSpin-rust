@@ -35,6 +35,13 @@ pub trait Primitive:
     ///
     /// Mirrors `detail::cast<T>` from `cast.hpp`.
     fn from_complex(c: Complex<f64>) -> Self;
+
+    /// Absolute value (real types) or modulus (complex types) as `f64`.
+    ///
+    /// Preferred over `self.to_complex().norm()` because it avoids
+    /// constructing an intermediate `Complex<f64>` and the unnecessary
+    /// `sqrt` call for real types where `|x|` is just `x.abs()`.
+    fn magnitude(self) -> f64;
 }
 
 macro_rules! impl_primitive_real {
@@ -49,6 +56,10 @@ macro_rules! impl_primitive_real {
                 #[inline]
                 fn from_complex(c: Complex<f64>) -> Self {
                     c.re as $T
+                }
+                #[inline]
+                fn magnitude(self) -> f64 {
+                    (self as f64).abs()
                 }
             }
         )*
@@ -67,6 +78,11 @@ impl Primitive for Complex<f32> {
     fn from_complex(c: Complex<f64>) -> Self {
         Complex::new(c.re as f32, c.im as f32)
     }
+    #[inline]
+    fn magnitude(self) -> f64 {
+        // Upcast components before squaring to avoid f32 overflow.
+        ((self.re as f64).powi(2) + (self.im as f64).powi(2)).sqrt()
+    }
 }
 
 impl private::Sealed for Complex<f64> {}
@@ -78,5 +94,9 @@ impl Primitive for Complex<f64> {
     #[inline]
     fn from_complex(c: Complex<f64>) -> Self {
         c
+    }
+    #[inline]
+    fn magnitude(self) -> f64 {
+        self.norm()
     }
 }
