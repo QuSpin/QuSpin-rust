@@ -1,5 +1,6 @@
 use super::{BasisSpace, symmetry::SymmetryGrp};
 use crate::bitbasis::BitInt;
+use num_complex::Complex;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -57,8 +58,16 @@ impl<B: BitInt> SymmetricSubspace<B> {
         let mut stack: Vec<B> = vec![ref_seed];
 
         while let Some(state) = stack.pop() {
-            for (_amp, next_state, _cindex) in op(state) {
-                if next_state == state {
+            // Accumulate amplitudes per output state before checking reachability,
+            // so that terms which cancel (e.g. XX + YY on |00⟩) are not visited.
+            let mut contributions: HashMap<B, Complex<f64>> = HashMap::new();
+            for (amp, next_state, _cindex) in op(state) {
+                if next_state != state {
+                    *contributions.entry(next_state).or_default() += amp;
+                }
+            }
+            for (next_state, net_amp) in contributions {
+                if net_amp.norm() <= 1e-10 {
                     continue;
                 }
                 let (next_ref, _coeff) = self.grp.get_refstate(next_state);

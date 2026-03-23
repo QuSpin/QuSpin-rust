@@ -113,8 +113,16 @@ impl<B: BitInt> Subspace<B> {
         }
 
         while let Some(state) = stack.pop() {
-            for (_amp, next_state, _cindex) in op(state) {
-                if next_state != state && !self.index_map.contains_key(&next_state) {
+            // Accumulate amplitudes per output state to detect cancellations.
+            // A state is only reachable if its net amplitude is non-zero.
+            let mut contributions: HashMap<B, num_complex::Complex<f64>> = HashMap::new();
+            for (amp, next_state, _cindex) in op(state) {
+                if next_state != state {
+                    *contributions.entry(next_state).or_default() += amp;
+                }
+            }
+            for (next_state, net_amp) in contributions {
+                if net_amp.norm() > 1e-10 && !self.index_map.contains_key(&next_state) {
                     self.index_map.insert(next_state, self.states.len());
                     self.states.push(next_state);
                     stack.push(next_state);
@@ -242,10 +250,12 @@ mod tests {
     }
 
     #[test]
-    fn subspace_hopping_conserves_particle_number() {
-        // H = Σ_i (σ⁺_i σ⁻_{i+1} + σ⁻_i σ⁺_{i+1}) hops particles between
-        // adjacent sites. Each term is individually zero unless exactly one
-        // particle moves, so Subspace::build stays within the k-particle sector.
+    fn subspace_xx_yy_conserves_particle_number() {
+        // H = Σ_i (X_i X_{i+1} + Y_i Y_{i+1}) is the XX+YY Hamiltonian.
+        // Symbolically XX+YY = 2(σ⁺σ⁻ + σ⁻σ⁺), which conserves particle number.
+        // The individual XX and YY terms connect |00>↔|11> with amplitudes +1
+        // and -1 respectively — they cancel in the sum, so no state should be
+        // added to the subspace when the net amplitude is zero.
         // Starting from a seed with k ones the subspace dimension must equal
         // C(n_sites, k) for all k in 0..=n_sites.
         use crate::hamiltonian::hardcore::{HardcoreHamiltonian, HardcoreOp, OpEntry};
@@ -255,17 +265,15 @@ mod tests {
 
         let mut terms: Vec<OpEntry<u8>> = Vec::new();
         for i in 0..(n_sites - 1) as u32 {
-            // σ⁺_i σ⁻_{i+1}: move particle from i+1 to i
             terms.push(OpEntry::new(
                 0u8,
                 Complex::new(1.0, 0.0),
-                smallvec![(HardcoreOp::P, i), (HardcoreOp::M, i + 1)],
+                smallvec![(HardcoreOp::X, i), (HardcoreOp::X, i + 1)],
             ));
-            // σ⁻_i σ⁺_{i+1}: move particle from i to i+1
             terms.push(OpEntry::new(
                 0u8,
                 Complex::new(1.0, 0.0),
-                smallvec![(HardcoreOp::M, i), (HardcoreOp::P, i + 1)],
+                smallvec![(HardcoreOp::Y, i), (HardcoreOp::Y, i + 1)],
             ));
         }
         let ham = HardcoreHamiltonian::new(terms, n_sites);
