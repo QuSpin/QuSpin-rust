@@ -116,8 +116,8 @@ impl<B: BitInt> Subspace<B> {
     {
         let mut stack: Vec<B> = Vec::new();
 
-        if !self.index_map.contains_key(&seed) {
-            self.index_map.insert(seed, self.states.len());
+        if let std::collections::hash_map::Entry::Vacant(e) = self.index_map.entry(seed) {
+            e.insert(self.states.len());
             self.states.push(seed);
             stack.push(seed);
         }
@@ -135,9 +135,10 @@ impl<B: BitInt> Subspace<B> {
             }
             for (next_state, (net_amp, scale)) in contributions {
                 if net_amp.norm() > scale * AMP_CANCEL_TOL
-                    && !self.index_map.contains_key(&next_state)
+                    && let std::collections::hash_map::Entry::Vacant(e) =
+                        self.index_map.entry(next_state)
                 {
-                    self.index_map.insert(next_state, self.states.len());
+                    e.insert(self.states.len());
                     self.states.push(next_state);
                     stack.push(next_state);
                 }

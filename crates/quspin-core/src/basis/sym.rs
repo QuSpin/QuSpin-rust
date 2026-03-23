@@ -53,8 +53,10 @@ impl<B: BitInt> SymmetricSubspace<B> {
         let (ref_seed, _coeff) = self.grp.get_refstate(seed);
         let (_ref2, norm_seed) = self.grp.check_refstate(ref_seed);
 
-        if norm_seed > 0.0 && !self.index_map.contains_key(&ref_seed) {
-            self.index_map.insert(ref_seed, self.states.len());
+        if norm_seed > 0.0
+            && let std::collections::hash_map::Entry::Vacant(e) = self.index_map.entry(ref_seed)
+        {
+            e.insert(self.states.len());
             self.states.push((ref_seed, norm_seed));
         }
 
@@ -77,8 +79,11 @@ impl<B: BitInt> SymmetricSubspace<B> {
                 let (next_ref, _coeff) = self.grp.get_refstate(next_state);
                 let (_ref2, next_norm) = self.grp.check_refstate(next_ref);
 
-                if next_norm > 0.0 && !self.index_map.contains_key(&next_ref) {
-                    self.index_map.insert(next_ref, self.states.len());
+                if next_norm > 0.0
+                    && let std::collections::hash_map::Entry::Vacant(e) =
+                        self.index_map.entry(next_ref)
+                {
+                    e.insert(self.states.len());
                     self.states.push((next_ref, next_norm));
                     stack.push(next_ref);
                 }
