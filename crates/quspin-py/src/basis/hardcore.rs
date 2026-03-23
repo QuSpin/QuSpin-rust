@@ -5,10 +5,10 @@ use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use quspin_core::basis::hardcore::dispatch::HardcoreBasisInner;
 use quspin_core::basis::{
+    seed_from_bytes, seed_from_str,
     space::{FullSpace, Subspace},
     sym::SymmetricSubspace,
 };
-use quspin_core::bitbasis::BitInt;
 use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
 
 use super::symmetry::PySymmetryGrp;
@@ -83,21 +83,28 @@ impl PyHardcoreBasis {
         let n_sites = ham.inner.n_sites();
         let seed_list = extract_seed_list(seeds)?;
 
-        let inner = crate::select_b_for_n_sites!(n_sites, B, {
-            let mut basis = Subspace::<B>::new();
-            for s in &seed_list {
-                let seed = seed_as::<B>(s);
-                match &ham.inner {
-                    HardcoreHamiltonianInner::Ham8(h) => {
-                        basis.build(seed, |state| h.apply(state).into_iter());
-                    }
-                    HardcoreHamiltonianInner::Ham16(h) => {
-                        basis.build(seed, |state| h.apply(state).into_iter());
+        let inner = quspin_core::select_b_for_n_sites!(
+            n_sites,
+            B,
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "n_sites={n_sites} exceeds the maximum supported value of 8192"
+            ))),
+            {
+                let mut basis = Subspace::<B>::new();
+                for s in &seed_list {
+                    let seed = seed_from_bytes::<B>(s);
+                    match &ham.inner {
+                        HardcoreHamiltonianInner::Ham8(h) => {
+                            basis.build(seed, |state| h.apply(state).into_iter());
+                        }
+                        HardcoreHamiltonianInner::Ham16(h) => {
+                            basis.build(seed, |state| h.apply(state).into_iter());
+                        }
                     }
                 }
+                HardcoreBasisInner::from(basis)
             }
-            HardcoreBasisInner::from(basis)
-        });
+        );
         Ok(PyHardcoreBasis { n_sites, inner })
     }
 
@@ -137,7 +144,7 @@ impl PyHardcoreBasis {
         let inner = quspin_core::with_sym_grp!(&grp.inner, B, sym_grp, {
             let mut basis = SymmetricSubspace::<B>::new(sym_grp.clone());
             for s in &seed_list {
-                let seed = seed_as::<B>(s);
+                let seed = seed_from_bytes::<B>(s);
                 match &ham.inner {
                     HardcoreHamiltonianInner::Ham8(h) => {
                         basis.build(seed, |state| h.apply(state).into_iter());
@@ -191,23 +198,18 @@ fn extract_seed_list(seeds: &Bound<'_, PyAny>) -> Result<Vec<Vec<u8>>, Error> {
         })?
         .map(|item| {
             item.map_err(|e| Error(quspin_core::error::QuSpinError::ValueError(e.to_string())))
-                .and_then(|obj| seed_to_bits(&obj))
+                .and_then(|obj| extract_seed(&obj))
         })
         .collect()
 }
 
-/// Convert a single Python seed (str or list[int]) to a site-occupation bit vector.
-fn seed_to_bits(obj: &Bound<'_, PyAny>) -> Result<Vec<u8>, Error> {
+/// Convert a single Python seed (str or list[int]) to a site-occupation byte vector.
+///
+/// String seeds are parsed via `quspin_core::basis::seed_from_str`.
+/// List seeds are validated and returned directly.
+fn extract_seed(obj: &Bound<'_, PyAny>) -> Result<Vec<u8>, Error> {
     if let Ok(s) = obj.extract::<String>() {
-        s.chars()
-            .map(|c| match c {
-                '0' => Ok(0u8),
-                '1' => Ok(1u8),
-                _ => Err(Error(quspin_core::error::QuSpinError::ValueError(format!(
-                    "invalid character '{c}' in seed string; expected '0' or '1'"
-                )))),
-            })
-            .collect()
+        seed_from_str(&s).map_err(Error)
     } else if let Ok(bits) = obj.extract::<Vec<u8>>() {
         for &v in &bits {
             if v > 1 {
@@ -222,18 +224,4 @@ fn seed_to_bits(obj: &Bound<'_, PyAny>) -> Result<Vec<u8>, Error> {
             "each seed must be a str of '0'/'1' or a list of 0/1 ints".to_string(),
         )))
     }
-}
-
-/// Construct a `B` basis state from a site-occupation bit vector.
-///
-/// `bits[i]` is the occupation (0 or 1) of site `i`.  Bits beyond `B::BITS`
-/// are silently ignored.
-fn seed_as<B: BitInt>(bits: &[u8]) -> B {
-    let mut result = B::from_u64(0);
-    for (i, &v) in bits.iter().enumerate() {
-        if v != 0 && i < B::BITS as usize {
-            result = result | (B::from_u64(1) << i);
-        }
-    }
-    result
 }

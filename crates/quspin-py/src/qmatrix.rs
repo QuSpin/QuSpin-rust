@@ -25,11 +25,11 @@ use quspin_core::qmatrix::dispatch::{IntoQMatrixInner, QMatrixInner};
 use quspin_core::{with_plain_basis, with_sym_basis};
 
 use crate::basis::hardcore::PyHardcoreBasis;
-use crate::dtype::MatrixDType;
+use crate::dtype::{FromPyDescr, ValueDType};
 use crate::error::Error;
 use crate::hamiltonian::PyHardcoreHamiltonian;
-use crate::with_value_dtype;
 use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
+use quspin_core::with_value_dtype;
 
 // ---------------------------------------------------------------------------
 // PyQMatrix
@@ -77,7 +77,7 @@ impl PyQMatrix {
                 ham.inner.n_sites()
             )));
         }
-        let v_dtype = MatrixDType::from_descr(py, dtype).map_err(Error::from)?;
+        let v_dtype = <ValueDType as FromPyDescr>::from_descr(py, dtype).map_err(Error::from)?;
 
         let mat_inner = if basis.inner.is_symmetric() {
             with_value_dtype!(v_dtype, V, {

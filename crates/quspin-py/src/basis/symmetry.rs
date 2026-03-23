@@ -1,8 +1,3 @@
-use num_complex::Complex;
-use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::basis::SymmetryGrpInner;
-use quspin_core::basis::symmetry::{GrpElement, GrpOpKind, LatticeElement, SymmetryGrp};
 /// Python-facing symmetry group pyclasses.
 ///
 /// `PyLatticeElement` and `PyGrpElement` accept Python-level arguments.
@@ -16,82 +11,14 @@ use quspin_core::basis::symmetry::{GrpElement, GrpOpKind, LatticeElement, Symmet
 /// P   = PyGrpElement.bitflip(grp_char=1.0+0j, n_sites=4)
 /// grp = PySymmetryGrp(lattice=[T], local=[P])
 /// ```
-use quspin_core::bitbasis::{
-    BitInt, DynamicHigherSpinInv, DynamicPermDitValues, PermDitLocations, PermDitMask,
-};
+use num_complex::Complex;
+use pyo3::prelude::*;
+use pyo3::types::{PyAnyMethods, PyList};
+use quspin_core::basis::symmetry::{GrpElement, LatticeElement, SymmetryGrp};
+use quspin_core::basis::{GrpOpDesc, SymmetryGrpInner};
+use quspin_core::bitbasis::PermDitLocations;
 
 use crate::error::Error;
-
-// ---------------------------------------------------------------------------
-// GrpOpDesc
-// ---------------------------------------------------------------------------
-
-/// Stores the data for a local symmetry operation independently of the basis
-/// integer type `B`.
-///
-/// The concrete `GrpElement<B>` is constructed lazily via
-/// [`GrpOpDesc::into_grp_element`] at basis-construction time.
-#[derive(Clone, Debug)]
-pub enum GrpOpDesc {
-    Bitflip {
-        n_sites: usize,
-        /// Site indices whose bits are flipped.  `None` = all `n_sites` bits.
-        locs: Option<Vec<usize>>,
-    },
-    LocalValue {
-        n_sites: usize,
-        lhss: usize,
-        /// Value permutation: maps dit value v → perm[v].  Length == lhss.
-        perm: Vec<u8>,
-        /// Sites to which the value permutation is applied.
-        locs: Vec<usize>,
-    },
-    SpinInversion {
-        n_sites: usize,
-        lhss: usize,
-        locs: Vec<usize>,
-    },
-}
-
-impl GrpOpDesc {
-    pub fn n_sites(&self) -> usize {
-        match self {
-            GrpOpDesc::Bitflip { n_sites, .. } => *n_sites,
-            GrpOpDesc::LocalValue { n_sites, .. } => *n_sites,
-            GrpOpDesc::SpinInversion { n_sites, .. } => *n_sites,
-        }
-    }
-
-    /// Convert into a `GrpElement<B>` for a concrete basis integer type.
-    pub fn into_grp_element<B: BitInt>(self, grp_char: Complex<f64>) -> GrpElement<B> {
-        let op = match &self {
-            GrpOpDesc::Bitflip { n_sites, locs } => {
-                let effective: Vec<usize> = match locs {
-                    Some(l) => l.clone(),
-                    None => (0..*n_sites).collect(),
-                };
-                let mask = effective.iter().fold(B::from_u64(0), |acc, &site| {
-                    if site < B::BITS as usize {
-                        acc | (B::from_u64(1) << site)
-                    } else {
-                        acc
-                    }
-                });
-                GrpOpKind::Bitflip(PermDitMask::new(mask))
-            }
-            GrpOpDesc::LocalValue {
-                lhss, perm, locs, ..
-            } => {
-                GrpOpKind::LocalValue(DynamicPermDitValues::new(*lhss, perm.clone(), locs.clone()))
-            }
-            GrpOpDesc::SpinInversion { lhss, locs, .. } => {
-                GrpOpKind::SpinInversion(DynamicHigherSpinInv::new(*lhss, locs.clone()))
-            }
-        };
-        let n_sites = self.n_sites();
-        GrpElement::new(grp_char, op, n_sites)
-    }
-}
 
 // ---------------------------------------------------------------------------
 // PyLatticeElement
@@ -311,15 +238,22 @@ impl PySymmetryGrp {
         let _ = py;
         let n_sites = n_sites_opt.unwrap_or(0);
 
-        let inner = crate::select_b_for_n_sites!(n_sites, B, {
-            let local_elements: Vec<GrpElement<B>> = local_descs
-                .into_iter()
-                .map(|(char_, op)| op.into_grp_element::<B>(char_))
-                .collect();
-            let grp = SymmetryGrp::<B>::new(lattice_elements, local_elements)
-                .map_err(|e| PyErr::from(Error(e)))?;
-            SymmetryGrpInner::from(grp)
-        });
+        let inner = quspin_core::select_b_for_n_sites!(
+            n_sites,
+            B,
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "n_sites={n_sites} exceeds the maximum supported value of 8192"
+            ))),
+            {
+                let local_elements: Vec<GrpElement<B>> = local_descs
+                    .into_iter()
+                    .map(|(char_, op)| op.into_grp_element::<B>(char_))
+                    .collect();
+                let grp = SymmetryGrp::<B>::new(lattice_elements, local_elements)
+                    .map_err(|e| PyErr::from(Error(e)))?;
+                SymmetryGrpInner::from(grp)
+            }
+        );
 
         Ok(PySymmetryGrp { inner })
     }

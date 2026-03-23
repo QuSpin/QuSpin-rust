@@ -339,3 +339,61 @@ macro_rules! with_sym_basis {
         }
     };
 }
+
+/// Select the smallest `B: BitInt` that fits `$n_sites` site indices, inject
+/// it as a local type alias `$B`, and evaluate `$body`.
+///
+/// The ladder is: ≤32 → `u32`, ≤64 → `u64`, ≤128 → `Uint<128,2>`, …,
+/// ≤8192 → `Uint<8192,128>`.
+///
+/// `$on_overflow` is evaluated (and must diverge or return) when
+/// `n_sites > 8192`.  Each FFI consumer supplies its own expression:
+///
+/// ```rust,ignore
+/// // quspin-py
+/// select_b_for_n_sites!(n, B,
+///     return Err(pyo3::exceptions::PyValueError::new_err("n_sites > 8192")),
+///     { ... }
+/// );
+///
+/// // quspin-c
+/// select_b_for_n_sites!(n, B,
+///     return write_error(err, QuSpinError::ValueError("n_sites > 8192".into())),
+///     { ... }
+/// );
+/// ```
+#[macro_export]
+macro_rules! select_b_for_n_sites {
+    ($n_sites:expr, $B:ident, $on_overflow:expr, $body:block) => {
+        if $n_sites <= 32 {
+            type $B = u32;
+            $body
+        } else if $n_sites <= 64 {
+            type $B = u64;
+            $body
+        } else if $n_sites <= 128 {
+            type $B = ::ruint::Uint<128, 2>;
+            $body
+        } else if $n_sites <= 256 {
+            type $B = ::ruint::Uint<256, 4>;
+            $body
+        } else if $n_sites <= 512 {
+            type $B = ::ruint::Uint<512, 8>;
+            $body
+        } else if $n_sites <= 1024 {
+            type $B = ::ruint::Uint<1024, 16>;
+            $body
+        } else if $n_sites <= 2048 {
+            type $B = ::ruint::Uint<2048, 32>;
+            $body
+        } else if $n_sites <= 4096 {
+            type $B = ::ruint::Uint<4096, 64>;
+            $body
+        } else if $n_sites <= 8192 {
+            type $B = ::ruint::Uint<8192, 128>;
+            $body
+        } else {
+            $on_overflow
+        }
+    };
+}

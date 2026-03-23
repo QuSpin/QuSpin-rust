@@ -235,6 +235,78 @@ impl<B: BitInt> SymmetryGrp<B> {
 }
 
 // ---------------------------------------------------------------------------
+// GrpOpDesc — type-erased local op, independent of B
+// ---------------------------------------------------------------------------
+
+/// Stores the data for a local symmetry operation independently of the basis
+/// integer type `B`.
+///
+/// The concrete `GrpElement<B>` is constructed lazily via
+/// [`GrpOpDesc::into_grp_element`] at basis-construction time, once `B` is known.
+/// This allows FFI consumers to collect local ops before `n_sites` is resolved.
+#[derive(Clone, Debug)]
+pub enum GrpOpDesc {
+    Bitflip {
+        n_sites: usize,
+        /// Site indices whose bits are flipped.  `None` = all `n_sites` bits.
+        locs: Option<Vec<usize>>,
+    },
+    LocalValue {
+        n_sites: usize,
+        lhss: usize,
+        /// Value permutation: maps dit value v → perm[v].  Length == lhss.
+        perm: Vec<u8>,
+        /// Sites to which the value permutation is applied.
+        locs: Vec<usize>,
+    },
+    SpinInversion {
+        n_sites: usize,
+        lhss: usize,
+        locs: Vec<usize>,
+    },
+}
+
+impl GrpOpDesc {
+    pub fn n_sites(&self) -> usize {
+        match self {
+            GrpOpDesc::Bitflip { n_sites, .. } => *n_sites,
+            GrpOpDesc::LocalValue { n_sites, .. } => *n_sites,
+            GrpOpDesc::SpinInversion { n_sites, .. } => *n_sites,
+        }
+    }
+
+    /// Convert into a `GrpElement<B>` for a concrete basis integer type.
+    pub fn into_grp_element<B: BitInt>(self, grp_char: Complex<f64>) -> GrpElement<B> {
+        let op = match &self {
+            GrpOpDesc::Bitflip { n_sites, locs } => {
+                let effective: Vec<usize> = match locs {
+                    Some(l) => l.clone(),
+                    None => (0..*n_sites).collect(),
+                };
+                let mask = effective.iter().fold(B::from_u64(0), |acc, &site| {
+                    if site < B::BITS as usize {
+                        acc | (B::from_u64(1) << site)
+                    } else {
+                        acc
+                    }
+                });
+                GrpOpKind::Bitflip(PermDitMask::new(mask))
+            }
+            GrpOpDesc::LocalValue {
+                lhss, perm, locs, ..
+            } => {
+                GrpOpKind::LocalValue(DynamicPermDitValues::new(*lhss, perm.clone(), locs.clone()))
+            }
+            GrpOpDesc::SpinInversion { lhss, locs, .. } => {
+                GrpOpKind::SpinInversion(DynamicHigherSpinInv::new(*lhss, locs.clone()))
+            }
+        };
+        let n_sites = self.n_sites();
+        GrpElement::new(grp_char, op, n_sites)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
