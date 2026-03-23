@@ -241,6 +241,75 @@ impl PyQMatrix {
     }
 
     // ------------------------------------------------------------------
+    // to_csr
+    // ------------------------------------------------------------------
+
+    /// Materialise the matrix as a plain CSR sparse matrix.
+    ///
+    /// Multiplies stored values by ``coeff`` and sums entries that share the
+    /// same ``(row, col)`` position across different operator strings.
+    ///
+    /// Args:
+    ///     coeff (NDArray): 1-D array of length ``num_cindices``. dtype must
+    ///         match the matrix element type.
+    ///     drop_zeros (bool): If ``True`` (default), omit entries whose
+    ///         accumulated value is exactly zero from the output.
+    ///
+    /// Returns:
+    ///     tuple[NDArray, NDArray, NDArray]: ``(indptr, indices, data)`` arrays
+    ///     suitable for constructing a ``scipy.sparse.csr_array``:
+    ///
+    ///     .. code-block:: python
+    ///
+    ///         ip, idx, d = mat.to_csr(coeff)
+    ///         A = scipy.sparse.csr_array((d, idx, ip), shape=(mat.dim, mat.dim))
+    ///
+    ///     - ``indptr``: int64, length ``dim + 1``
+    ///     - ``indices``: int64, length ``nnz``
+    ///     - ``data``: same dtype as the matrix, length ``nnz``
+    ///
+    /// Raises:
+    ///     TypeError: If ``coeff`` dtype does not match the matrix element type.
+    ///     ValueError: If ``coeff`` has the wrong length or is not C-contiguous.
+    #[pyo3(signature = (coeff, drop_zeros = true))]
+    pub fn to_csr<'py>(
+        &self,
+        py: Python<'py>,
+        coeff: &Bound<'_, PyAny>,
+        drop_zeros: bool,
+    ) -> PyResult<PyObject> {
+        use numpy::PyArray1;
+        use quspin_core::with_qmatrix;
+        with_qmatrix!(&self.inner, V, _C, mat, {
+            let c = coeff.downcast::<PyArray1<V>>().map_err(|_| {
+                pyo3::exceptions::PyTypeError::new_err(
+                    "coeff dtype does not match the matrix element type",
+                )
+            })?;
+            let c_ro = c.readonly();
+            let c_slice = c_ro
+                .as_slice()
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+
+            let (indptr, indices, data) = mat.to_csr(c_slice, drop_zeros).map_err(Error::from)?;
+
+            let indptr_arr = PyArray1::from_vec(py, indptr);
+            let indices_arr = PyArray1::from_vec(py, indices);
+            let data_arr = PyArray1::from_vec(py, data);
+
+            Ok(pyo3::types::PyTuple::new(
+                py,
+                [
+                    indptr_arr.into_any(),
+                    indices_arr.into_any(),
+                    data_arr.into_any(),
+                ],
+            )?
+            .into())
+        })
+    }
+
+    // ------------------------------------------------------------------
     // Arithmetic
     // ------------------------------------------------------------------
 

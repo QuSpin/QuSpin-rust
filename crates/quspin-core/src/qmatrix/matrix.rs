@@ -171,6 +171,138 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
     }
 
     // ------------------------------------------------------------------
+    // to_csr — materialise with coefficients into a plain CSR matrix
+    // ------------------------------------------------------------------
+
+    /// Count the number of structurally non-zero entries that
+    /// `to_csr_into` / `to_csr` would emit for the given `coeff`.
+    ///
+    /// When `drop_zeros` is `true`, entries whose accumulated value equals
+    /// `V::default()` are excluded from the count.
+    ///
+    /// Use this to pre-allocate buffers before calling `to_csr_into` (the
+    /// C-FFI two-phase pattern).
+    ///
+    /// # Errors
+    /// Returns `ValueError` if `coeff.len() != num_coeff`.
+    pub fn to_csr_nnz(&self, coeff: &[V], drop_zeros: bool) -> Result<usize, QuSpinError> {
+        self.check_coeff(coeff)?;
+        let mut count = 0usize;
+        for r in 0..self.dim {
+            let mut i = 0;
+            let row = self.row(r);
+            while i < row.len() {
+                let col = row[i].col;
+                let mut acc = V::default();
+                while i < row.len() && row[i].col == col {
+                    acc += coeff[row[i].cindex.as_usize()] * row[i].value;
+                    i += 1;
+                }
+                if !drop_zeros || acc != V::default() {
+                    count += 1;
+                }
+            }
+        }
+        Ok(count)
+    }
+
+    /// Fill pre-allocated CSR buffers with the materialised matrix.
+    ///
+    /// Entries with the same `(row, col)` are summed across cindices:
+    /// `M[row, col] = Σ_c coeff[c] * stored_value[c, row, col]`.
+    ///
+    /// When `drop_zeros` is `true`, entries whose accumulated value equals
+    /// `V::default()` are omitted from `indices` and `data`.
+    ///
+    /// # Buffer sizes
+    /// - `indptr`: exactly `dim + 1`
+    /// - `indices`, `data`: at least as large as `to_csr_nnz(coeff, drop_zeros)`
+    ///
+    /// This is the low-level fill primitive intended for C-FFI callers.
+    /// Python callers should use the allocating `to_csr` instead.
+    ///
+    /// # Errors
+    /// Returns `ValueError` if `coeff.len() != num_coeff`,
+    /// `indptr.len() != dim + 1`, or the output buffers are too small.
+    pub fn to_csr_into(
+        &self,
+        coeff: &[V],
+        drop_zeros: bool,
+        indptr: &mut [I],
+        indices: &mut [I],
+        data: &mut [V],
+    ) -> Result<(), QuSpinError> {
+        self.check_coeff(coeff)?;
+        if indptr.len() != self.dim + 1 {
+            return Err(QuSpinError::ValueError(format!(
+                "indptr length {} != dim + 1 = {}",
+                indptr.len(),
+                self.dim + 1
+            )));
+        }
+        if indices.len() != data.len() {
+            return Err(QuSpinError::ValueError(format!(
+                "indices length {} != data length {}",
+                indices.len(),
+                data.len()
+            )));
+        }
+
+        let mut pos = 0usize;
+        indptr[0] = I::from_usize(0);
+        for r in 0..self.dim {
+            let mut i = 0;
+            let row = self.row(r);
+            while i < row.len() {
+                let col = row[i].col;
+                let mut acc = V::default();
+                while i < row.len() && row[i].col == col {
+                    acc += coeff[row[i].cindex.as_usize()] * row[i].value;
+                    i += 1;
+                }
+                if !drop_zeros || acc != V::default() {
+                    if pos >= indices.len() {
+                        return Err(QuSpinError::ValueError(format!(
+                            "output buffer too small: needed more than {} entries",
+                            indices.len()
+                        )));
+                    }
+                    indices[pos] = col;
+                    data[pos] = acc;
+                    pos += 1;
+                }
+            }
+            indptr[r + 1] = I::from_usize(pos);
+        }
+        Ok(())
+    }
+
+    /// Allocate and return `(indptr, indices, data)` for the materialised matrix.
+    ///
+    /// Convenience wrapper over `to_csr_nnz` + `to_csr_into`.  Ownership of
+    /// the three `Vec`s is transferred to the caller.
+    ///
+    /// Python callers receive these as numpy arrays (zero-copy via
+    /// `PyArray1::from_vec`).  C-FFI callers should use the two-phase
+    /// `to_csr_nnz` / `to_csr_into` API instead to avoid a second pass.
+    ///
+    /// # Errors
+    /// Returns `ValueError` if `coeff.len() != num_coeff`.
+    #[allow(clippy::type_complexity)]
+    pub fn to_csr(
+        &self,
+        coeff: &[V],
+        drop_zeros: bool,
+    ) -> Result<(Vec<I>, Vec<I>, Vec<V>), QuSpinError> {
+        let nnz = self.to_csr_nnz(coeff, drop_zeros)?;
+        let mut indptr = vec![I::default(); self.dim + 1];
+        let mut indices = vec![I::default(); nnz];
+        let mut data = vec![V::default(); nnz];
+        self.to_csr_into(coeff, drop_zeros, &mut indptr, &mut indices, &mut data)?;
+        Ok((indptr, indices, data))
+    }
+
+    // ------------------------------------------------------------------
     // dot — output[r] = Σ_{col,cindex} coeff[cindex] * value * input[col]
     // ------------------------------------------------------------------
 
@@ -234,7 +366,7 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
     // Helpers
     // ------------------------------------------------------------------
 
-    fn check_dot_args(&self, coeff: &[V], input: &[V], output: &[V]) -> Result<(), QuSpinError> {
+    fn check_coeff(&self, coeff: &[V]) -> Result<(), QuSpinError> {
         if coeff.len() != self.num_coeff {
             return Err(QuSpinError::ValueError(format!(
                 "coeff length {} != num_coeff {}",
@@ -242,6 +374,11 @@ impl<V: Primitive, I: Index, C: CIndex> QMatrix<V, I, C> {
                 self.num_coeff
             )));
         }
+        Ok(())
+    }
+
+    fn check_dot_args(&self, coeff: &[V], input: &[V], output: &[V]) -> Result<(), QuSpinError> {
+        self.check_coeff(coeff)?;
         if input.len() != self.dim {
             return Err(QuSpinError::ValueError(format!(
                 "input length {} != dim {}",
@@ -355,5 +492,115 @@ mod tests {
         let input = vec![1.0f64, 2.0];
         let mut output = vec![0.0f64; 2];
         assert!(m.dot(true, &coeff, &input, &mut output).is_err());
+    }
+
+    // --- to_csr ---
+
+    /// Build a 2×2 matrix where two cindices share the same (row, col):
+    /// row 0: (col=1, c=0) with value 3.0 and (col=1, c=1) with value -1.0.
+    /// With coeff=[1, 1] → M[0,1] = 2.0 (merged); with coeff=[1, 3] → M[0,1] = 0.0.
+    fn mat_merge() -> QMatrix<f64, i64, u8> {
+        // Row 0: col=0 c=0 val=2, col=1 c=0 val=3, col=1 c=1 val=-1
+        // Row 1: col=0 c=0 val=5
+        let indptr = vec![0i64, 3, 4];
+        let data = vec![
+            Entry::new(2.0f64, 0i64, 0u8),
+            Entry::new(3.0f64, 1i64, 0u8),
+            Entry::new(-1.0f64, 1i64, 1u8),
+            Entry::new(5.0f64, 0i64, 0u8),
+        ];
+        QMatrix::from_csr(indptr, data)
+    }
+
+    #[test]
+    fn to_csr_identity_coeff() {
+        // coeff = [1]: M[r,c] = Σ_c 1 * val = stored values, merging same-col entries.
+        let m = mat_2x2();
+        let (indptr, indices, data) = m.to_csr(&[1.0f64], false).unwrap();
+        assert_eq!(indptr, vec![0i64, 2, 4]);
+        assert_eq!(indices, vec![0i64, 1, 0, 1]);
+        assert_eq!(data, vec![2.0f64, 1.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn to_csr_coeff_scaling() {
+        // coeff = [2]: every value doubles.
+        let m = mat_2x2();
+        let (indptr, indices, data) = m.to_csr(&[2.0f64], false).unwrap();
+        assert_eq!(data, vec![4.0f64, 2.0, 6.0, 8.0]);
+        assert_eq!(indptr, vec![0i64, 2, 4]);
+        assert_eq!(indices, vec![0i64, 1, 0, 1]);
+    }
+
+    #[test]
+    fn to_csr_merges_same_col() {
+        // mat_merge row 0, col 1: c=0 val=3, c=1 val=-1.
+        // coeff=[1, 1] → M[0,1] = 3 + (-1) = 2.
+        let m = mat_merge();
+        let (indptr, indices, data) = m.to_csr(&[1.0f64, 1.0], false).unwrap();
+        assert_eq!(indptr, vec![0i64, 2, 3]);
+        assert_eq!(indices, vec![0i64, 1, 0]);
+        assert!((data[0] - 2.0).abs() < 1e-12); // row 0 col 0
+        assert!((data[1] - 2.0).abs() < 1e-12); // row 0 col 1 (merged)
+        assert!((data[2] - 5.0).abs() < 1e-12); // row 1 col 0
+    }
+
+    #[test]
+    fn to_csr_drop_zeros_removes_cancelled_entry() {
+        // coeff=[1, 3] → M[0,1] = 3*1 + (-1)*3 = 0.  With drop_zeros=true it's absent.
+        let m = mat_merge();
+        let (indptr, indices, data) = m.to_csr(&[1.0f64, 3.0], true).unwrap();
+        // Row 0: col=0 → 2*1=2 (kept), col=1 → 0 (dropped).
+        // Row 1: col=0 → 5*1=5 (kept).
+        assert_eq!(indptr, vec![0i64, 1, 2]);
+        assert_eq!(indices, vec![0i64, 0]);
+        assert!((data[0] - 2.0).abs() < 1e-12);
+        assert!((data[1] - 5.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn to_csr_drop_zeros_false_keeps_zero_entry() {
+        // Same as above but drop_zeros=false: the zero entry at (0,1) is kept.
+        let m = mat_merge();
+        let (indptr, indices, data) = m.to_csr(&[1.0f64, 3.0], false).unwrap();
+        assert_eq!(indptr, vec![0i64, 2, 3]);
+        assert_eq!(indices, vec![0i64, 1, 0]);
+        assert!((data[0] - 2.0).abs() < 1e-12);
+        assert!(data[1].abs() < 1e-12); // zero entry retained
+        assert!((data[2] - 5.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn to_csr_nnz_matches_to_csr_len() {
+        let m = mat_merge();
+        for &drop_zeros in &[true, false] {
+            for coeff in [vec![1.0f64, 1.0], vec![1.0, 3.0]] {
+                let nnz = m.to_csr_nnz(&coeff, drop_zeros).unwrap();
+                let (_, indices, _) = m.to_csr(&coeff, drop_zeros).unwrap();
+                assert_eq!(nnz, indices.len());
+            }
+        }
+    }
+
+    #[test]
+    fn to_csr_into_matches_to_csr() {
+        let m = mat_merge();
+        let coeff = vec![1.0f64, 1.0];
+        let (expected_ip, expected_idx, expected_data) = m.to_csr(&coeff, true).unwrap();
+        let nnz = m.to_csr_nnz(&coeff, true).unwrap();
+        let mut indptr = vec![0i64; m.dim() + 1];
+        let mut indices = vec![0i64; nnz];
+        let mut data = vec![0.0f64; nnz];
+        m.to_csr_into(&coeff, true, &mut indptr, &mut indices, &mut data)
+            .unwrap();
+        assert_eq!(indptr, expected_ip);
+        assert_eq!(indices, expected_idx);
+        assert_eq!(data, expected_data);
+    }
+
+    #[test]
+    fn to_csr_wrong_coeff_errors() {
+        let m = mat_2x2();
+        assert!(m.to_csr(&[1.0f64, 2.0], false).is_err());
     }
 }

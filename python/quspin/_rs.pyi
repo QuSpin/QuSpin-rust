@@ -622,6 +622,48 @@ class PyQMatrix:
         """Number of stored non-zero entries."""
         ...
 
+    def to_csr(
+        self,
+        coeff: npt.NDArray[Any],
+        drop_zeros: bool = True,
+    ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[Any]]:
+        """Materialise the matrix as a plain CSR sparse matrix.
+
+        Multiplies stored values by ``coeff`` and sums entries that share the
+        same ``(row, col)`` position across different operator strings.
+
+        Args:
+            coeff (NDArray): 1-D array of length ``num_cindices``. dtype must
+                match the matrix element type.
+            drop_zeros (bool): If ``True`` (default), omit entries whose
+                accumulated value is exactly zero from the output arrays.
+
+        Returns:
+            tuple[NDArray[int64], NDArray[int64], NDArray]: ``(indptr, indices,
+            data)`` arrays suitable for constructing a
+            ``scipy.sparse.csr_array``:
+
+            .. code-block:: python
+
+                ip, idx, d = mat.to_csr(coeff)
+                A = scipy.sparse.csr_array((d, idx, ip), shape=(mat.dim, mat.dim))
+
+            - ``indptr``: ``int64``, length ``dim + 1``
+            - ``indices``: ``int64``, length ``nnz``
+            - ``data``: same dtype as the matrix, length ``nnz``
+
+        Raises:
+            TypeError: If ``coeff`` dtype does not match the matrix element type.
+            ValueError: If ``coeff`` has the wrong length or is not
+                C-contiguous.
+
+        Example:
+            >>> import scipy.sparse
+            >>> ip, idx, d = mat.to_csr(coeff)
+            >>> A = scipy.sparse.csr_array((d, idx, ip), shape=(mat.dim, mat.dim))
+        """
+        ...
+
     def __repr__(self) -> str:
         """Return ``PyQMatrix(dim=..., nnz=..., dtype=...)``."""
         ...
