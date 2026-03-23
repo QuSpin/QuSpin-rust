@@ -444,6 +444,22 @@ class PyHardcoreBasis:
         """Return ``PyHardcoreBasis(kind=..., n_sites=..., size=...)``."""
         ...
 
+    def __str__(self) -> str:
+        """Return a human-readable enumeration of all basis states.
+
+        Format::
+
+            kind(n_sites=N, size=M, symmetries=[...]):
+              0. |01001>
+              1. |10011>
+              ...
+
+        The index column is right-aligned to the width of the largest index.
+        Symmetries is ``[]`` for full and subspace bases, and
+        ``[symmetric]`` for symmetry-reduced bases.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # PyQMatrix

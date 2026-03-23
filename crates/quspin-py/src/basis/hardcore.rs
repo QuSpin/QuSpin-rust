@@ -229,6 +229,48 @@ impl PyHardcoreBasis {
             self.inner.size(),
         )
     }
+
+    /// Human-readable enumeration of all basis states.
+    ///
+    /// Format::
+    ///
+    ///     kind(n_sites=N, size=M, symmetries=[...]):
+    ///       0. |01001>
+    ///       1. |10011>
+    ///       ...
+    pub fn __str__(&self) -> String {
+        let n_sites = self.inner.n_sites();
+        let size = self.inner.size();
+        let symmetries = if self.inner.is_symmetric() {
+            "symmetric".to_string()
+        } else {
+            String::new()
+        };
+        let sym_display = if symmetries.is_empty() {
+            "[]".to_string()
+        } else {
+            format!("[{symmetries}]")
+        };
+
+        let index_width = size.saturating_sub(1).to_string().len();
+
+        let mut out = format!(
+            "{}(n_sites={}, size={}, symmetries={}):",
+            self.inner.kind(),
+            n_sites,
+            size,
+            sym_display,
+        );
+        for i in 0..size {
+            out.push_str(&format!(
+                "\n  {:>width$}. |{}>",
+                i,
+                self.inner.state_at_str(i),
+                width = index_width,
+            ));
+        }
+        out
+    }
 }
 
 // ---------------------------------------------------------------------------
