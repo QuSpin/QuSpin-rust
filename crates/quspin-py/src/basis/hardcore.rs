@@ -220,6 +220,15 @@ impl PyHardcoreBasis {
     pub fn size(&self) -> usize {
         self.inner.size()
     }
+
+    pub fn __repr__(&self) -> String {
+        format!(
+            "PyHardcoreBasis(kind={}, n_sites={}, size={})",
+            self.inner.kind(),
+            self.inner.n_sites(),
+            self.inner.size(),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------

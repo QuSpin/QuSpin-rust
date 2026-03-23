@@ -177,6 +177,31 @@ impl HardcoreBasisInner {
         }
     }
 
+    /// One of `"full"`, `"subspace"`, or `"symmetric"`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            HardcoreBasisInner::Full32(_) | HardcoreBasisInner::Full64(_) => "full",
+            HardcoreBasisInner::Sub32(_)
+            | HardcoreBasisInner::Sub64(_)
+            | HardcoreBasisInner::Sub128(_)
+            | HardcoreBasisInner::Sub256(_)
+            | HardcoreBasisInner::Sub512(_)
+            | HardcoreBasisInner::Sub1024(_)
+            | HardcoreBasisInner::Sub2048(_)
+            | HardcoreBasisInner::Sub4096(_)
+            | HardcoreBasisInner::Sub8192(_) => "subspace",
+            HardcoreBasisInner::Sym32(_)
+            | HardcoreBasisInner::Sym64(_)
+            | HardcoreBasisInner::Sym128(_)
+            | HardcoreBasisInner::Sym256(_)
+            | HardcoreBasisInner::Sym512(_)
+            | HardcoreBasisInner::Sym1024(_)
+            | HardcoreBasisInner::Sym2048(_)
+            | HardcoreBasisInner::Sym4096(_)
+            | HardcoreBasisInner::Sym8192(_) => "symmetric",
+        }
+    }
+
     /// Returns `true` for `Sym*` variants (symmetry-reduced subspaces).
     pub fn is_symmetric(&self) -> bool {
         matches!(

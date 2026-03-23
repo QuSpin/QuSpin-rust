@@ -41,6 +41,10 @@ class PyLatticeElement:
         """
         ...
 
+    def __repr__(self) -> str:
+        """Return ``PyLatticeElement(grp_char=..., perm=[...], lhss=...)``."""
+        ...
+
 
 # ---------------------------------------------------------------------------
 # PyGrpElement
@@ -136,6 +140,11 @@ class PyGrpElement:
         """
         ...
 
+    def __repr__(self) -> str:
+        """Return the factory-call form, e.g.
+        ``PyGrpElement.bitflip(grp_char=(1+0j), n_sites=4, locs=None)``."""
+        ...
+
 
 # ---------------------------------------------------------------------------
 # PySymmetryGrp
@@ -182,6 +191,10 @@ class PySymmetryGrp:
     @property
     def n_sites(self) -> int:
         """Number of sites in the system."""
+        ...
+
+    def __repr__(self) -> str:
+        """Return ``PySymmetryGrp(n_sites=...)``."""
         ...
 
 
@@ -254,6 +267,10 @@ class PyHardcoreHamiltonian:
     @property
     def num_cindices(self) -> int:
         """Number of distinct coefficient indices (outer list length)."""
+        ...
+
+    def __repr__(self) -> str:
+        """Return ``PyHardcoreHamiltonian(n_sites=..., num_cindices=...)``."""
         ...
 
 
@@ -423,6 +440,10 @@ class PyHardcoreBasis:
         """Number of basis states."""
         ...
 
+    def __repr__(self) -> str:
+        """Return ``PyHardcoreBasis(kind=..., n_sites=..., size=...)``."""
+        ...
+
 
 # ---------------------------------------------------------------------------
 # PyQMatrix
@@ -580,4 +601,8 @@ class PyQMatrix:
     @property
     def nnz(self) -> int:
         """Number of stored non-zero entries."""
+        ...
+
+    def __repr__(self) -> str:
+        """Return ``PyQMatrix(dim=..., nnz=..., dtype=...)``."""
         ...

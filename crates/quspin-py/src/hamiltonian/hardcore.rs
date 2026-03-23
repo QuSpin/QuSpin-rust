@@ -114,4 +114,12 @@ impl PyHardcoreHamiltonian {
     pub fn num_cindices(&self) -> usize {
         self.num_cindices
     }
+
+    pub fn __repr__(&self) -> String {
+        format!(
+            "PyHardcoreHamiltonian(n_sites={}, num_cindices={})",
+            self.inner.n_sites(),
+            self.num_cindices,
+        )
+    }
 }

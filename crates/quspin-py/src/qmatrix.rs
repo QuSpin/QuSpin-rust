@@ -299,4 +299,13 @@ impl PyQMatrix {
     pub fn nnz(&self) -> usize {
         self.inner.nnz()
     }
+
+    pub fn __repr__(&self) -> String {
+        format!(
+            "PyQMatrix(dim={}, nnz={}, dtype={})",
+            self.inner.dim(),
+            self.inner.nnz(),
+            self.inner.dtype_name(),
+        )
+    }
 }

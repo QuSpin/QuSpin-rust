@@ -18,6 +18,14 @@ use quspin_core::basis::symmetry::{GrpElement, LatticeElement, SymmetryGrp};
 use quspin_core::basis::{GrpOpDesc, SymmetryGrpInner};
 use quspin_core::bitbasis::PermDitLocations;
 
+fn fmt_complex(c: Complex<f64>) -> String {
+    if c.im >= 0.0 {
+        format!("({}+{}j)", c.re, c.im)
+    } else {
+        format!("({}{}j)", c.re, c.im)
+    }
+}
+
 use crate::error::Error;
 
 // ---------------------------------------------------------------------------
@@ -61,6 +69,16 @@ impl PyLatticeElement {
             perm,
             lhss,
         }
+    }
+
+    pub fn __repr__(&self) -> String {
+        let perm: Vec<String> = self.perm.iter().map(|x| x.to_string()).collect();
+        format!(
+            "PyLatticeElement(grp_char={}, perm=[{}], lhss={})",
+            fmt_complex(self.grp_char),
+            perm.join(", "),
+            self.lhss,
+        )
     }
 }
 
@@ -166,6 +184,45 @@ impl PyGrpElement {
             },
         }
     }
+
+    pub fn __repr__(&self) -> String {
+        let c = fmt_complex(self.grp_char);
+        match &self.op {
+            GrpOpDesc::Bitflip { locs, .. } => {
+                let locs_str = match locs {
+                    None => "None".to_string(),
+                    Some(v) => {
+                        let s: Vec<String> = v.iter().map(|x| x.to_string()).collect();
+                        format!("[{}]", s.join(", "))
+                    }
+                };
+                format!(
+                    "PyGrpElement.bitflip(grp_char={c}, n_sites={}, locs={locs_str})",
+                    self.n_sites,
+                )
+            }
+            GrpOpDesc::LocalValue {
+                lhss, perm, locs, ..
+            } => {
+                let perm_s: Vec<String> = perm.iter().map(|x| x.to_string()).collect();
+                let locs_s: Vec<String> = locs.iter().map(|x| x.to_string()).collect();
+                format!(
+                    "PyGrpElement.local_value(grp_char={c}, n_sites={}, lhss={lhss}, perm=[{}], locs=[{}])",
+                    self.n_sites,
+                    perm_s.join(", "),
+                    locs_s.join(", "),
+                )
+            }
+            GrpOpDesc::SpinInversion { lhss, locs, .. } => {
+                let locs_s: Vec<String> = locs.iter().map(|x| x.to_string()).collect();
+                format!(
+                    "PyGrpElement.spin_inversion(grp_char={c}, n_sites={}, lhss={lhss}, locs=[{}])",
+                    self.n_sites,
+                    locs_s.join(", "),
+                )
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -262,5 +319,9 @@ impl PySymmetryGrp {
     #[getter]
     pub fn n_sites(&self) -> usize {
         self.inner.n_sites()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("PySymmetryGrp(n_sites={})", self.inner.n_sites())
     }
 }

@@ -65,6 +65,18 @@ impl QMatrixInner {
         }
     }
 
+    /// NumPy dtype name for the matrix element type (e.g. `"float64"`).
+    pub fn dtype_name(&self) -> &'static str {
+        match self {
+            QMatrixInner::QMi8U8(_) | QMatrixInner::QMi8U16(_) => "int8",
+            QMatrixInner::QMi16U8(_) | QMatrixInner::QMi16U16(_) => "int16",
+            QMatrixInner::QMf32U8(_) | QMatrixInner::QMf32U16(_) => "float32",
+            QMatrixInner::QMf64U8(_) | QMatrixInner::QMf64U16(_) => "float64",
+            QMatrixInner::QMc32U8(_) | QMatrixInner::QMc32U16(_) => "complex64",
+            QMatrixInner::QMc64U8(_) | QMatrixInner::QMc64U16(_) => "complex128",
+        }
+    }
+
     /// Element-wise addition.  Both operands must have the same dtype.
     pub fn try_add(self, rhs: Self) -> Result<Self, QuSpinError> {
         macro_rules! add_variant {
