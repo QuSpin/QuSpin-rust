@@ -220,6 +220,41 @@ impl HardcoreBasisInner {
 }
 
 // ---------------------------------------------------------------------------
+// Display
+// ---------------------------------------------------------------------------
+
+impl std::fmt::Display for HardcoreBasisInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let size = self.size();
+        let sym_display = if self.is_symmetric() {
+            "[symmetric]"
+        } else {
+            "[]"
+        };
+        let index_width = size.saturating_sub(1).to_string().len();
+
+        write!(
+            f,
+            "{}(n_sites={}, size={}, symmetries={}):",
+            self.kind(),
+            self.n_sites(),
+            size,
+            sym_display,
+        )?;
+        for i in 0..size {
+            write!(
+                f,
+                "\n  {:>width$}. |{}>",
+                i,
+                self.state_at_str(i),
+                width = index_width,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // From impls — wrap a concrete basis space without naming the variant
 // ---------------------------------------------------------------------------
 
@@ -502,4 +537,44 @@ macro_rules! select_b_for_n_sites {
             $on_overflow
         }
     };
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::basis::space::{FullSpace, Subspace};
+
+    #[test]
+    fn display_full_space() {
+        let inner = HardcoreBasisInner::Full32(FullSpace::new(2, 4));
+        let s = inner.to_string();
+        assert!(s.starts_with("full(n_sites=2, size=4, symmetries=[]):"));
+        assert!(s.contains("|11>"));
+        assert!(s.contains("|00>"));
+    }
+
+    #[test]
+    fn display_subspace() {
+        let mut sub = Subspace::<u32>::new(2);
+        sub.build(0b01u32, |s| {
+            vec![(num_complex::Complex::new(1.0, 0.0), s ^ 0b11, 0u8)]
+        });
+        let inner = HardcoreBasisInner::Sub32(sub);
+        let s = inner.to_string();
+        assert!(s.starts_with("subspace(n_sites=2, size="));
+        assert!(s.contains("symmetries=[]"));
+    }
+
+    #[test]
+    fn display_index_alignment() {
+        // 16 states → indices 0-15, width 2; row 9 and 10 should be right-aligned
+        let inner = HardcoreBasisInner::Full32(FullSpace::new(4, 16));
+        let s = inner.to_string();
+        assert!(s.contains("  9."));
+        assert!(s.contains(" 10."));
+    }
 }
