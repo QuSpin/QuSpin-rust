@@ -1,4 +1,6 @@
 use crate::bitbasis::BitInt;
+use crate::error::QuSpinError;
+use crate::hamiltonian::ParseOp;
 use num_complex::Complex;
 use smallvec::SmallVec;
 
@@ -75,6 +77,16 @@ impl HardcoreOp {
         let imag = (is_y as i32 as f64) * s;
 
         (new_state, Complex::new(real, imag))
+    }
+}
+
+impl ParseOp for HardcoreOp {
+    fn from_char(ch: char) -> Result<Self, QuSpinError> {
+        HardcoreOp::from_char(ch).ok_or_else(|| {
+            QuSpinError::ValueError(format!(
+                "unknown operator character '{ch}'; expected one of x, y, z, +, -, n"
+            ))
+        })
     }
 }
 
