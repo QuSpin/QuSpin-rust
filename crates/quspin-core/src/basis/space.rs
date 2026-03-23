@@ -2,6 +2,16 @@ use super::BasisSpace;
 use crate::bitbasis::BitInt;
 use std::collections::HashMap;
 
+/// A net amplitude is treated as zero when its magnitude is below
+/// `sum_of_input_magnitudes * AMP_CANCEL_TOL`.
+///
+/// This is a relative tolerance: it scales with the coupling strengths in
+/// the Hamiltonian, so it catches exact symbolic cancellations (e.g. the
+/// `+1` from `XX` and `−1` from `YY` on `|00⟩`) without requiring a
+/// hardcoded absolute threshold.  The factor of 4 covers the two complex
+/// multiplications in a typical single-site operator application.
+const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
+
 // ---------------------------------------------------------------------------
 // FullSpace
 // ---------------------------------------------------------------------------
@@ -113,16 +123,20 @@ impl<B: BitInt> Subspace<B> {
         }
 
         while let Some(state) = stack.pop() {
-            // Accumulate amplitudes per output state to detect cancellations.
-            // A state is only reachable if its net amplitude is non-zero.
-            let mut contributions: HashMap<B, num_complex::Complex<f64>> = HashMap::new();
+            // Accumulate (net_amp, sum_of_magnitudes) per output state.
+            // The sum of magnitudes sets the scale for the cancellation check.
+            let mut contributions: HashMap<B, (num_complex::Complex<f64>, f64)> = HashMap::new();
             for (amp, next_state, _cindex) in op(state) {
                 if next_state != state {
-                    *contributions.entry(next_state).or_default() += amp;
+                    let e = contributions.entry(next_state).or_default();
+                    e.0 += amp;
+                    e.1 += amp.norm();
                 }
             }
-            for (next_state, net_amp) in contributions {
-                if net_amp.norm() > 1e-10 && !self.index_map.contains_key(&next_state) {
+            for (next_state, (net_amp, scale)) in contributions {
+                if net_amp.norm() > scale * AMP_CANCEL_TOL
+                    && !self.index_map.contains_key(&next_state)
+                {
                     self.index_map.insert(next_state, self.states.len());
                     self.states.push(next_state);
                     stack.push(next_state);

@@ -3,6 +3,9 @@ use crate::bitbasis::BitInt;
 use num_complex::Complex;
 use std::collections::HashMap;
 
+/// See `space::AMP_CANCEL_TOL` for the rationale.
+const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
+
 // ---------------------------------------------------------------------------
 // SymmetricSubspace
 // ---------------------------------------------------------------------------
@@ -58,16 +61,17 @@ impl<B: BitInt> SymmetricSubspace<B> {
         let mut stack: Vec<B> = vec![ref_seed];
 
         while let Some(state) = stack.pop() {
-            // Accumulate amplitudes per output state before checking reachability,
-            // so that terms which cancel (e.g. XX + YY on |00⟩) are not visited.
-            let mut contributions: HashMap<B, Complex<f64>> = HashMap::new();
+            // Accumulate (net_amp, sum_of_magnitudes) per output state.
+            let mut contributions: HashMap<B, (Complex<f64>, f64)> = HashMap::new();
             for (amp, next_state, _cindex) in op(state) {
                 if next_state != state {
-                    *contributions.entry(next_state).or_default() += amp;
+                    let e = contributions.entry(next_state).or_default();
+                    e.0 += amp;
+                    e.1 += amp.norm();
                 }
             }
-            for (next_state, net_amp) in contributions {
-                if net_amp.norm() <= 1e-10 {
+            for (next_state, (net_amp, scale)) in contributions {
+                if net_amp.norm() <= scale * AMP_CANCEL_TOL {
                     continue;
                 }
                 let (next_ref, _coeff) = self.grp.get_refstate(next_state);
