@@ -361,6 +361,58 @@ class PyHardcoreBasis:
         """
         ...
 
+    def state_at(self, i: int) -> str:
+        """Return the ``i``-th basis state as a bit string.
+
+        Character at position ``j`` is ``'1'`` if site ``j`` is occupied,
+        ``'0'`` otherwise. The ordering matches the seed convention used in
+        :meth:`subspace` and :meth:`symmetric`.
+
+        Args:
+            i (int): Row index, ``0 ≤ i < size``.
+
+        Returns:
+            str: Bit string of length ``n_sites``.
+
+        Raises:
+            IndexError: If ``i`` is out of range.
+
+        Example:
+            >>> basis = PyHardcoreBasis.full(2)
+            >>> basis.state_at(0)
+            '11'
+            >>> basis.state_at(3)
+            '00'
+        """
+        ...
+
+    def index(self, state: _Seed) -> int | None:
+        """Look up the row index of a basis state.
+
+        Args:
+            state (str | list[int]): Basis state in the same format accepted
+                by :meth:`subspace` — a ``'0'``/``'1'`` string or a
+                ``list[int]`` of ``0``/``1`` values, where position ``j``
+                gives the occupation of site ``j``.
+
+        Returns:
+            int | None: The row index of ``state`` in the basis, or ``None``
+            if the state is not present.
+
+        Raises:
+            ValueError: If ``state`` is malformed.
+
+        Example:
+            >>> basis = PyHardcoreBasis.full(2)
+            >>> basis.index("11")
+            0
+            >>> basis.index("00")
+            3
+            >>> basis.index([1, 1])
+            0
+        """
+        ...
+
     @property
     def n_sites(self) -> int:
         """Number of lattice sites."""
