@@ -14,13 +14,10 @@ classifiers = [
 
 [tool.maturin]
 manifest-path = "crates/quspin-py/Cargo.toml"
-module-name = "quspin._rs"
+module-name = "quspin_rs._rs"
 python-source = "python"
-python-packages = ["quspin"]
+python-packages = ["quspin_rs"]
 features = ["pyo3/extension-module"]
-# Exclude the development shim from the wheel.  The original quspin package
-# owns quspin/__init__.py in production; quspin-rs only ships _rs.so + stubs.
-exclude = ["python/quspin/__init__.py"]
 
 [tool.uv]
 
@@ -48,7 +45,7 @@ dev = [
 profile = "black"
 combine_as_imports = true
 multi_line_output = 3
-src_paths = ["python/quspin"]
+src_paths = ["python/quspin_rs"]
 
 [tool.black]
 line-length = 88
@@ -82,7 +79,7 @@ exclude = [
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.coverage.run]
-include = ["python/quspin/*"]
+include = ["python/quspin_rs/*"]
 
 [tool.coverage.report]
 exclude_also = [

@@ -1,4 +1,4 @@
-"""Type stubs for the ``_rs`` extension module (quspin Rust core)."""
+"""Type stubs for the ``quspin_rs._rs`` extension module (QuSpin Rust core)."""
 
 from __future__ import annotations
 

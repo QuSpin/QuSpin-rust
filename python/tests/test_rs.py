@@ -1,9 +1,9 @@
-"""Tests for the quspin._rs PyO3 extension."""
+"""Tests for the quspin_rs._rs PyO3 extension."""
 
 import numpy as np
 import pytest
 
-from quspin._rs import (
+from quspin_rs._rs import (
     PyGrpElement,
     PyHardcoreBasis,
     PyHardcoreHamiltonian,
