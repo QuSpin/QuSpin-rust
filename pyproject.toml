@@ -18,6 +18,9 @@ module-name = "quspin._rs"
 python-source = "python"
 python-packages = ["quspin"]
 features = ["pyo3/extension-module"]
+# Exclude the development shim from the wheel.  The original quspin package
+# owns quspin/__init__.py in production; quspin-rs only ships _rs.so + stubs.
+exclude = ["python/quspin/__init__.py"]
 
 [tool.uv]
 
