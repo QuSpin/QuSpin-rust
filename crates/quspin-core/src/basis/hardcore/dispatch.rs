@@ -223,6 +223,9 @@ impl HardcoreBasisInner {
 // Display
 // ---------------------------------------------------------------------------
 
+const DISPLAY_HEAD: usize = 25;
+const DISPLAY_TAIL: usize = 25;
+
 impl std::fmt::Display for HardcoreBasisInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let size = self.size();
@@ -241,7 +244,22 @@ impl std::fmt::Display for HardcoreBasisInner {
             size,
             sym_display,
         )?;
-        for i in 0..size {
+
+        let truncate = size > DISPLAY_HEAD + DISPLAY_TAIL;
+        let indices: Box<dyn Iterator<Item = usize>> = if truncate {
+            Box::new((0..DISPLAY_HEAD).chain(size - DISPLAY_TAIL..size))
+        } else {
+            Box::new(0..size)
+        };
+
+        let mut prev: Option<usize> = None;
+        for i in indices {
+            if truncate
+                && let Some(p) = prev
+                && i > p + 1
+            {
+                write!(f, "\n  {:>width$}", "...", width = index_width + 1)?;
+            }
             write!(
                 f,
                 "\n  {:>width$}. |{}>",
@@ -249,6 +267,7 @@ impl std::fmt::Display for HardcoreBasisInner {
                 self.state_at_str(i),
                 width = index_width,
             )?;
+            prev = Some(i);
         }
         Ok(())
     }
@@ -576,5 +595,21 @@ mod tests {
         let s = inner.to_string();
         assert!(s.contains("  9."));
         assert!(s.contains(" 10."));
+    }
+
+    #[test]
+    fn display_truncation() {
+        // 64 states > 50 → should truncate with "..."
+        let inner = HardcoreBasisInner::Full32(FullSpace::new(6, 64));
+        let s = inner.to_string();
+        assert!(s.contains("..."), "expected truncation marker");
+        // First 25 rows present (index 0 and 24)
+        assert!(s.contains("\n   0."), "expected row 0");
+        assert!(s.contains("\n  24."), "expected row 24");
+        // Row 25 should be absent (truncated)
+        assert!(!s.contains("\n  25."), "row 25 should be truncated");
+        // Last 25 rows present (index 39 and 63)
+        assert!(s.contains("\n  39."), "expected row 39");
+        assert!(s.contains("\n  63."), "expected row 63");
     }
 }
