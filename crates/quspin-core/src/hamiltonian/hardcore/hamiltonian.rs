@@ -88,14 +88,14 @@ mod tests {
 
     #[test]
     fn pauli_z_no_flip() {
-        // Z at site 0: no flip, amplitude = +1 (empty) or -1 (occupied)
+        // Z at site 0: no flip, amplitude = s = 2n-1 (QuSpin pauli=1 convention)
         let (ns0, amp0) = HardcoreOp::Z.apply(0u32, 0);
         assert_eq!(ns0, 0u32);
-        assert_eq!(amp0, Complex::new(1.0, 0.0)); // n=0 → s=+1
+        assert_eq!(amp0, Complex::new(-1.0, 0.0)); // n=0 → s=-1
 
         let (ns1, amp1) = HardcoreOp::Z.apply(1u32, 0);
         assert_eq!(ns1, 1u32);
-        assert_eq!(amp1, Complex::new(-1.0, 0.0)); // n=1 → s=-1
+        assert_eq!(amp1, Complex::new(1.0, 0.0)); // n=1 → s=+1
     }
 
     #[test]
@@ -134,16 +134,16 @@ mod tests {
 
     #[test]
     fn pauli_y_imaginary() {
-        // Y at site 0: flips bit, amplitude = i*s
-        // n=0 (empty): s=+1, amplitude = i
+        // Y at site 0: flips bit, amplitude = i*s  (s = 2n-1, QuSpin convention)
+        // n=0 (empty): s=-1, amplitude = -i
         let (ns0, amp0) = HardcoreOp::Y.apply(0u32, 0);
         assert_eq!(ns0, 1u32);
-        assert!((amp0 - Complex::new(0.0, 1.0)).norm() < 1e-12);
+        assert!((amp0 - Complex::new(0.0, -1.0)).norm() < 1e-12);
 
-        // n=1 (occupied): s=-1, amplitude = -i
+        // n=1 (occupied): s=+1, amplitude = +i
         let (ns1, amp1) = HardcoreOp::Y.apply(1u32, 0);
         assert_eq!(ns1, 0u32);
-        assert!((amp1 - Complex::new(0.0, -1.0)).norm() < 1e-12);
+        assert!((amp1 - Complex::new(0.0, 1.0)).norm() < 1e-12);
     }
 
     // --- OpEntry::apply ---

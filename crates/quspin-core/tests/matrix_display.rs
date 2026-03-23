@@ -150,6 +150,27 @@ fn heisenberg_chain(n_sites: usize) -> HardcoreHamiltonian<u8> {
     HardcoreHamiltonian::new(terms, n_sites)
 }
 
+/// H = J Σ_i ZZ_{i,i+1} + h Σ_i X_i
+/// cindex=0 → J (ZZ bonds), cindex=1 → h (X field)
+fn tfi_chain(n_sites: usize) -> HardcoreHamiltonian<u8> {
+    let mut terms = Vec::new();
+    for i in 0..(n_sites - 1) as u32 {
+        terms.push(OpEntry::new(
+            0u8,
+            Complex::new(1.0, 0.0),
+            smallvec![(HardcoreOp::Z, i), (HardcoreOp::Z, i + 1)],
+        ));
+    }
+    for i in 0..n_sites as u32 {
+        terms.push(OpEntry::new(
+            1u8,
+            Complex::new(1.0, 0.0),
+            smallvec![(HardcoreOp::X, i)],
+        ));
+    }
+    HardcoreHamiltonian::new(terms, n_sites)
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -187,15 +208,15 @@ fn assert_dense_eq(mat: &QMatrix<f64, i64, u8>, coeff: &[f64], expected: &[f64])
 #[test]
 fn display_z_1site() {
     // Basis (descending): 0→|1>, 1→|0>
-    // Z|1> = -|1>, Z|0> = +|0>  →  diagonal [-1, +1]
+    // QuSpin convention: Z|1> = +|1>, Z|0> = -|0>  →  diagonal [+1, -1]
     let ham = single_z(0, 1);
     let basis = FullSpace::<u32>::new(1, 2);
     show("Z on 1 site", &ham, &basis, &[1.0]);
     let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
     #[rustfmt::skip]
     assert_dense_eq(&mat, &[1.0], &[
-        -1.0,  0.0,
-         0.0,  1.0,
+         1.0,  0.0,
+         0.0, -1.0,
     ]);
 }
 
@@ -282,5 +303,80 @@ fn display_heisenberg_2site() {
         0.0, -1.0,  2.0,  0.0,
         0.0,  2.0, -1.0,  0.0,
         0.0,  0.0,  0.0,  1.0,
+    ]);
+}
+
+#[test]
+fn display_heisenberg_3site() {
+    // Heisenberg XXX chain, L=3, 8x8.
+    // Reference generated with QuSpin spin_basis_1d(L=3, pauli=1),
+    // static=[["xx",bonds],["yy",bonds],["zz",bonds]].
+    // QuSpin and our FullSpace both enumerate states in descending order [7..0].
+    let ham = heisenberg_chain(3);
+    let basis = FullSpace::<u32>::new(3, 8);
+    show("Heisenberg XXX chain, 3 sites", &ham, &basis, &[1.0]);
+    let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
+    #[rustfmt::skip]
+    assert_dense_eq(&mat, &[1.0], &[
+         2.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  2.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  2.0, -2.0,  0.0,  2.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  2.0,  0.0,  0.0,
+         0.0,  0.0,  2.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  2.0,  0.0, -2.0,  2.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  2.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  2.0,
+    ]);
+}
+
+#[test]
+fn display_heisenberg_4site() {
+    // Heisenberg XXX chain, L=4, 16x16.
+    // Reference generated with QuSpin spin_basis_1d(L=4, pauli=1).
+    let ham = heisenberg_chain(4);
+    let basis = FullSpace::<u32>::new(4, 16);
+    show("Heisenberg XXX chain, 4 sites", &ham, &basis, &[1.0]);
+    let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
+    #[rustfmt::skip]
+    assert_dense_eq(&mat, &[1.0], &[
+         3.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  1.0,  2.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  2.0, -1.0,  0.0,  2.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  1.0,  0.0,  2.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  2.0,  0.0, -1.0,  0.0,  0.0,  0.0,  2.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  2.0,  0.0, -3.0,  2.0,  0.0,  0.0,  2.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  2.0, -1.0,  0.0,  0.0,  0.0,  2.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1.0,  0.0,  0.0,  0.0,  2.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  2.0,  0.0,  0.0,  0.0,  1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  2.0,  0.0,  0.0,  0.0, -1.0,  2.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  2.0,  0.0,  0.0,  2.0, -3.0,  0.0,  2.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  2.0,  0.0,  0.0,  0.0, -1.0,  0.0,  2.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  2.0,  0.0,  1.0,  0.0,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  2.0,  0.0, -1.0,  2.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  2.0,  1.0,  0.0,
+         0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  3.0,
+    ]);
+}
+
+#[test]
+fn display_tfi_3site() {
+    // Transverse-field Ising chain, L=3: H = J Σ ZZ_{i,i+1} + h Σ X_i
+    // J=1 (cindex=0), h=0.5 (cindex=1).
+    // Reference generated with QuSpin spin_basis_1d(L=3, pauli=1),
+    // static=[["zz",zz_bonds],["x",x_field]].
+    let ham = tfi_chain(3);
+    let basis = FullSpace::<u32>::new(3, 8);
+    show("TFI chain J=1 h=0.5, 3 sites", &ham, &basis, &[1.0, 0.5]);
+    let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
+    #[rustfmt::skip]
+    assert_dense_eq(&mat, &[1.0, 0.5], &[
+         2.0,  0.5,  0.5,  0.0,  0.5,  0.0,  0.0,  0.0,
+         0.5,  0.0,  0.0,  0.5,  0.0,  0.5,  0.0,  0.0,
+         0.5,  0.0, -2.0,  0.5,  0.0,  0.0,  0.5,  0.0,
+         0.0,  0.5,  0.5,  0.0,  0.0,  0.0,  0.0,  0.5,
+         0.5,  0.0,  0.0,  0.0,  0.0,  0.5,  0.5,  0.0,
+         0.0,  0.5,  0.0,  0.0,  0.5, -2.0,  0.0,  0.5,
+         0.0,  0.0,  0.5,  0.0,  0.5,  0.0,  0.0,  0.5,
+         0.0,  0.0,  0.0,  0.5,  0.0,  0.5,  0.5,  2.0,
     ]);
 }

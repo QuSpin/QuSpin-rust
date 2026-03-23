@@ -43,9 +43,9 @@ impl HardcoreOp {
     /// Returns `(new_state, amplitude)`.  The implementation mirrors the
     /// branchless arithmetic in `pauli::apply_op` from `operator.hpp`.
     ///
-    /// Conventions:
+    /// Conventions (matching QuSpin `pauli=1`):
     /// - Site occupancy `n = (state >> loc) & 1`.
-    /// - `s = 1 - 2n` (±1 for empty/occupied).
+    /// - `s = 2n - 1` (+1 if occupied, -1 if empty).
     /// - X: flips bit, amplitude = 1.
     /// - Y: flips bit, amplitude = i*s.
     /// - Z: no flip, amplitude = s.
@@ -55,7 +55,7 @@ impl HardcoreOp {
     #[inline]
     pub fn apply<B: BitInt>(self, state: B, loc: u32) -> (B, Complex<f64>) {
         let n = ((state >> loc as usize) & B::from_u64(1)).to_usize() & 1;
-        let s = 1.0 - 2.0 * n as f64; // +1 if empty, -1 if occupied
+        let s = 2.0 * n as f64 - 1.0; // +1 if occupied, -1 if empty
 
         let is_x = self == HardcoreOp::X;
         let is_y = self == HardcoreOp::Y;
