@@ -13,7 +13,7 @@ use num_complex::Complex;
 /// The `apply` method uses a callback (`emit`) rather than returning a
 /// collection, keeping the hot path allocation-free.
 pub trait Hamiltonian<C> {
-    fn n_sites(&self) -> usize;
+    fn max_site(&self) -> usize;
     fn num_cindices(&self) -> usize;
 
     /// Apply `self` to `state`, calling `emit(cindex, amplitude, new_state)`

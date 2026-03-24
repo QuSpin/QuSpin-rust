@@ -12,10 +12,10 @@ pub enum HardcoreHamiltonianInner {
 }
 
 impl HardcoreHamiltonianInner {
-    pub fn n_sites(&self) -> usize {
+    pub fn max_site(&self) -> usize {
         match self {
-            HardcoreHamiltonianInner::Ham8(h) => h.n_sites(),
-            HardcoreHamiltonianInner::Ham16(h) => h.n_sites(),
+            HardcoreHamiltonianInner::Ham8(h) => h.max_site(),
+            HardcoreHamiltonianInner::Ham16(h) => h.max_site(),
         }
     }
 

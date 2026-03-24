@@ -227,8 +227,8 @@ class PyHardcoreHamiltonian:
         ...     [("xx", [(J, 0, 1), (J, 1, 2)])],   # cindex 0: hopping
         ...     [("z",  [(h, 0), (h, 1), (h, 2)])],  # cindex 1: on-site field
         ... ])
-        >>> H.n_sites
-        3
+        >>> H.max_site
+        2
         >>> H.num_cindices
         2
     """
@@ -260,8 +260,8 @@ class PyHardcoreHamiltonian:
         ...
 
     @property
-    def n_sites(self) -> int:
-        """Number of sites, inferred from the maximum site index plus one."""
+    def max_site(self) -> int:
+        """Maximum site index across all operator strings."""
         ...
 
     @property
@@ -270,7 +270,7 @@ class PyHardcoreHamiltonian:
         ...
 
     def __repr__(self) -> str:
-        """Return ``PyHardcoreHamiltonian(n_sites=..., num_cindices=...)``."""
+        """Return ``PyHardcoreHamiltonian(max_site=..., num_cindices=...)``."""
         ...
 
 
@@ -339,7 +339,7 @@ class PyBondHamiltonian:
     of site pairs.  All terms share the same ``lhss`` (local Hilbert-space
     size), which is inferred from the shape of the first term's matrix.
 
-    ``n_sites`` is inferred from the largest site index across all bonds.
+    ``max_site`` is inferred from the largest site index across all bonds.
 
     Example:
         >>> import numpy as np
@@ -347,8 +347,8 @@ class PyBondHamiltonian:
         >>> M[3, 0] = M[2, 1] = M[1, 2] = M[0, 3] = 1.0  # XX
         >>> t = PyBondTerm(M, [(0, 1), (1, 2), (2, 3)])
         >>> H = PyBondHamiltonian([t])
-        >>> H.n_sites
-        4
+        >>> H.max_site
+        3
         >>> H.lhss
         2
     """
@@ -357,21 +357,20 @@ class PyBondHamiltonian:
         """Construct a BondHamiltonian from a list of ``PyBondTerm`` objects.
 
         Each term is assigned a ``cindex`` equal to its position in the list.
-        ``n_sites`` is inferred from the maximum site index across all bonds
-        plus one.
+        ``max_site`` is inferred as the largest site index across all bonds.
 
         Args:
             terms (list[PyBondTerm]): One ``PyBondTerm`` per ``cindex``.
 
         Raises:
             ValueError: If ``terms`` is empty, matrices have inconsistent
-                shapes, ``lhss`` is out of range, or any site index is invalid.
+                shapes, or ``lhss`` is out of range.
         """
         ...
 
     @property
-    def n_sites(self) -> int:
-        """Number of sites, inferred from the maximum site index plus one."""
+    def max_site(self) -> int:
+        """Maximum site index across all bonds."""
         ...
 
     @property
@@ -385,7 +384,7 @@ class PyBondHamiltonian:
         ...
 
     def __repr__(self) -> str:
-        """Return ``PyBondHamiltonian(n_sites=..., lhss=..., num_cindices=...)``."""
+        """Return ``PyBondHamiltonian(max_site=..., lhss=..., num_cindices=...)``."""
         ...
 
 
@@ -628,7 +627,7 @@ class PyQMatrix:
             given basis.
 
         Raises:
-            ValueError: If ``ham.n_sites != basis.n_sites``, or if ``dtype``
+            ValueError: If ``ham.max_site >= basis.n_sites``, or if ``dtype``
                 is not supported.
         """
         ...
@@ -656,7 +655,7 @@ class PyQMatrix:
             given basis.
 
         Raises:
-            ValueError: If ``ham.n_sites != basis.n_sites``, or if ``dtype``
+            ValueError: If ``ham.max_site >= basis.n_sites``, or if ``dtype``
                 is not supported.
         """
         ...

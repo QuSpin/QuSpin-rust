@@ -138,9 +138,9 @@ impl PyBondHamiltonian {
             ));
         }
 
-        let mut max_site = 0usize;
         type RawTerm = (usize, Array2<Complex<f64>>, Vec<(u32, u32)>);
         let mut raw: Vec<RawTerm> = Vec::with_capacity(terms.len());
+        let mut max_site = 0usize;
 
         for (cindex, item) in terms.iter().enumerate() {
             let term = item.downcast::<PyBondTerm>().map_err(|_| {
@@ -156,7 +156,6 @@ impl PyBondHamiltonian {
         }
 
         let max_cindex = raw.len() - 1;
-        let n_sites = max_site + 1;
         let needs_u16 = max_cindex > 255 || max_site > 255;
 
         let inner = if needs_u16 {
@@ -168,7 +167,7 @@ impl PyBondHamiltonian {
                     bonds,
                 })
                 .collect();
-            let ham = BondHamiltonian::new(bond_terms, n_sites)
+            let ham = BondHamiltonian::new(bond_terms)
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
             BondHamiltonianInner::Ham16(ham)
         } else {
@@ -180,7 +179,7 @@ impl PyBondHamiltonian {
                     bonds,
                 })
                 .collect();
-            let ham = BondHamiltonian::new(bond_terms, n_sites)
+            let ham = BondHamiltonian::new(bond_terms)
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
             BondHamiltonianInner::Ham8(ham)
         };
@@ -188,10 +187,10 @@ impl PyBondHamiltonian {
         Ok(PyBondHamiltonian { inner })
     }
 
-    /// Number of sites, inferred from the maximum site index plus one.
+    /// Maximum site index across all bonds.
     #[getter]
-    pub fn n_sites(&self) -> usize {
-        self.inner.n_sites()
+    pub fn max_site(&self) -> usize {
+        self.inner.max_site()
     }
 
     /// Number of distinct coefficient indices (length of the terms list).
@@ -208,8 +207,8 @@ impl PyBondHamiltonian {
 
     pub fn __repr__(&self) -> String {
         format!(
-            "PyBondHamiltonian(n_sites={}, lhss={}, num_cindices={})",
-            self.inner.n_sites(),
+            "PyBondHamiltonian(max_site={}, lhss={}, num_cindices={})",
+            self.inner.max_site(),
             self.inner.lhss(),
             self.inner.num_cindices(),
         )

@@ -19,15 +19,16 @@ use super::op::OpEntry;
 #[derive(Clone, Debug)]
 pub struct HardcoreHamiltonian<C> {
     terms: Vec<OpEntry<C>>,
-    /// Number of sites (max site index + 1).
-    n_sites: usize,
+    /// Maximum site index across all operator strings (inferred from terms).
+    max_site: usize,
     /// Number of distinct cindex values.
     num_cindices: usize,
 }
 
 impl<C: Copy + Ord> HardcoreHamiltonian<C> {
     /// Construct from a list of `OpEntry` terms.  Terms are sorted by `cindex`.
-    pub fn new(mut terms: Vec<OpEntry<C>>, n_sites: usize) -> Self {
+    /// `max_site` is inferred as the largest site index appearing in any op.
+    pub fn new(mut terms: Vec<OpEntry<C>>) -> Self {
         terms.sort_by_key(|e| e.cindex);
         let num_cindices = {
             let mut count = 0;
@@ -40,15 +41,21 @@ impl<C: Copy + Ord> HardcoreHamiltonian<C> {
             }
             count
         };
+        let max_site = terms
+            .iter()
+            .flat_map(|t| t.ops.iter())
+            .map(|&(_, site)| site as usize)
+            .max()
+            .unwrap_or(0);
         HardcoreHamiltonian {
             terms,
-            n_sites,
+            max_site,
             num_cindices,
         }
     }
 
-    pub fn n_sites(&self) -> usize {
-        self.n_sites
+    pub fn max_site(&self) -> usize {
+        self.max_site
     }
 
     pub fn num_terms(&self) -> usize {
@@ -84,8 +91,8 @@ impl<C: Copy + Ord> HardcoreHamiltonian<C> {
 }
 
 impl<C: Copy + Ord> Hamiltonian<C> for HardcoreHamiltonian<C> {
-    fn n_sites(&self) -> usize {
-        self.n_sites
+    fn max_site(&self) -> usize {
+        self.max_site
     }
 
     fn num_cindices(&self) -> usize {
@@ -213,7 +220,7 @@ mod tests {
         // H = 0.5 * X_0, cindex=0
         let ops: SmallVec<[(HardcoreOp, u32); 4]> = smallvec![(HardcoreOp::X, 0)];
         let terms = vec![OpEntry::<u8>::new(0, Complex::new(0.5, 0.0), ops)];
-        let ham = HardcoreHamiltonian::new(terms, 1);
+        let ham = HardcoreHamiltonian::new(terms);
 
         let state: u32 = 0;
         let result = ham.apply_smallvec(state);
@@ -229,7 +236,7 @@ mod tests {
         // H = P_0 applied to state |1⟩ (occupied): P gives amplitude 0, should be filtered
         let ops: SmallVec<[(HardcoreOp, u32); 4]> = smallvec![(HardcoreOp::P, 0)];
         let terms = vec![OpEntry::<u8>::new(0, Complex::new(1.0, 0.0), ops)];
-        let ham = HardcoreHamiltonian::new(terms, 1);
+        let ham = HardcoreHamiltonian::new(terms);
         let result = ham.apply_smallvec(1u32);
         assert!(result.is_empty());
     }

@@ -79,7 +79,7 @@ impl PyHardcoreBasis {
     ///         if ``n_sites`` exceeds 8192.
     #[staticmethod]
     pub fn subspace(seeds: &Bound<'_, PyAny>, ham: &PyHardcoreHamiltonian) -> PyResult<Self> {
-        let n_sites = ham.inner.n_sites();
+        let n_sites = ham.inner.max_site() + 1;
         let seed_list = extract_seed_list(seeds)?;
 
         let inner = quspin_core::select_b_for_n_sites!(
@@ -130,7 +130,7 @@ impl PyHardcoreBasis {
         ham: &PyHardcoreHamiltonian,
         grp: &PySymmetryGrp,
     ) -> PyResult<Self> {
-        let n_sites = ham.inner.n_sites();
+        let n_sites = ham.inner.max_site() + 1;
         if grp.n_sites() != n_sites {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "n_sites mismatch: symmetry group has {} sites but Hamiltonian has {}",

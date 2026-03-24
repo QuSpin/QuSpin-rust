@@ -154,7 +154,7 @@ mod tests {
         // Term 0: X_0 X_1, cindex=0, coeff=1
         let ops0 = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops0)];
-        HardcoreHamiltonian::new(terms, 2)
+        HardcoreHamiltonian::new(terms)
     }
 
     #[test]
@@ -192,7 +192,7 @@ mod tests {
         use crate::hamiltonian::hardcore::{HardcoreOp, OpEntry};
         let ops = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)];
-        let ham = HardcoreHamiltonian::new(terms, 2);
+        let ham = HardcoreHamiltonian::new(terms);
 
         let mut sub = Subspace::<u32>::new(2);
         // seed with |01⟩=1

@@ -63,7 +63,6 @@ impl PyHardcoreHamiltonian {
         let mut raw = Vec::new();
         let mut max_cindex: usize = 0;
         let mut max_site: usize = 0;
-        let mut n_sites: usize = 0;
 
         for (cindex, cindex_terms) in terms.iter().enumerate() {
             max_cindex = max_cindex.max(cindex);
@@ -76,7 +75,6 @@ impl PyHardcoreHamiltonian {
             for item in cindex_list.iter() {
                 let (entries, term_max_site) = parse_term::<HardcoreOp>(py, &item, cindex)?;
                 max_site = max_site.max(term_max_site);
-                n_sites = n_sites.max(term_max_site + 1);
                 raw.extend(entries);
             }
         }
@@ -88,13 +86,13 @@ impl PyHardcoreHamiltonian {
                 .into_iter()
                 .map(|r| OpEntry::new(r.cindex as u16, r.coeff, r.ops))
                 .collect();
-            HardcoreHamiltonianInner::Ham16(HardcoreHamiltonian::new(entries, n_sites))
+            HardcoreHamiltonianInner::Ham16(HardcoreHamiltonian::new(entries))
         } else {
             let entries: Vec<OpEntry<u8>> = raw
                 .into_iter()
                 .map(|r| OpEntry::new(r.cindex as u8, r.coeff, r.ops))
                 .collect();
-            HardcoreHamiltonianInner::Ham8(HardcoreHamiltonian::new(entries, n_sites))
+            HardcoreHamiltonianInner::Ham8(HardcoreHamiltonian::new(entries))
         };
 
         Ok(PyHardcoreHamiltonian {
@@ -103,10 +101,10 @@ impl PyHardcoreHamiltonian {
         })
     }
 
-    /// Number of sites, inferred from the maximum site index plus one.
+    /// Maximum site index across all operator strings.
     #[getter]
-    pub fn n_sites(&self) -> usize {
-        self.inner.n_sites()
+    pub fn max_site(&self) -> usize {
+        self.inner.max_site()
     }
 
     /// Number of distinct coefficient indices (outer list length).
@@ -117,8 +115,8 @@ impl PyHardcoreHamiltonian {
 
     pub fn __repr__(&self) -> String {
         format!(
-            "PyHardcoreHamiltonian(n_sites={}, num_cindices={})",
-            self.inner.n_sites(),
+            "PyHardcoreHamiltonian(max_site={}, num_cindices={})",
+            self.inner.max_site(),
             self.num_cindices,
         )
     }

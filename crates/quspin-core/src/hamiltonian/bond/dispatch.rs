@@ -11,10 +11,10 @@ pub enum BondHamiltonianInner {
 }
 
 impl BondHamiltonianInner {
-    pub fn n_sites(&self) -> usize {
+    pub fn max_site(&self) -> usize {
         match self {
-            BondHamiltonianInner::Ham8(h) => h.n_sites(),
-            BondHamiltonianInner::Ham16(h) => h.n_sites(),
+            BondHamiltonianInner::Ham8(h) => h.max_site(),
+            BondHamiltonianInner::Ham16(h) => h.max_site(),
         }
     }
 

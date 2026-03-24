@@ -42,9 +42,9 @@ def make_full_basis() -> PyHardcoreBasis:
 
 
 class TestPauliHamiltonian:
-    def test_n_sites(self):
+    def test_max_site(self):
         h = make_ham()
-        assert h.n_sites == N
+        assert h.max_site == N - 1
 
     def test_num_cindices(self):
         h = make_ham()
@@ -52,7 +52,7 @@ class TestPauliHamiltonian:
 
     def test_single_cindex(self):
         h = PyHardcoreHamiltonian([[("z", [(1.0, 0), (1.0, 1)])]])
-        assert h.n_sites == 2
+        assert h.max_site == 1
         assert h.num_cindices == 1
 
     def test_bad_op_char(self):

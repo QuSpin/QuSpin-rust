@@ -61,7 +61,7 @@ impl PyQMatrix {
     ///     PyQMatrix: Sparse matrix representation of the Hamiltonian.
     ///
     /// Raises:
-    ///     ValueError: If ``ham.n_sites != basis.n_sites``, or if ``dtype``
+    ///     ValueError: If ``ham.max_site >= basis.n_sites``, or if ``dtype``
     ///         is not supported.
     #[staticmethod]
     pub fn build_hardcore_hamiltonian(
@@ -70,11 +70,11 @@ impl PyQMatrix {
         basis: &PyHardcoreBasis,
         dtype: &Bound<'_, numpy::PyArrayDescr>,
     ) -> PyResult<Self> {
-        if basis.inner.n_sites() != ham.inner.n_sites() {
+        if ham.inner.max_site() >= basis.inner.n_sites() {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "n_sites mismatch: basis has {} sites but Hamiltonian has {}",
-                basis.inner.n_sites(),
-                ham.inner.n_sites()
+                "Hamiltonian max_site={} is out of range for basis with n_sites={}",
+                ham.inner.max_site(),
+                basis.inner.n_sites()
             )));
         }
         let v_dtype = <ValueDType as FromPyDescr>::from_descr(py, dtype).map_err(Error::from)?;
@@ -128,7 +128,7 @@ impl PyQMatrix {
     ///     PyQMatrix: Sparse matrix representation of the Hamiltonian.
     ///
     /// Raises:
-    ///     ValueError: If ``ham.n_sites != basis.n_sites``, or if ``dtype``
+    ///     ValueError: If ``ham.max_site >= basis.n_sites``, or if ``dtype``
     ///         is not supported.
     #[staticmethod]
     pub fn build_bond_hamiltonian(
@@ -137,11 +137,11 @@ impl PyQMatrix {
         basis: &PyHardcoreBasis,
         dtype: &Bound<'_, numpy::PyArrayDescr>,
     ) -> PyResult<Self> {
-        if basis.inner.n_sites() != ham.inner.n_sites() {
+        if ham.inner.max_site() >= basis.inner.n_sites() {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "n_sites mismatch: basis has {} sites but Hamiltonian has {}",
-                basis.inner.n_sites(),
-                ham.inner.n_sites()
+                "Hamiltonian max_site={} is out of range for basis with n_sites={}",
+                ham.inner.max_site(),
+                basis.inner.n_sites()
             )));
         }
         let v_dtype = <ValueDType as FromPyDescr>::from_descr(py, dtype).map_err(Error::from)?;

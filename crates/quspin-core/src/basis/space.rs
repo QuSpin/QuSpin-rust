@@ -291,7 +291,7 @@ mod tests {
                 smallvec![(HardcoreOp::Y, i), (HardcoreOp::Y, i + 1)],
             ));
         }
-        let ham = HardcoreHamiltonian::new(terms, n_sites);
+        let ham = HardcoreHamiltonian::new(terms);
 
         for k in 0..=n_sites {
             // Seed: lowest k bits set (e.g. k=2, n=6 → 0b000011)

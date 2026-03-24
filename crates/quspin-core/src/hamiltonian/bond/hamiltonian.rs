@@ -38,7 +38,7 @@ pub struct BondTerm<C> {
 pub struct BondHamiltonian<C> {
     terms: Vec<BondTerm<C>>,
     lhss: usize,
-    n_sites: usize,
+    max_site: usize,
     num_cindices: usize,
 }
 
@@ -47,6 +47,7 @@ impl<C: Copy + Ord> BondHamiltonian<C> {
     ///
     /// `lhss` is inferred from the shape of the first term's matrix:
     /// `lhss = sqrt(matrix.nrows())`.
+    /// `max_site` is inferred as the largest site index appearing in any bond.
     ///
     /// # Errors
     /// Returns `QuSpinError::ValueError` if:
@@ -54,8 +55,7 @@ impl<C: Copy + Ord> BondHamiltonian<C> {
     /// - the first term's matrix is not square or its dimension is not a perfect square
     /// - `lhss` (inferred) is not in `2..=255`
     /// - any term's `matrix` shape is not `[lhss², lhss²]`
-    /// - any bond site index is `>= n_sites`
-    pub fn new(terms: Vec<BondTerm<C>>, n_sites: usize) -> Result<Self, QuSpinError> {
+    pub fn new(terms: Vec<BondTerm<C>>) -> Result<Self, QuSpinError> {
         let first = terms
             .first()
             .ok_or_else(|| QuSpinError::ValueError("terms must not be empty".to_string()))?;
@@ -86,14 +86,13 @@ impl<C: Copy + Ord> BondHamiltonian<C> {
                     term.matrix.shape(),
                 )));
             }
-            for &(si, sj) in &term.bonds {
-                if si as usize >= n_sites || sj as usize >= n_sites {
-                    return Err(QuSpinError::ValueError(format!(
-                        "term {i}: bond site ({si},{sj}) out of range for n_sites={n_sites}"
-                    )));
-                }
-            }
         }
+        let max_site = terms
+            .iter()
+            .flat_map(|t| t.bonds.iter())
+            .flat_map(|&(si, sj)| [si as usize, sj as usize])
+            .max()
+            .unwrap_or(0);
         let num_cindices = {
             let mut count = 0;
             let mut last: Option<C> = None;
@@ -110,7 +109,7 @@ impl<C: Copy + Ord> BondHamiltonian<C> {
         Ok(BondHamiltonian {
             terms,
             lhss,
-            n_sites,
+            max_site,
             num_cindices,
         })
     }
@@ -129,8 +128,8 @@ impl<C: Copy + Ord> BondHamiltonian<C> {
 // ---------------------------------------------------------------------------
 
 impl<C: Copy + Ord> Hamiltonian<C> for BondHamiltonian<C> {
-    fn n_sites(&self) -> usize {
-        self.n_sites
+    fn max_site(&self) -> usize {
+        self.max_site
     }
 
     fn num_cindices(&self) -> usize {
@@ -299,7 +298,7 @@ mod tests {
             matrix: xx_matrix(),
             bonds: vec![(0, 1)],
         };
-        assert!(BondHamiltonian::new(vec![term], 2).is_ok());
+        assert!(BondHamiltonian::new(vec![term]).is_ok());
     }
 
     #[test]
@@ -309,17 +308,7 @@ mod tests {
             matrix: Array2::zeros((3, 3)), // wrong: should be [4, 4] for lhss=2
             bonds: vec![(0, 1)],
         };
-        assert!(BondHamiltonian::new(vec![term], 2).is_err());
-    }
-
-    #[test]
-    fn new_site_out_of_range() {
-        let term = BondTerm {
-            cindex: 0u8,
-            matrix: xx_matrix(),
-            bonds: vec![(0, 5)], // site 5 ≥ n_sites=2
-        };
-        assert!(BondHamiltonian::new(vec![term], 2).is_err());
+        assert!(BondHamiltonian::new(vec![term]).is_err());
     }
 
     #[test]
@@ -329,7 +318,7 @@ mod tests {
             matrix: Array2::zeros((1, 1)), // lhss=1 rejected before shape check
             bonds: vec![],
         };
-        assert!(BondHamiltonian::new(vec![term], 2).is_err());
+        assert!(BondHamiltonian::new(vec![term]).is_err());
     }
 
     // ------------------------------------------------------------------
@@ -343,12 +332,12 @@ mod tests {
             matrix: xx_matrix(),
             bonds: vec![(0, 1)],
         };
-        let bond_ham = BondHamiltonian::new(vec![term], 2).unwrap();
+        let bond_ham = BondHamiltonian::new(vec![term]).unwrap();
 
         let ops: smallvec::SmallVec<[(HardcoreOp, u32); 4]> =
             smallvec![(HardcoreOp::X, 0), (HardcoreOp::X, 1)];
         let hardcore_ham =
-            HardcoreHamiltonian::new(vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)], 2);
+            HardcoreHamiltonian::new(vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)]);
 
         for state in 0u32..4 {
             let mut bond_out = collect_apply(&bond_ham, state);
@@ -384,12 +373,12 @@ mod tests {
             matrix: zz_matrix(),
             bonds: vec![(0, 1)],
         };
-        let bond_ham = BondHamiltonian::new(vec![term], 2).unwrap();
+        let bond_ham = BondHamiltonian::new(vec![term]).unwrap();
 
         let ops: smallvec::SmallVec<[(HardcoreOp, u32); 4]> =
             smallvec![(HardcoreOp::Z, 0), (HardcoreOp::Z, 1)];
         let hardcore_ham =
-            HardcoreHamiltonian::new(vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)], 2);
+            HardcoreHamiltonian::new(vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)]);
 
         for state in 0u32..4 {
             let mut bond_out = collect_apply(&bond_ham, state);
@@ -425,7 +414,7 @@ mod tests {
             matrix: zz_matrix(),
             bonds: vec![(0, 1)],
         };
-        let ham = BondHamiltonian::new(vec![t0, t1], 2).unwrap();
+        let ham = BondHamiltonian::new(vec![t0, t1]).unwrap();
         assert_eq!(ham.num_cindices(), 2);
     }
 
@@ -443,7 +432,7 @@ mod tests {
             matrix: heisenberg_matrix(),
             bonds: bonds.clone(),
         };
-        let bond_ham = BondHamiltonian::new(vec![term], n_sites).unwrap();
+        let bond_ham = BondHamiltonian::new(vec![term]).unwrap();
 
         let mut terms = vec![];
         for &(i, j) in &bonds {
@@ -455,7 +444,7 @@ mod tests {
                 terms.push(OpEntry::new(0u8, Complex::new(1.0, 0.0), ops_vec));
             }
         }
-        let hardcore_ham = HardcoreHamiltonian::new(terms, n_sites);
+        let hardcore_ham = HardcoreHamiltonian::new(terms);
 
         for state in 0u32..(1 << n_sites) {
             let mut bond_sums: std::collections::HashMap<u32, Complex<f64>> =

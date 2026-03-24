@@ -39,7 +39,7 @@ fn fmt_complex(c: Complex<f64>) -> String {
 }
 
 fn print_hamiltonian(ham: &HardcoreHamiltonian<u8>) {
-    println!("Hamiltonian (n_sites={}):", ham.n_sites());
+    println!("Hamiltonian (max_site={}):", ham.max_site());
     for term in ham.terms() {
         let ops: String = term
             .ops
@@ -97,37 +97,28 @@ fn show(label: &str, ham: &HardcoreHamiltonian<u8>, basis: &FullSpace<u32>, coef
 // Hamiltonians
 // ---------------------------------------------------------------------------
 
-fn single_z(site: u32, n_sites: usize) -> HardcoreHamiltonian<u8> {
-    HardcoreHamiltonian::new(
-        vec![OpEntry::new(
-            0u8,
-            Complex::new(1.0, 0.0),
-            smallvec![(HardcoreOp::Z, site)],
-        )],
-        n_sites,
-    )
+fn single_z(site: u32, _n_sites: usize) -> HardcoreHamiltonian<u8> {
+    HardcoreHamiltonian::new(vec![OpEntry::new(
+        0u8,
+        Complex::new(1.0, 0.0),
+        smallvec![(HardcoreOp::Z, site)],
+    )])
 }
 
-fn single_x(site: u32, n_sites: usize) -> HardcoreHamiltonian<u8> {
-    HardcoreHamiltonian::new(
-        vec![OpEntry::new(
-            0u8,
-            Complex::new(1.0, 0.0),
-            smallvec![(HardcoreOp::X, site)],
-        )],
-        n_sites,
-    )
+fn single_x(site: u32, _n_sites: usize) -> HardcoreHamiltonian<u8> {
+    HardcoreHamiltonian::new(vec![OpEntry::new(
+        0u8,
+        Complex::new(1.0, 0.0),
+        smallvec![(HardcoreOp::X, site)],
+    )])
 }
 
-fn two_body(op0: HardcoreOp, op1: HardcoreOp, n_sites: usize) -> HardcoreHamiltonian<u8> {
-    HardcoreHamiltonian::new(
-        vec![OpEntry::new(
-            0u8,
-            Complex::new(1.0, 0.0),
-            smallvec![(op0, 0), (op1, 1)],
-        )],
-        n_sites,
-    )
+fn two_body(op0: HardcoreOp, op1: HardcoreOp, _n_sites: usize) -> HardcoreHamiltonian<u8> {
+    HardcoreHamiltonian::new(vec![OpEntry::new(
+        0u8,
+        Complex::new(1.0, 0.0),
+        smallvec![(op0, 0), (op1, 1)],
+    )])
 }
 
 fn heisenberg_chain(n_sites: usize) -> HardcoreHamiltonian<u8> {
@@ -147,7 +138,7 @@ fn heisenberg_chain(n_sites: usize) -> HardcoreHamiltonian<u8> {
             ));
         }
     }
-    HardcoreHamiltonian::new(terms, n_sites)
+    HardcoreHamiltonian::new(terms)
 }
 
 /// H = J Σ_i ZZ_{i,i+1} + h Σ_i X_i
@@ -168,7 +159,7 @@ fn tfi_chain(n_sites: usize) -> HardcoreHamiltonian<u8> {
             smallvec![(HardcoreOp::X, i)],
         ));
     }
-    HardcoreHamiltonian::new(terms, n_sites)
+    HardcoreHamiltonian::new(terms)
 }
 
 // ---------------------------------------------------------------------------
