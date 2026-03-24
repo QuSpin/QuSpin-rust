@@ -1,4 +1,5 @@
 use crate::bitbasis::BitInt;
+use crate::hamiltonian::Hamiltonian;
 use num_complex::Complex;
 use smallvec::SmallVec;
 
@@ -20,13 +21,30 @@ pub struct HardcoreHamiltonian<C> {
     terms: Vec<OpEntry<C>>,
     /// Number of sites (max site index + 1).
     n_sites: usize,
+    /// Number of distinct cindex values.
+    num_cindices: usize,
 }
 
 impl<C: Copy + Ord> HardcoreHamiltonian<C> {
     /// Construct from a list of `OpEntry` terms.  Terms are sorted by `cindex`.
     pub fn new(mut terms: Vec<OpEntry<C>>, n_sites: usize) -> Self {
         terms.sort_by_key(|e| e.cindex);
-        HardcoreHamiltonian { terms, n_sites }
+        let num_cindices = {
+            let mut count = 0;
+            let mut last: Option<C> = None;
+            for t in &terms {
+                if Some(t.cindex) != last {
+                    count += 1;
+                    last = Some(t.cindex);
+                }
+            }
+            count
+        };
+        HardcoreHamiltonian {
+            terms,
+            n_sites,
+            num_cindices,
+        }
     }
 
     pub fn n_sites(&self) -> usize {
@@ -35,6 +53,10 @@ impl<C: Copy + Ord> HardcoreHamiltonian<C> {
 
     pub fn num_terms(&self) -> usize {
         self.terms.len()
+    }
+
+    pub fn num_cindices(&self) -> usize {
+        self.num_cindices
     }
 
     pub fn terms(&self) -> &[OpEntry<C>] {
@@ -49,7 +71,7 @@ impl<C: Copy + Ord> HardcoreHamiltonian<C> {
     ///
     /// Mirrors `pauli_hamiltonian::operator()` from `operator.hpp`.
     #[inline]
-    pub fn apply<B: BitInt>(&self, state: B) -> SmallVec<[(Complex<f64>, B, C); 8]> {
+    pub fn apply_smallvec<B: BitInt>(&self, state: B) -> SmallVec<[(Complex<f64>, B, C); 8]> {
         let mut result = SmallVec::new();
         for entry in &self.terms {
             let (amp, new_state) = entry.apply(state);
@@ -58,6 +80,29 @@ impl<C: Copy + Ord> HardcoreHamiltonian<C> {
             }
         }
         result
+    }
+}
+
+impl<C: Copy + Ord> Hamiltonian<C> for HardcoreHamiltonian<C> {
+    fn n_sites(&self) -> usize {
+        self.n_sites
+    }
+
+    fn num_cindices(&self) -> usize {
+        self.num_cindices
+    }
+
+    #[inline]
+    fn apply<B: BitInt, F>(&self, state: B, mut emit: F)
+    where
+        F: FnMut(C, Complex<f64>, B),
+    {
+        for entry in &self.terms {
+            let (amp, new_state) = entry.apply(state);
+            if amp != Complex::new(0.0, 0.0) {
+                emit(entry.cindex, amp, new_state);
+            }
+        }
     }
 }
 
@@ -171,7 +216,7 @@ mod tests {
         let ham = HardcoreHamiltonian::new(terms, 1);
 
         let state: u32 = 0;
-        let result = ham.apply(state);
+        let result = ham.apply_smallvec(state);
         assert_eq!(result.len(), 1);
         let (amp, ns, cindex) = result[0];
         assert_eq!(ns, 1u32);
@@ -185,7 +230,7 @@ mod tests {
         let ops: SmallVec<[(HardcoreOp, u32); 4]> = smallvec![(HardcoreOp::P, 0)];
         let terms = vec![OpEntry::<u8>::new(0, Complex::new(1.0, 0.0), ops)];
         let ham = HardcoreHamiltonian::new(terms, 1);
-        let result = ham.apply(1u32);
+        let result = ham.apply_smallvec(1u32);
         assert!(result.is_empty());
     }
 }

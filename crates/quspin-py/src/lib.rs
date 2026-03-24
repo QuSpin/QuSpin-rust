@@ -13,6 +13,8 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<basis::PyGrpElement>()?;
     m.add_class::<basis::PySymmetryGrp>()?;
     m.add_class::<hamiltonian::PyHardcoreHamiltonian>()?;
+    m.add_class::<hamiltonian::PyBondTerm>()?;
+    m.add_class::<hamiltonian::PyBondHamiltonian>()?;
     m.add_class::<basis::PyHardcoreBasis>()?;
     m.add_class::<qmatrix::PyQMatrix>()?;
     Ok(())

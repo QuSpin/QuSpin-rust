@@ -297,7 +297,7 @@ mod tests {
             // Seed: lowest k bits set (e.g. k=2, n=6 → 0b000011)
             let seed = if k == 0 { 0u32 } else { (1u32 << k) - 1 };
             let mut sub = Subspace::<u32>::new(n_sites);
-            sub.build(seed, |s| ham.apply(s).into_iter());
+            sub.build(seed, |s| ham.apply_smallvec(s).into_iter());
 
             let expected = binom(n_sites, k);
             assert_eq!(

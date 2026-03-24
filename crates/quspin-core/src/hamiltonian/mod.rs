@@ -1,8 +1,27 @@
+pub mod bond;
 pub mod hardcore;
 
+pub use bond::{BondHamiltonian, BondHamiltonianInner, BondTerm};
 pub use hardcore::{HardcoreHamiltonian, HardcoreHamiltonianInner, HardcoreOp, OpEntry};
 
+use crate::bitbasis::BitInt;
 use crate::error::QuSpinError;
+use num_complex::Complex;
+
+/// Abstraction over Hamiltonians that can be applied to basis states.
+///
+/// The `apply` method uses a callback (`emit`) rather than returning a
+/// collection, keeping the hot path allocation-free.
+pub trait Hamiltonian<C> {
+    fn n_sites(&self) -> usize;
+    fn num_cindices(&self) -> usize;
+
+    /// Apply `self` to `state`, calling `emit(cindex, amplitude, new_state)`
+    /// for each non-zero contribution.
+    fn apply<B: BitInt, F>(&self, state: B, emit: F)
+    where
+        F: FnMut(C, Complex<f64>, B);
+}
 
 /// Operator types that can be parsed from a single ASCII character.
 ///

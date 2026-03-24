@@ -84,10 +84,11 @@ impl PyQMatrix {
                 with_sym_basis!(&basis.inner, B, sym_basis, {
                     match &ham.inner {
                         HardcoreHamiltonianInner::Ham8(h) => {
-                            build_from_symmetric::<B, V, i64, u8>(h, sym_basis).into_qmatrix_inner()
+                            build_from_symmetric::<_, B, V, i64, u8>(h, sym_basis)
+                                .into_qmatrix_inner()
                         }
                         HardcoreHamiltonianInner::Ham16(h) => {
-                            build_from_symmetric::<B, V, i64, u16>(h, sym_basis)
+                            build_from_symmetric::<_, B, V, i64, u16>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
                     }
@@ -98,11 +99,79 @@ impl PyQMatrix {
                 with_plain_basis!(&basis.inner, B, plain_basis, {
                     match &ham.inner {
                         HardcoreHamiltonianInner::Ham8(h) => {
-                            build_from_basis::<B, V, i64, u8, _>(h, plain_basis)
+                            build_from_basis::<_, B, V, i64, u8, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }
                         HardcoreHamiltonianInner::Ham16(h) => {
-                            build_from_basis::<B, V, i64, u16, _>(h, plain_basis)
+                            build_from_basis::<_, B, V, i64, u16, _>(h, plain_basis)
+                                .into_qmatrix_inner()
+                        }
+                    }
+                })
+            })
+        };
+
+        Ok(PyQMatrix { inner: mat_inner })
+    }
+
+    /// Build a sparse matrix from a `PyBondHamiltonian` and a basis.
+    ///
+    /// Args:
+    ///     ham (PyBondHamiltonian): The Hamiltonian with dense two-site matrices.
+    ///     basis (PyHardcoreBasis): The Hilbert space basis (full, subspace,
+    ///         or symmetric).
+    ///     dtype (numpy.dtype): NumPy dtype for matrix element storage.
+    ///         Supported: ``int8``, ``int16``, ``float32``, ``float64``,
+    ///         ``complex64``, ``complex128``.
+    ///
+    /// Returns:
+    ///     PyQMatrix: Sparse matrix representation of the Hamiltonian.
+    ///
+    /// Raises:
+    ///     ValueError: If ``ham.n_sites != basis.n_sites``, or if ``dtype``
+    ///         is not supported.
+    #[staticmethod]
+    pub fn build_bond_hamiltonian(
+        py: Python<'_>,
+        ham: &crate::hamiltonian::PyBondHamiltonian,
+        basis: &PyHardcoreBasis,
+        dtype: &Bound<'_, numpy::PyArrayDescr>,
+    ) -> PyResult<Self> {
+        if basis.inner.n_sites() != ham.inner.n_sites() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "n_sites mismatch: basis has {} sites but Hamiltonian has {}",
+                basis.inner.n_sites(),
+                ham.inner.n_sites()
+            )));
+        }
+        let v_dtype = <ValueDType as FromPyDescr>::from_descr(py, dtype).map_err(Error::from)?;
+
+        use quspin_core::hamiltonian::bond::dispatch::BondHamiltonianInner;
+        let mat_inner = if basis.inner.is_symmetric() {
+            with_value_dtype!(v_dtype, V, {
+                with_sym_basis!(&basis.inner, B, sym_basis, {
+                    match &ham.inner {
+                        BondHamiltonianInner::Ham8(h) => {
+                            build_from_symmetric::<_, B, V, i64, u8>(h, sym_basis)
+                                .into_qmatrix_inner()
+                        }
+                        BondHamiltonianInner::Ham16(h) => {
+                            build_from_symmetric::<_, B, V, i64, u16>(h, sym_basis)
+                                .into_qmatrix_inner()
+                        }
+                    }
+                })
+            })
+        } else {
+            with_value_dtype!(v_dtype, V, {
+                with_plain_basis!(&basis.inner, B, plain_basis, {
+                    match &ham.inner {
+                        BondHamiltonianInner::Ham8(h) => {
+                            build_from_basis::<_, B, V, i64, u8, _>(h, plain_basis)
+                                .into_qmatrix_inner()
+                        }
+                        BondHamiltonianInner::Ham16(h) => {
+                            build_from_basis::<_, B, V, i64, u16, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }
                     }

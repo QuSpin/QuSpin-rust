@@ -94,10 +94,10 @@ impl PyHardcoreBasis {
                     let seed = seed_from_bytes::<B>(s);
                     match &ham.inner {
                         HardcoreHamiltonianInner::Ham8(h) => {
-                            basis.build(seed, |state| h.apply(state).into_iter());
+                            basis.build(seed, |state| h.apply_smallvec(state).into_iter());
                         }
                         HardcoreHamiltonianInner::Ham16(h) => {
-                            basis.build(seed, |state| h.apply(state).into_iter());
+                            basis.build(seed, |state| h.apply_smallvec(state).into_iter());
                         }
                     }
                 }
@@ -146,10 +146,10 @@ impl PyHardcoreBasis {
                 let seed = seed_from_bytes::<B>(s);
                 match &ham.inner {
                     HardcoreHamiltonianInner::Ham8(h) => {
-                        basis.build(seed, |state| h.apply(state).into_iter());
+                        basis.build(seed, |state| h.apply_smallvec(state).into_iter());
                     }
                     HardcoreHamiltonianInner::Ham16(h) => {
-                        basis.build(seed, |state| h.apply(state).into_iter());
+                        basis.build(seed, |state| h.apply_smallvec(state).into_iter());
                     }
                 }
             }

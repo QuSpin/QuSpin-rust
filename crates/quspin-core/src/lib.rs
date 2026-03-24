@@ -7,5 +7,5 @@ pub mod primitive;
 pub mod qmatrix;
 
 pub use error::QuSpinError;
-pub use hamiltonian::ParseOp;
+pub use hamiltonian::{Hamiltonian, ParseOp};
 pub use primitive::Primitive;

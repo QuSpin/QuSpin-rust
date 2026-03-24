@@ -1,14 +1,14 @@
 use super::{CIndex, Entry, Index, QMatrix};
 use crate::basis::{BasisSpace, SymmetricSubspace};
 use crate::bitbasis::BitInt;
-use crate::hamiltonian::hardcore::HardcoreHamiltonian;
+use crate::hamiltonian::Hamiltonian;
 use crate::primitive::Primitive;
 
 // ---------------------------------------------------------------------------
 // Build from non-symmetric basis (FullSpace or Subspace)
 // ---------------------------------------------------------------------------
 
-/// Construct a `QMatrix` from a `HardcoreHamiltonian` and a non-symmetric basis.
+/// Construct a `QMatrix` from a `Hamiltonian` and a non-symmetric basis.
 ///
 /// For each row (basis state), applies the Hamiltonian and looks up the
 /// resulting state in the basis.  Contributions to the same (col, cindex) pair
@@ -17,12 +17,14 @@ use crate::primitive::Primitive;
 /// Mirrors `qmatrix::calculate_row` for `space` / `subspace` variants.
 ///
 /// # Type parameters
+/// - `H` — Hamiltonian type implementing `Hamiltonian<C>`
 /// - `B` — basis integer type
 /// - `V` — matrix element type
 /// - `I` — CSR index type
-/// - `C` — operator-string index type (must match `HardcoreHamiltonian<C>`)
-pub fn build_from_basis<B, V, I, C, S>(ham: &HardcoreHamiltonian<C>, basis: &S) -> QMatrix<V, I, C>
+/// - `C` — operator-string index type
+pub fn build_from_basis<H, B, V, I, C, S>(ham: &H, basis: &S) -> QMatrix<V, I, C>
 where
+    H: Hamiltonian<C>,
     B: BitInt,
     V: Primitive,
     I: Index,
@@ -39,9 +41,9 @@ where
         let state = basis.state_at(row_idx);
         let row_start = data.len();
 
-        for (amp, new_state, cindex) in ham.apply(state) {
+        ham.apply(state, |cindex, amp, new_state| {
             let Some(col_idx) = basis.index(new_state) else {
-                continue;
+                return;
             };
             let col = I::from_usize(col_idx);
             let value = V::from_complex(amp);
@@ -55,7 +57,7 @@ where
             } else {
                 data.push(Entry::new(value, col, cindex));
             }
-        }
+        });
 
         // Sort this row's entries by (col, cindex).
         data[row_start..]
@@ -71,18 +73,19 @@ where
 // Build from symmetric basis
 // ---------------------------------------------------------------------------
 
-/// Construct a `QMatrix` from a `HardcoreHamiltonian` and a `SymmetricSubspace`.
+/// Construct a `QMatrix` from a `Hamiltonian` and a `SymmetricSubspace`.
 ///
 /// For each row, the Hamiltonian is applied to the representative state.
 /// Each resulting state is mapped to its representative via `check_refstate`,
 /// and the matrix element is scaled by the group character and norm ratio.
 ///
 /// Mirrors `qmatrix::calculate_row` for `symmetric_subspace`.
-pub fn build_from_symmetric<B, V, I, C>(
-    ham: &HardcoreHamiltonian<C>,
+pub fn build_from_symmetric<H, B, V, I, C>(
+    ham: &H,
     basis: &SymmetricSubspace<B>,
 ) -> QMatrix<V, I, C>
 where
+    H: Hamiltonian<C>,
     B: BitInt,
     V: Primitive,
     I: Index,
@@ -98,12 +101,12 @@ where
         let (state, norm) = basis.entry(row_idx);
         let row_start = data.len();
 
-        for (amp, new_state, cindex) in ham.apply(state) {
+        ham.apply(state, |cindex, amp, new_state| {
             // Map the output state to its representative.
             let (ref_state, grp_char) = basis.get_refstate(new_state);
 
             let Some(col_idx) = basis.index(ref_state) else {
-                continue;
+                return;
             };
 
             let (_, new_norm) = basis.entry(col_idx);
@@ -122,7 +125,7 @@ where
             } else {
                 data.push(Entry::new(value, col, cindex));
             }
-        }
+        });
 
         data[row_start..]
             .sort_unstable_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));
@@ -141,6 +144,7 @@ where
 mod tests {
     use super::*;
     use crate::basis::space::{FullSpace, Subspace};
+    use crate::hamiltonian::HardcoreHamiltonian;
     use num_complex::Complex;
     use smallvec::smallvec;
 
@@ -192,7 +196,7 @@ mod tests {
 
         let mut sub = Subspace::<u32>::new(2);
         // seed with |01⟩=1
-        sub.build(0b01u32, |s| ham.apply(s).into_iter());
+        sub.build(0b01u32, |s| ham.apply_smallvec(s).into_iter());
         assert_eq!(sub.size(), 2);
 
         let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &sub);

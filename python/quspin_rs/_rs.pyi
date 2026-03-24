@@ -275,6 +275,121 @@ class PyHardcoreHamiltonian:
 
 
 # ---------------------------------------------------------------------------
+# PyBondTerm
+# ---------------------------------------------------------------------------
+
+
+class PyBondTerm:
+    """A single term in a ``PyBondHamiltonian``: a dense matrix and site-pair bonds.
+
+    Performs shallow validation at construction (2-D ``complex128`` array,
+    list of ``(int, int)`` pairs).  Semantic validation (perfect-square
+    dimension, ``lhss`` range, site bounds) is deferred to
+    ``PyBondHamiltonian``.
+
+    Example:
+        >>> import numpy as np
+        >>> M = np.eye(4, dtype=complex)
+        >>> t = PyBondTerm(M, [(0, 1), (1, 2)])
+    """
+
+    def __init__(
+        self,
+        matrix: npt.NDArray[np.complexfloating],
+        bonds: list[tuple[int, int]],
+    ) -> None:
+        """Create a bond term.
+
+        Args:
+            matrix (NDArray): 2-D array with ``dtype=complex128`` and shape
+                ``(lhss², lhss²)``.
+            bonds (list[tuple[int, int]]): Site pairs ``(si, sj)`` to apply
+                the matrix to.
+
+        Raises:
+            ValueError: If ``matrix`` is not a 2-D ``complex128`` NumPy array
+                or ``bonds`` is not a list of ``(int, int)`` pairs.
+        """
+        ...
+
+    @property
+    def matrix_shape(self) -> tuple[int, int]:
+        """Shape of the interaction matrix as ``(rows, cols)``."""
+        ...
+
+    @property
+    def bonds(self) -> list[tuple[int, int]]:
+        """Site-pair bonds applied by this term."""
+        ...
+
+    def __repr__(self) -> str:
+        """Return ``PyBondTerm(matrix_shape=(...), n_bonds=...)``."""
+        ...
+
+
+# ---------------------------------------------------------------------------
+# PyBondHamiltonian
+# ---------------------------------------------------------------------------
+
+
+class PyBondHamiltonian:
+    """A Hamiltonian built from dense two-site interaction matrices.
+
+    Each term specifies a single ``(lhss² × lhss²)`` matrix applied to a list
+    of site pairs.  All terms share the same ``lhss`` (local Hilbert-space
+    size), which is inferred from the shape of the first term's matrix.
+
+    ``n_sites`` is inferred from the largest site index across all bonds.
+
+    Example:
+        >>> import numpy as np
+        >>> M = np.zeros((4, 4), dtype=complex)
+        >>> M[3, 0] = M[2, 1] = M[1, 2] = M[0, 3] = 1.0  # XX
+        >>> t = PyBondTerm(M, [(0, 1), (1, 2), (2, 3)])
+        >>> H = PyBondHamiltonian([t])
+        >>> H.n_sites
+        4
+        >>> H.lhss
+        2
+    """
+
+    def __init__(self, terms: list[PyBondTerm]) -> None:
+        """Construct a BondHamiltonian from a list of ``PyBondTerm`` objects.
+
+        Each term is assigned a ``cindex`` equal to its position in the list.
+        ``n_sites`` is inferred from the maximum site index across all bonds
+        plus one.
+
+        Args:
+            terms (list[PyBondTerm]): One ``PyBondTerm`` per ``cindex``.
+
+        Raises:
+            ValueError: If ``terms`` is empty, matrices have inconsistent
+                shapes, ``lhss`` is out of range, or any site index is invalid.
+        """
+        ...
+
+    @property
+    def n_sites(self) -> int:
+        """Number of sites, inferred from the maximum site index plus one."""
+        ...
+
+    @property
+    def num_cindices(self) -> int:
+        """Number of distinct coefficient indices (length of the terms list)."""
+        ...
+
+    @property
+    def lhss(self) -> int:
+        """Local Hilbert-space size, inferred from ``sqrt(matrix.shape[0])``."""
+        ...
+
+    def __repr__(self) -> str:
+        """Return ``PyBondHamiltonian(n_sites=..., lhss=..., num_cindices=...)``."""
+        ...
+
+
+# ---------------------------------------------------------------------------
 # PyHardcoreBasis
 # ---------------------------------------------------------------------------
 
@@ -496,11 +611,39 @@ class PyQMatrix:
         basis: PyHardcoreBasis,
         dtype: np.dtype[Any],
     ) -> PyQMatrix:
-        """Build a sparse matrix from a Hamiltonian and a basis.
+        """Build a sparse matrix from a PyHardcoreHamiltonian and a basis.
 
         Args:
             ham (PyHardcoreHamiltonian): The Hamiltonian defining operator
                 strings and coupling coefficients.
+            basis (PyHardcoreBasis): The Hilbert space basis (full, subspace,
+                or symmetric).
+            dtype (numpy.dtype): NumPy dtype for matrix element storage.
+                Supported values: ``np.dtype("int8")``, ``np.dtype("int16")``,
+                ``np.dtype("float32")``, ``np.dtype("float64")``,
+                ``np.dtype("complex64")``, ``np.dtype("complex128")``.
+
+        Returns:
+            PyQMatrix: Sparse matrix representation of the Hamiltonian in the
+            given basis.
+
+        Raises:
+            ValueError: If ``ham.n_sites != basis.n_sites``, or if ``dtype``
+                is not supported.
+        """
+        ...
+
+    @staticmethod
+    def build_bond_hamiltonian(
+        ham: PyBondHamiltonian,
+        basis: PyHardcoreBasis,
+        dtype: np.dtype[Any],
+    ) -> PyQMatrix:
+        """Build a sparse matrix from a PyBondHamiltonian and a basis.
+
+        Args:
+            ham (PyBondHamiltonian): The Hamiltonian with dense two-site
+                interaction matrices.
             basis (PyHardcoreBasis): The Hilbert space basis (full, subspace,
                 or symmetric).
             dtype (numpy.dtype): NumPy dtype for matrix element storage.
