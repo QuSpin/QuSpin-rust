@@ -58,10 +58,6 @@ impl<C: Copy + Ord> HardcoreHamiltonian<C> {
         self.max_site
     }
 
-    pub fn num_terms(&self) -> usize {
-        self.terms.len()
-    }
-
     pub fn num_cindices(&self) -> usize {
         self.num_cindices
     }

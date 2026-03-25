@@ -21,8 +21,12 @@ impl HardcoreHamiltonianInner {
 
     pub fn num_cindices(&self) -> usize {
         match self {
-            HardcoreHamiltonianInner::Ham8(h) => h.num_terms(),
-            HardcoreHamiltonianInner::Ham16(h) => h.num_terms(),
+            HardcoreHamiltonianInner::Ham8(h) => h.num_cindices(),
+            HardcoreHamiltonianInner::Ham16(h) => h.num_cindices(),
         }
+    }
+
+    pub const fn lhss(&self) -> usize {
+        2
     }
 }
