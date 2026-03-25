@@ -11,7 +11,7 @@ use quspin_core::basis::{
 };
 use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
 
-use super::symmetry::PySymmetryGrp;
+use super::symmetry::PySpinSymGrp;
 
 // ---------------------------------------------------------------------------
 // PyHardcoreBasis
@@ -128,7 +128,7 @@ impl PyHardcoreBasis {
     pub fn symmetric(
         seeds: &Bound<'_, PyAny>,
         ham: &PyHardcoreHamiltonian,
-        grp: &PySymmetryGrp,
+        grp: &PySpinSymGrp,
     ) -> PyResult<Self> {
         let n_sites = ham.inner.max_site() + 1;
         if grp.n_sites() != n_sites {
@@ -142,7 +142,7 @@ impl PyHardcoreBasis {
 
         let hc = grp.inner.as_hardcore().ok_or_else(|| {
             pyo3::exceptions::PyValueError::new_err(
-                "symmetric basis requires a hardcore (LHSS=2) symmetry group",
+                "symmetric basis requires a spin-symmetry group with LHSS=2",
             )
         })?;
         let inner = quspin_core::with_sym_grp!(hc, B, sym_grp, {

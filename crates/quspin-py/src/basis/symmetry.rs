@@ -1,21 +1,25 @@
 /// Python-facing symmetry group pyclasses.
 ///
 /// `PyLatticeElement` and `PyGrpElement` accept Python-level arguments.
-/// `PySymmetryGrp` resolves both the concrete basis integer type `B` (from
-/// `n_sites`) and the LHSS dispatch at construction time, storing a unified
-/// `SymmetryGrp`.
+/// `PySpinSymGrp` and `PyValuePermSymGrp` resolve both the concrete basis
+/// integer type `B` (from `n_sites`) and the LHSS dispatch at construction
+/// time.
 ///
 /// ## Python API
 ///
 /// ```python
 /// T   = PyLatticeElement(grp_char=1.0+0j, perm=[1, 2, 3, 0], lhss=2)
 /// P   = PyGrpElement.bitflip(grp_char=1.0+0j, n_sites=4)
-/// grp = PySymmetryGrp(lattice=[T], local=[P])
+/// grp = PySpinSymGrp(lattice=[T], local=[P])
+///
+/// T2  = PyLatticeElement(grp_char=1.0+0j, perm=[1, 2, 3, 0], lhss=3)
+/// Q   = PyGrpElement.local_value(grp_char=1.0+0j, n_sites=4, lhss=3, perm=[2,1,0], locs=[0,1,2,3])
+/// grp2 = PyValuePermSymGrp(lattice=[T2], local=[Q])
 /// ```
 use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::basis::SymmetryGrp;
+use quspin_core::basis::{SpinSymGrp, ValuePermSymGrp};
 
 use crate::error::Error;
 
@@ -76,7 +80,7 @@ impl PyLatticeElement {
 // ---------------------------------------------------------------------------
 
 /// The kind of a local symmetry operation.
-enum GrpElemKind {
+pub(crate) enum GrpElemKind {
     /// XOR with a fixed mask (Z₂ bit-flip, LHSS=2 only).
     Bitflip { locs: Option<Vec<usize>> },
     /// Uniform value permutation on a subset of sites (LHSS > 2).
@@ -94,11 +98,11 @@ enum GrpElemKind {
 pub struct PyGrpElement {
     pub grp_char: Complex<f64>,
     pub n_sites: usize,
-    kind: GrpElemKind,
+    pub(crate) kind: GrpElemKind,
 }
 
 impl PyGrpElement {
-    fn lhss(&self) -> usize {
+    pub(crate) fn lhss(&self) -> usize {
         match &self.kind {
             GrpElemKind::Bitflip { .. } => 2,
             GrpElemKind::LocalValue { lhss, .. } => *lhss,
@@ -222,21 +226,22 @@ impl PyGrpElement {
 }
 
 // ---------------------------------------------------------------------------
-// PySymmetryGrp
+// PySpinSymGrp
 // ---------------------------------------------------------------------------
 
-/// A symmetry group: a product of lattice and local group elements.
+/// A spin-symmetry group: lattice permutations + spin-inversion / bit-flip ops.
 ///
-/// Both the concrete basis integer type `B` (from `n_sites`) and the
-/// LHSS dispatch are resolved at construction time.
-#[pyclass(name = "PySymmetryGrp")]
-pub struct PySymmetryGrp {
-    pub inner: SymmetryGrp,
+/// Accepts only `PyGrpElement.bitflip` and `PyGrpElement.spin_inversion`
+/// local elements. For local value-permutation symmetries use
+/// :class:`PyValuePermSymGrp`.
+#[pyclass(name = "PySpinSymGrp")]
+pub struct PySpinSymGrp {
+    pub inner: SpinSymGrp,
 }
 
 #[pymethods]
-impl PySymmetryGrp {
-    /// Construct a symmetry group from lattice and local elements.
+impl PySpinSymGrp {
+    /// Construct a spin-symmetry group from lattice and local elements.
     ///
     /// Infers ``n_sites`` and ``lhss`` from the supplied elements and validates
     /// that all elements agree.
@@ -244,12 +249,14 @@ impl PySymmetryGrp {
     /// Args:
     ///     lattice (list[PyLatticeElement]): Spatial symmetry elements (site
     ///         permutations). The permutation length determines ``n_sites``.
-    ///     local (list[PyGrpElement]): On-site symmetry elements (bit-flip,
-    ///         value permutation, or spin inversion).
+    ///     local (list[PyGrpElement]): On-site symmetry elements. Only
+    ///         ``bitflip`` and ``spin_inversion`` elements are accepted.
     ///
     /// Raises:
     ///     ValueError: If any two elements disagree on ``n_sites`` or ``lhss``,
-    ///         or if ``n_sites`` exceeds 8192.
+    ///         if a ``local_value`` element is supplied (use
+    ///         :class:`PyValuePermSymGrp` instead), or if ``n_sites`` exceeds
+    ///         8192.
     #[new]
     pub fn new(
         py: Python<'_>,
@@ -267,11 +274,9 @@ impl PySymmetryGrp {
                     n_sites_opt = Some(n);
                     Ok(())
                 }
-                Some(existing) if existing != n => {
-                    Err(pyo3::exceptions::PyValueError::new_err(format!(
-                        "n_sites mismatch in symmetry group: element has {n} but expected {existing}"
-                    )))
-                }
+                Some(existing) if existing != n => Err(pyo3::exceptions::PyValueError::new_err(
+                    format!("n_sites mismatch: element has {n} but expected {existing}"),
+                )),
                 _ => Ok(()),
             }
         };
@@ -282,16 +287,13 @@ impl PySymmetryGrp {
                     lhss_opt = Some(l);
                     Ok(())
                 }
-                Some(existing) if existing != l => {
-                    Err(pyo3::exceptions::PyValueError::new_err(format!(
-                        "lhss mismatch in symmetry group: element has {l} but expected {existing}"
-                    )))
-                }
+                Some(existing) if existing != l => Err(pyo3::exceptions::PyValueError::new_err(
+                    format!("lhss mismatch: element has {l} but expected {existing}"),
+                )),
                 _ => Ok(()),
             }
         };
 
-        // Collect lattice elements, inferring n_sites and lhss.
         let mut lattice_els: Vec<(Complex<f64>, Vec<usize>)> = Vec::with_capacity(lattice.len());
         for item in lattice.iter() {
             let el: PyRef<'_, PyLatticeElement> = item.extract()?;
@@ -300,10 +302,16 @@ impl PySymmetryGrp {
             lattice_els.push((el.grp_char, el.perm.clone()));
         }
 
-        // Collect local elements, inferring n_sites and lhss.
         let mut local_els: Vec<PyRef<'_, PyGrpElement>> = Vec::with_capacity(local.len());
         for item in local.iter() {
             let el: PyRef<'_, PyGrpElement> = item.extract()?;
+            // Reject local_value elements — they belong in PyValuePermSymGrp.
+            if matches!(el.kind, GrpElemKind::LocalValue { .. }) {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "local_value elements are not allowed in PySpinSymGrp; \
+                     use PyValuePermSymGrp for value-permutation symmetries",
+                ));
+            }
             check_n_sites(el.n_sites)?;
             check_lhss(el.lhss())?;
             local_els.push(el);
@@ -312,7 +320,7 @@ impl PySymmetryGrp {
         let n_sites = n_sites_opt.unwrap_or(0);
         let lhss = lhss_opt.unwrap_or(2);
 
-        let mut grp = SymmetryGrp::new(lhss, n_sites).map_err(|e| PyErr::from(Error(e)))?;
+        let mut grp = SpinSymGrp::new(lhss, n_sites).map_err(|e| PyErr::from(Error(e)))?;
 
         for (grp_char, perm) in lattice_els {
             grp.add_lattice(grp_char, perm);
@@ -330,14 +338,11 @@ impl PySymmetryGrp {
                 GrpElemKind::SpinInversion { locs, .. } => {
                     grp.add_local_inv(el.grp_char, locs.clone());
                 }
-                GrpElemKind::LocalValue { perm, locs, .. } => {
-                    grp.add_local_perm(el.grp_char, perm.clone(), locs.clone())
-                        .map_err(|e| PyErr::from(Error(e)))?;
-                }
+                GrpElemKind::LocalValue { .. } => unreachable!(),
             }
         }
 
-        Ok(PySymmetryGrp { inner: grp })
+        Ok(PySpinSymGrp { inner: grp })
     }
 
     /// Number of sites in the system.
@@ -354,7 +359,144 @@ impl PySymmetryGrp {
 
     pub fn __repr__(&self) -> String {
         format!(
-            "PySymmetryGrp(n_sites={}, lhss={})",
+            "PySpinSymGrp(n_sites={}, lhss={})",
+            self.inner.n_sites(),
+            self.inner.lhss(),
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PyValuePermSymGrp
+// ---------------------------------------------------------------------------
+
+/// A value-permutation symmetry group: lattice permutations + local value-perm ops.
+///
+/// Only supported for LHSS > 2. Accepts only `PyGrpElement.local_value`
+/// local elements. For spin-inversion or bit-flip symmetries use
+/// :class:`PySpinSymGrp`.
+#[pyclass(name = "PyValuePermSymGrp")]
+pub struct PyValuePermSymGrp {
+    pub inner: ValuePermSymGrp,
+}
+
+#[pymethods]
+impl PyValuePermSymGrp {
+    /// Construct a value-permutation symmetry group from lattice and local elements.
+    ///
+    /// Infers ``n_sites`` and ``lhss`` from the supplied elements and validates
+    /// that all elements agree.
+    ///
+    /// Args:
+    ///     lattice (list[PyLatticeElement]): Spatial symmetry elements (site
+    ///         permutations). The permutation length determines ``n_sites``.
+    ///     local (list[PyGrpElement]): On-site symmetry elements. Only
+    ///         ``local_value`` elements are accepted.
+    ///
+    /// Raises:
+    ///     ValueError: If ``lhss < 3`` (use :class:`PySpinSymGrp` for
+    ///         ``lhss = 2``), if any two elements disagree on ``n_sites`` or
+    ///         ``lhss``, or if a ``bitflip`` / ``spin_inversion`` element is
+    ///         supplied.
+    #[new]
+    pub fn new(
+        py: Python<'_>,
+        lattice: &Bound<'_, PyList>,
+        local: &Bound<'_, PyList>,
+    ) -> PyResult<Self> {
+        let _ = py;
+
+        let mut n_sites_opt: Option<usize> = None;
+        let mut lhss_opt: Option<usize> = None;
+
+        let mut check_n_sites = |n: usize| -> PyResult<()> {
+            match n_sites_opt {
+                None => {
+                    n_sites_opt = Some(n);
+                    Ok(())
+                }
+                Some(existing) if existing != n => Err(pyo3::exceptions::PyValueError::new_err(
+                    format!("n_sites mismatch: element has {n} but expected {existing}"),
+                )),
+                _ => Ok(()),
+            }
+        };
+
+        let mut check_lhss = |l: usize| -> PyResult<()> {
+            match lhss_opt {
+                None => {
+                    lhss_opt = Some(l);
+                    Ok(())
+                }
+                Some(existing) if existing != l => Err(pyo3::exceptions::PyValueError::new_err(
+                    format!("lhss mismatch: element has {l} but expected {existing}"),
+                )),
+                _ => Ok(()),
+            }
+        };
+
+        let mut lattice_els: Vec<(Complex<f64>, Vec<usize>)> = Vec::with_capacity(lattice.len());
+        for item in lattice.iter() {
+            let el: PyRef<'_, PyLatticeElement> = item.extract()?;
+            check_n_sites(el.perm.len())?;
+            check_lhss(el.lhss)?;
+            lattice_els.push((el.grp_char, el.perm.clone()));
+        }
+
+        let mut local_els: Vec<PyRef<'_, PyGrpElement>> = Vec::with_capacity(local.len());
+        for item in local.iter() {
+            let el: PyRef<'_, PyGrpElement> = item.extract()?;
+            // Reject spin-type elements — they belong in PySpinSymGrp.
+            match &el.kind {
+                GrpElemKind::Bitflip { .. } | GrpElemKind::SpinInversion { .. } => {
+                    return Err(pyo3::exceptions::PyValueError::new_err(
+                        "bitflip and spin_inversion elements are not allowed in \
+                         PyValuePermSymGrp; use PySpinSymGrp instead",
+                    ));
+                }
+                GrpElemKind::LocalValue { .. } => {}
+            }
+            check_n_sites(el.n_sites)?;
+            check_lhss(el.lhss())?;
+            local_els.push(el);
+        }
+
+        let n_sites = n_sites_opt.unwrap_or(0);
+        let lhss = lhss_opt.unwrap_or(3);
+
+        let mut grp = ValuePermSymGrp::new(lhss, n_sites).map_err(|e| PyErr::from(Error(e)))?;
+
+        for (grp_char, perm) in lattice_els {
+            grp.add_lattice(grp_char, perm);
+        }
+
+        for el in local_els {
+            match &el.kind {
+                GrpElemKind::LocalValue { perm, locs, .. } => {
+                    grp.add_local_perm(el.grp_char, perm.clone(), locs.clone());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        Ok(PyValuePermSymGrp { inner: grp })
+    }
+
+    /// Number of sites in the system.
+    #[getter]
+    pub fn n_sites(&self) -> usize {
+        self.inner.n_sites()
+    }
+
+    /// Local Hilbert-space size.
+    #[getter]
+    pub fn lhss(&self) -> usize {
+        self.inner.lhss()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!(
+            "PyValuePermSymGrp(n_sites={}, lhss={})",
             self.inner.n_sites(),
             self.inner.lhss(),
         )

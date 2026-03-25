@@ -9,7 +9,7 @@ from quspin_rs._rs import (
     PyHardcoreHamiltonian,
     PyLatticeElement,
     PyQMatrix,
-    PySymmetryGrp,
+    PySpinSymGrp,
 )
 
 # ---------------------------------------------------------------------------
@@ -267,7 +267,7 @@ class TestQMatrixArithmetic:
 
 
 # ---------------------------------------------------------------------------
-# PySymmetryGrp / symmetric basis
+# PySpinSymGrp / symmetric basis
 # ---------------------------------------------------------------------------
 
 
@@ -275,7 +275,7 @@ class TestSymmetricBasis:
     def test_translation_symmetry_reduces_dim(self):
         # 4-site chain: translation by 1 site, momentum sector k=0 (char=1).
         T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 3, 0], lhss=2)
-        grp = PySymmetryGrp([T], [])
+        grp = PySpinSymGrp([T], [])
         h = make_ham()
         seeds = ["1100"]  # sites 0,1 occupied (0b0011)
         basis = PyHardcoreBasis.symmetric(seeds, h, grp)
@@ -285,7 +285,7 @@ class TestSymmetricBasis:
     def test_bitflip_symmetry(self):
         # locs=None flips all n_sites bits.
         P = PyGrpElement.bitflip(grp_char=1.0 + 0j, n_sites=N)
-        grp = PySymmetryGrp([], [P])
+        grp = PySpinSymGrp([], [P])
         assert grp.n_sites == N
         h = make_ham()
         # Use the canonical representative: the larger of each (state, partner) pair.
@@ -298,7 +298,7 @@ class TestSymmetricBasis:
 
     def test_symmetric_build_qmatrix(self):
         T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 3, 0], lhss=2)
-        grp = PySymmetryGrp([T], [])
+        grp = PySpinSymGrp([T], [])
         h = make_ham()
         seeds = ["1100"]  # sites 0,1 occupied (0b0011)
         basis = PyHardcoreBasis.symmetric(seeds, h, grp)
@@ -312,7 +312,7 @@ class TestSymmetricBasis:
 
     def test_grp_element_n_sites(self):
         P = PyGrpElement.bitflip(grp_char=1.0 + 0j, n_sites=N)
-        grp = PySymmetryGrp([], [P])
+        grp = PySpinSymGrp([], [P])
         assert grp.n_sites == N
 
     def test_bitflip_optional_locs(self):
@@ -321,8 +321,8 @@ class TestSymmetricBasis:
         P_explicit = PyGrpElement.bitflip(
             grp_char=1.0 + 0j, n_sites=N, locs=[0, 1, 2, 3]
         )
-        grp_all = PySymmetryGrp([], [P_all])
-        grp_explicit = PySymmetryGrp([], [P_explicit])
+        grp_all = PySpinSymGrp([], [P_all])
+        grp_explicit = PySpinSymGrp([], [P_explicit])
         h = make_ham()
         seeds = ["0111"]
         b_all = PyHardcoreBasis.symmetric(seeds, h, grp_all)
@@ -332,7 +332,7 @@ class TestSymmetricBasis:
     def test_n_sites_mismatch_symmetric_raises(self):
         # Group built for 3 sites, ham for 4 sites → error.
         T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 0], lhss=2)
-        grp = PySymmetryGrp([T], [])
+        grp = PySpinSymGrp([T], [])
         h = make_ham()  # 4 sites
         with pytest.raises(Exception):
             PyHardcoreBasis.symmetric(["110"], h, grp)
@@ -349,4 +349,4 @@ class TestSymmetricBasis:
         T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 3, 0], lhss=2)
         P = PyGrpElement.bitflip(grp_char=1.0 + 0j, n_sites=3)
         with pytest.raises(Exception):
-            PySymmetryGrp([T], [P])
+            PySpinSymGrp([T], [P])

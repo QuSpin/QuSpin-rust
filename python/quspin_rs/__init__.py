@@ -21,7 +21,8 @@ from quspin_rs._rs import (
     PyHardcoreHamiltonian,
     PyLatticeElement,
     PyQMatrix,
-    PySymmetryGrp,
+    PySpinSymGrp,
+    PyValuePermSymGrp,
 )
 
 __all__ = [
@@ -32,5 +33,6 @@ __all__ = [
     "PyHardcoreHamiltonian",
     "PyLatticeElement",
     "PyQMatrix",
-    "PySymmetryGrp",
+    "PySpinSymGrp",
+    "PyValuePermSymGrp",
 ]

@@ -147,21 +147,25 @@ class PyGrpElement:
 
 
 # ---------------------------------------------------------------------------
-# PySymmetryGrp
+# PySpinSymGrp
 # ---------------------------------------------------------------------------
 
 
-class PySymmetryGrp:
-    """A symmetry group composed of lattice and local symmetry elements.
+class PySpinSymGrp:
+    """A spin-symmetry group: lattice permutations + spin-inversion / bit-flip ops.
 
-    Combines spatial (lattice) symmetries with on-site (local) symmetries.
-    The concrete basis integer type is selected automatically at construction
-    time based on ``n_sites``.
+    Combines spatial (lattice) symmetries with on-site spin-inversion operations.
+    For LHSS = 2 this is a bit-flip (Z₂) symmetry; for LHSS > 2 it maps
+    ``v → lhss - v - 1``.
+
+    Only accepts ``PyGrpElement.bitflip`` and ``PyGrpElement.spin_inversion``
+    local elements. Use :class:`PyValuePermSymGrp` for local value-permutation
+    symmetries.
 
     Example:
         >>> T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 3, 0], lhss=2)
         >>> P = PyGrpElement.bitflip(grp_char=-1.0 + 0j, n_sites=4)
-        >>> grp = PySymmetryGrp(lattice=[T], local=[P])
+        >>> grp = PySpinSymGrp(lattice=[T], local=[P])
         >>> grp.n_sites
         4
     """
@@ -171,20 +175,22 @@ class PySymmetryGrp:
         lattice: list[PyLatticeElement],
         local: list[PyGrpElement],
     ) -> None:
-        """Construct a symmetry group from lattice and local elements.
+        """Construct a spin-symmetry group from lattice and local elements.
 
-        Validates that all elements agree on ``n_sites`` and eagerly builds
-        the typed symmetry group.
+        Infers ``n_sites`` and ``lhss`` from the supplied elements and validates
+        that all elements agree.
 
         Args:
             lattice (list[PyLatticeElement]): Spatial symmetry elements (site
                 permutations). The permutation length determines ``n_sites``.
-            local (list[PyGrpElement]): On-site symmetry elements (bit-flip,
-                value permutation, or spin inversion).
+            local (list[PyGrpElement]): On-site symmetry elements. Only
+                ``bitflip`` and ``spin_inversion`` elements are accepted.
 
         Raises:
-            ValueError: If any two elements disagree on the number of sites, or
-                if ``n_sites`` exceeds 8192.
+            ValueError: If any two elements disagree on ``n_sites`` or ``lhss``,
+                if a ``local_value`` element is supplied (use
+                :class:`PyValuePermSymGrp` instead), or if ``n_sites`` exceeds
+                8192.
         """
         ...
 
@@ -193,8 +199,74 @@ class PySymmetryGrp:
         """Number of sites in the system."""
         ...
 
+    @property
+    def lhss(self) -> int:
+        """Local Hilbert-space size."""
+        ...
+
     def __repr__(self) -> str:
-        """Return ``PySymmetryGrp(n_sites=...)``."""
+        """Return ``PySpinSymGrp(n_sites=..., lhss=...)``."""
+        ...
+
+
+# ---------------------------------------------------------------------------
+# PyValuePermSymGrp
+# ---------------------------------------------------------------------------
+
+
+class PyValuePermSymGrp:
+    """A value-permutation symmetry group: lattice permutations + local value-perm ops.
+
+    Only supported for LHSS > 2. Only accepts ``PyGrpElement.local_value``
+    local elements. Use :class:`PySpinSymGrp` for spin-inversion or bit-flip
+    symmetries.
+
+    Example:
+        >>> T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 3, 0], lhss=3)
+        >>> Q = PyGrpElement.local_value(
+        ...     grp_char=1.0 + 0j, n_sites=4, lhss=3, perm=[2, 1, 0], locs=[0, 1, 2, 3]
+        ... )
+        >>> grp = PyValuePermSymGrp(lattice=[T], local=[Q])
+        >>> grp.lhss
+        3
+    """
+
+    def __init__(
+        self,
+        lattice: list[PyLatticeElement],
+        local: list[PyGrpElement],
+    ) -> None:
+        """Construct a value-permutation symmetry group from lattice and local elements.
+
+        Infers ``n_sites`` and ``lhss`` from the supplied elements and validates
+        that all elements agree.
+
+        Args:
+            lattice (list[PyLatticeElement]): Spatial symmetry elements (site
+                permutations). The permutation length determines ``n_sites``.
+            local (list[PyGrpElement]): On-site symmetry elements. Only
+                ``local_value`` elements are accepted.
+
+        Raises:
+            ValueError: If ``lhss < 3`` (use :class:`PySpinSymGrp` for
+                ``lhss = 2``), if any two elements disagree on ``n_sites`` or
+                ``lhss``, or if a ``bitflip`` / ``spin_inversion`` element is
+                supplied.
+        """
+        ...
+
+    @property
+    def n_sites(self) -> int:
+        """Number of sites in the system."""
+        ...
+
+    @property
+    def lhss(self) -> int:
+        """Local Hilbert-space size."""
+        ...
+
+    def __repr__(self) -> str:
+        """Return ``PyValuePermSymGrp(n_sites=..., lhss=...)``."""
         ...
 
 
@@ -405,7 +477,7 @@ class PyHardcoreBasis:
     - **Full**: all :math:`2^{n_{\\mathrm{sites}}}` computational basis states.
     - **Subspace**: the sector reachable from given seed states under a
       Hamiltonian (e.g., fixed particle number).
-    - **Symmetric**: a symmetry-reduced sector using a :class:`PySymmetryGrp`.
+    - **Symmetric**: a symmetry-reduced sector using a :class:`PySpinSymGrp`.
 
     Example:
         >>> basis = PyHardcoreBasis.full(4)
@@ -470,25 +542,27 @@ class PyHardcoreBasis:
     def symmetric(
         seeds: Iterable[_Seed],
         ham: PyHardcoreHamiltonian,
-        grp: PySymmetryGrp,
+        grp: PySpinSymGrp,
     ) -> PyHardcoreBasis:
         """Build a symmetry-reduced subspace.
 
         Like :meth:`subspace`, but projects into a symmetry sector defined by
-        ``grp``, yielding a smaller basis.
+        ``grp``, yielding a smaller basis. Requires a spin-symmetry group with
+        LHSS = 2.
 
         Args:
             seeds (Iterable[str | list[int]]): Initial states (same format as
                 :meth:`subspace`).
             ham (PyHardcoreHamiltonian): The Hamiltonian defining connectivity.
-            grp (PySymmetryGrp): The symmetry group defining the sector.
+            grp (PySpinSymGrp): The symmetry group defining the sector.
+                Must have ``lhss = 2``.
 
         Returns:
             PyHardcoreBasis: Symmetry-reduced basis.
 
         Raises:
-            ValueError: If ``ham.n_sites != grp.n_sites``, if any seed is
-                malformed, or if ``n_sites`` exceeds 8192.
+            ValueError: If ``ham.n_sites != grp.n_sites``, if ``grp.lhss != 2``,
+                if any seed is malformed, or if ``n_sites`` exceeds 8192.
         """
         ...
 
