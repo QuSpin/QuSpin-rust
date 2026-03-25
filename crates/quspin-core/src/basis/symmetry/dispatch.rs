@@ -2,8 +2,8 @@
 ///
 /// `SymmetryGrpInner` wraps a `HardcoreSymmetryGrp<B>` for each supported basis
 /// integer width, selected at construction time from `n_sites`.
-use crate::basis::symmetry::HardcoreSymmetryGrp;
-use crate::error::QuSpinError;
+use crate::basis::symmetry::group::{HardcoreSymmetryGrp, LatticeElement};
+use num_complex::Complex;
 
 type B128 = ruint::Uint<128, 2>;
 type B256 = ruint::Uint<256, 4>;
@@ -73,42 +73,32 @@ impl SymmetryGrpInner {
         }
     }
 
-    /// Wrap a concrete `SymmetryGrp<B>` in the appropriate variant for `n_sites`.
-    ///
-    /// Returns `Err` if `n_sites > 8192`.
-    pub fn from_grp_32(grp: HardcoreSymmetryGrp<u32>) -> Self {
-        SymmetryGrpInner::Sym32(grp)
-    }
-    pub fn from_grp_64(grp: HardcoreSymmetryGrp<u64>) -> Self {
-        SymmetryGrpInner::Sym64(grp)
-    }
-    pub fn from_grp_128(grp: HardcoreSymmetryGrp<B128>) -> Self {
-        SymmetryGrpInner::Sym128(grp)
-    }
-    pub fn from_grp_256(grp: HardcoreSymmetryGrp<B256>) -> Self {
-        SymmetryGrpInner::Sym256(grp)
-    }
-    pub fn from_grp_512(grp: HardcoreSymmetryGrp<B512>) -> Self {
-        SymmetryGrpInner::Sym512(grp)
-    }
-    pub fn from_grp_1024(grp: HardcoreSymmetryGrp<B1024>) -> Self {
-        SymmetryGrpInner::Sym1024(grp)
-    }
-    pub fn from_grp_2048(grp: HardcoreSymmetryGrp<B2048>) -> Self {
-        SymmetryGrpInner::Sym2048(grp)
-    }
-    pub fn from_grp_4096(grp: HardcoreSymmetryGrp<B4096>) -> Self {
-        SymmetryGrpInner::Sym4096(grp)
-    }
-    pub fn from_grp_8192(grp: HardcoreSymmetryGrp<B8192>) -> Self {
-        SymmetryGrpInner::Sym8192(grp)
+    pub(crate) fn push_lattice(&mut self, el: LatticeElement) {
+        match self {
+            SymmetryGrpInner::Sym32(g) => g.push_lattice(el),
+            SymmetryGrpInner::Sym64(g) => g.push_lattice(el),
+            SymmetryGrpInner::Sym128(g) => g.push_lattice(el),
+            SymmetryGrpInner::Sym256(g) => g.push_lattice(el),
+            SymmetryGrpInner::Sym512(g) => g.push_lattice(el),
+            SymmetryGrpInner::Sym1024(g) => g.push_lattice(el),
+            SymmetryGrpInner::Sym2048(g) => g.push_lattice(el),
+            SymmetryGrpInner::Sym4096(g) => g.push_lattice(el),
+            SymmetryGrpInner::Sym8192(g) => g.push_lattice(el),
+        }
     }
 
-    /// Return an error for n_sites > 8192.
-    pub fn n_sites_too_large(n_sites: usize) -> QuSpinError {
-        QuSpinError::ValueError(format!(
-            "n_sites={n_sites} exceeds the maximum supported value of 8192"
-        ))
+    pub(crate) fn push_local_inv(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
+        match self {
+            SymmetryGrpInner::Sym32(g) => g.push_local_inv(grp_char, locs),
+            SymmetryGrpInner::Sym64(g) => g.push_local_inv(grp_char, locs),
+            SymmetryGrpInner::Sym128(g) => g.push_local_inv(grp_char, locs),
+            SymmetryGrpInner::Sym256(g) => g.push_local_inv(grp_char, locs),
+            SymmetryGrpInner::Sym512(g) => g.push_local_inv(grp_char, locs),
+            SymmetryGrpInner::Sym1024(g) => g.push_local_inv(grp_char, locs),
+            SymmetryGrpInner::Sym2048(g) => g.push_local_inv(grp_char, locs),
+            SymmetryGrpInner::Sym4096(g) => g.push_local_inv(grp_char, locs),
+            SymmetryGrpInner::Sym8192(g) => g.push_local_inv(grp_char, locs),
+        }
     }
 }
 

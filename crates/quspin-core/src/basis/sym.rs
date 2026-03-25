@@ -1,4 +1,4 @@
-use super::{BasisSpace, symmetry::HardcoreSymmetryGrp};
+use super::{BasisSpace, symmetry::group::HardcoreSymmetryGrp};
 use crate::bitbasis::BitInt;
 use num_complex::Complex;
 use std::collections::HashMap;
@@ -147,8 +147,8 @@ impl<B: BitInt> BasisSpace<B> for SymmetricSubspace<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::symmetry::{HardcoreGrpElement, HardcoreSymmetryGrp, LatticeElement};
-    use crate::bitbasis::{PermDitLocations, PermDitMask};
+    use crate::basis::symmetry::group::{HardcoreSymmetryGrp, LatticeElement};
+    use crate::bitbasis::PermDitLocations;
     use num_complex::Complex;
 
     /// X operator on all sites of an N-site chain.
@@ -171,28 +171,21 @@ mod tests {
     }
 
     /// Z₂ bit-flip group on the full N-site chain.
-    /// Identity goes in lattice; the bitflip goes in local.
     fn bitflip_grp(n_sites: u32) -> HardcoreSymmetryGrp<u32> {
-        let mask = (1u32 << n_sites) - 1;
-        let el = HardcoreGrpElement::new(
-            Complex::new(1.0, 0.0),
-            PermDitMask::new(mask),
-            n_sites as usize,
-        );
-        HardcoreSymmetryGrp::new(vec![id_lattice(n_sites as usize)], vec![el]).unwrap()
+        let n = n_sites as usize;
+        let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(n);
+        grp.push_lattice(id_lattice(n));
+        grp.push_local_inv(Complex::new(1.0, 0.0), &(0..n).collect::<Vec<_>>());
+        grp
     }
 
     #[test]
     fn symmetric_subspace_bitflip_2site() {
         // 2-site chain, Z₂ bitflip symmetry.
-        // Lattice: identity permutation.  Local: full bitflip.
-        // Images of state s: {id(s), id(flip(s))} = {s, flip(s)}.
-        // Orbits: {0↔3}, {1↔2}.  Representatives (largest): 3, 2.
-        // check_refstate(3): images = {3, 0}. count(==3) = 1. norm = 1.
-        // check_refstate(2): images = {2, 1}. count(==2) = 1. norm = 1.
-        let mask = (1u32 << 2) - 1;
-        let el = HardcoreGrpElement::new(Complex::new(1.0, 0.0), PermDitMask::new(mask), 2);
-        let grp = HardcoreSymmetryGrp::new(vec![id_lattice(2)], vec![el]).unwrap();
+        // Orbits: {0↔3}, {1↔2}. Representatives (largest): 3, 2.
+        let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(2);
+        grp.push_lattice(id_lattice(2));
+        grp.push_local_inv(Complex::new(1.0, 0.0), &[0, 1]);
         let mut sym = SymmetricSubspace::new(grp);
         sym.build(0u32, x_op(2));
 
@@ -205,7 +198,8 @@ mod tests {
     fn symmetric_subspace_no_symmetry_matches_subspace() {
         // With a trivial group (identity lattice only, no local ops), every
         // state is its own representative with norm = 1.
-        let grp = HardcoreSymmetryGrp::<u32>::new(vec![id_lattice(3)], vec![]).unwrap();
+        let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(3);
+        grp.push_lattice(id_lattice(3));
         let mut sym = SymmetricSubspace::new(grp);
         sym.build(0u32, x_op(3));
 
@@ -215,7 +209,8 @@ mod tests {
 
     #[test]
     fn symmetric_subspace_sorted_ascending() {
-        let grp = HardcoreSymmetryGrp::<u32>::new(vec![id_lattice(3)], vec![]).unwrap();
+        let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(3);
+        grp.push_lattice(id_lattice(3));
         let mut sym = SymmetricSubspace::new(grp);
         sym.build(0u32, x_op(3));
 

@@ -5,14 +5,12 @@ use crate::bitbasis::{
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
+use super::dispatch::SymmetryGrpInner;
+
 // ---------------------------------------------------------------------------
-// LatticeElement — shared by both hardcore and dit groups
+// LatticeElement
 // ---------------------------------------------------------------------------
 
-/// A lattice symmetry element (translation, reflection, …).
-///
-/// Shared between `HardcoreSymmetryGrp` and `DitSymmetryGrp`: site
-/// permutations are the same regardless of the local Hilbert-space size.
 #[derive(Clone)]
 pub struct LatticeElement {
     pub grp_char: Complex<f64>,
@@ -43,10 +41,6 @@ impl LatticeElement {
 // HardcoreGrpElement / HardcoreSymmetryGrp  (LHSS = 2)
 // ---------------------------------------------------------------------------
 
-/// A local symmetry element for LHSS=2 (hardcore bosons / spin-1/2).
-///
-/// The only local operation for a two-valued dit is an XOR mask (bit-flip);
-/// no enum is needed.
 #[derive(Clone)]
 pub struct HardcoreGrpElement<B: BitInt> {
     pub grp_char: Complex<f64>,
@@ -63,24 +57,12 @@ impl<B: BitInt> HardcoreGrpElement<B> {
         }
     }
 
-    pub fn n_sites(&self) -> usize {
-        self.n_sites
-    }
-
     #[inline]
     pub fn apply(&self, state: B, coeff: Complex<f64>) -> (B, Complex<f64>) {
         (self.op.apply(state), coeff * self.grp_char)
     }
 }
 
-/// A symmetry group for LHSS=2 basis states.
-///
-/// Local operations are restricted to `PermDitMask<B>` (XOR-based bit-flip),
-/// which is the only meaningful local symmetry for a two-valued dit.
-/// `B` is fixed on the struct because `PermDitMask<B>` is monomorphic.
-///
-/// Mirrors `grp<grp_result_t, lattice_t, local_t>` from `grp.hpp` for the
-/// spin-1/2 case.
 #[derive(Clone)]
 pub struct HardcoreSymmetryGrp<B: BitInt> {
     n_sites: usize,
@@ -89,32 +71,31 @@ pub struct HardcoreSymmetryGrp<B: BitInt> {
 }
 
 impl<B: BitInt> HardcoreSymmetryGrp<B> {
-    /// Construct, validating that all elements agree on `n_sites`.
-    pub fn new(
-        lattice: Vec<LatticeElement>,
-        local: Vec<HardcoreGrpElement<B>>,
-    ) -> Result<Self, QuSpinError> {
-        let mut n_sites_opt: Option<usize> = None;
-        for el in lattice
-            .iter()
-            .map(|e| e.n_sites)
-            .chain(local.iter().map(|e| e.n_sites))
-        {
-            match n_sites_opt {
-                None => n_sites_opt = Some(el),
-                Some(existing) if existing != el => {
-                    return Err(QuSpinError::ValueError(format!(
-                        "n_sites mismatch in symmetry group: element has {el} but expected {existing}"
-                    )));
-                }
-                _ => {}
-            }
+    pub fn new_empty(n_sites: usize) -> Self {
+        HardcoreSymmetryGrp {
+            n_sites,
+            lattice: Vec::new(),
+            local: Vec::new(),
         }
-        Ok(HardcoreSymmetryGrp {
-            n_sites: n_sites_opt.unwrap_or(0),
-            lattice,
-            local,
-        })
+    }
+
+    pub fn push_lattice(&mut self, el: LatticeElement) {
+        self.lattice.push(el);
+    }
+
+    pub fn push_local_inv(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
+        let mask = locs.iter().fold(B::from_u64(0), |acc, &site| {
+            if site < B::BITS as usize {
+                acc | (B::from_u64(1) << site)
+            } else {
+                acc
+            }
+        });
+        self.local.push(HardcoreGrpElement::new(
+            grp_char,
+            PermDitMask::new(mask),
+            self.n_sites,
+        ));
     }
 
     pub fn n_sites(&self) -> usize {
@@ -161,121 +142,46 @@ impl<B: BitInt> HardcoreSymmetryGrp<B> {
 }
 
 // ---------------------------------------------------------------------------
-// DitLocalOp / DitGrpElement  (construction / description types)
-// ---------------------------------------------------------------------------
-
-/// Local symmetry operation for a dit basis with LHSS > 2.
-///
-/// This type is the **construction input** to `DitSymmetryGrp::new`.
-/// At group construction time the LHSS is resolved once and the op is
-/// moved into typed hot-path storage; this enum is not in the critical path.
-///
-/// LHSS ∈ {3, 4, 5} produce compile-time-monomorphised variants;
-/// all other values fall back to the dynamic (runtime-LHSS) variants.
-#[derive(Clone)]
-pub enum DitLocalOp {
-    // --- compile-time LHSS ---
-    Value3(PermDitValues<3>),
-    Value4(PermDitValues<4>),
-    Value5(PermDitValues<5>),
-    SpinInv3(HigherSpinInv<3>),
-    SpinInv4(HigherSpinInv<4>),
-    SpinInv5(HigherSpinInv<5>),
-    // --- runtime LHSS ---
-    ValueDyn(DynamicPermDitValues),
-    SpinInvDyn(DynamicHigherSpinInv),
-}
-
-impl DitLocalOp {
-    pub(crate) fn new_value(lhss: usize, perm: Vec<u8>, locs: Vec<usize>) -> Self {
-        match lhss {
-            3 => DitLocalOp::Value3(PermDitValues::<3>::new(perm.try_into().unwrap(), locs)),
-            4 => DitLocalOp::Value4(PermDitValues::<4>::new(perm.try_into().unwrap(), locs)),
-            5 => DitLocalOp::Value5(PermDitValues::<5>::new(perm.try_into().unwrap(), locs)),
-            _ => DitLocalOp::ValueDyn(DynamicPermDitValues::new(lhss, perm, locs)),
-        }
-    }
-
-    pub(crate) fn new_spin_inv(lhss: usize, locs: Vec<usize>) -> Self {
-        match lhss {
-            3 => DitLocalOp::SpinInv3(HigherSpinInv::<3>::new(locs)),
-            4 => DitLocalOp::SpinInv4(HigherSpinInv::<4>::new(locs)),
-            5 => DitLocalOp::SpinInv5(HigherSpinInv::<5>::new(locs)),
-            _ => DitLocalOp::SpinInvDyn(DynamicHigherSpinInv::new(lhss, locs)),
-        }
-    }
-}
-
-impl<I: BitInt> BitStateOp<I> for DitLocalOp {
-    #[inline]
-    fn apply(&self, state: I) -> I {
-        match self {
-            DitLocalOp::Value3(op) => op.apply(state),
-            DitLocalOp::Value4(op) => op.apply(state),
-            DitLocalOp::Value5(op) => op.apply(state),
-            DitLocalOp::SpinInv3(op) => op.apply(state),
-            DitLocalOp::SpinInv4(op) => op.apply(state),
-            DitLocalOp::SpinInv5(op) => op.apply(state),
-            DitLocalOp::ValueDyn(op) => op.apply(state),
-            DitLocalOp::SpinInvDyn(op) => op.apply(state),
-        }
-    }
-}
-
-/// A local symmetry element for a dit basis with LHSS > 2.
-///
-/// Used as construction input to `DitSymmetryGrp::new`, which decomposes it
-/// into typed hot-path storage at construction time.
-#[derive(Clone)]
-pub struct DitGrpElement {
-    pub grp_char: Complex<f64>,
-    pub n_sites: usize,
-    pub lhss: usize,
-    pub op: DitLocalOp,
-}
-
-impl DitGrpElement {
-    pub fn new(grp_char: Complex<f64>, n_sites: usize, lhss: usize, op: DitLocalOp) -> Self {
-        DitGrpElement {
-            grp_char,
-            n_sites,
-            lhss,
-            op,
-        }
-    }
-
-    pub fn n_sites(&self) -> usize {
-        self.n_sites
-    }
-
-    pub fn lhss(&self) -> usize {
-        self.lhss
-    }
-
-    #[inline]
-    pub fn apply<B: BitInt>(&self, state: B, coeff: Complex<f64>) -> (B, Complex<f64>) {
-        (self.op.apply(state), coeff * self.grp_char)
-    }
-}
-
-// ---------------------------------------------------------------------------
 // DitGrpInner — private, compile-time-LHSS hot-path storage
 // ---------------------------------------------------------------------------
 
-/// Inner storage for a `DitSymmetryGrp` when LHSS is known at compile time.
-///
-/// Value and spin-inversion ops are kept in separate vecs so the iteration
-/// loop contains no enum dispatch at all — just plain method calls on
-/// monomorphised types.
+// Dit infrastructure is forward-looking (no dit basis yet). Allow dead_code
+// until the dit basis and DitSymmetricSubspace are implemented.
+#[allow(dead_code)] // dit basis not yet implemented
 #[derive(Clone)]
-struct DitGrpInner<const LHSS: usize> {
-    n_sites: usize,
-    lattice: Vec<LatticeElement>,
-    value_local: Vec<(Complex<f64>, PermDitValues<LHSS>)>,
-    spin_inv_local: Vec<(Complex<f64>, HigherSpinInv<LHSS>)>,
+pub(crate) struct DitGrpInner<const LHSS: usize> {
+    pub(crate) n_sites: usize,
+    pub(crate) lattice: Vec<LatticeElement>,
+    pub(crate) value_local: Vec<(Complex<f64>, PermDitValues<LHSS>)>,
+    pub(crate) spin_inv_local: Vec<(Complex<f64>, HigherSpinInv<LHSS>)>,
 }
 
+#[allow(dead_code)] // dit basis not yet implemented
 impl<const LHSS: usize> DitGrpInner<LHSS> {
+    fn new_empty(n_sites: usize) -> Self {
+        DitGrpInner {
+            n_sites,
+            lattice: Vec::new(),
+            value_local: Vec::new(),
+            spin_inv_local: Vec::new(),
+        }
+    }
+
+    fn push_lattice(&mut self, el: LatticeElement) {
+        self.lattice.push(el);
+    }
+
+    fn push_value_perm(&mut self, grp_char: Complex<f64>, perm: Vec<u8>, locs: Vec<usize>) {
+        let arr: [u8; LHSS] = perm.try_into().expect("perm length must match LHSS");
+        self.value_local
+            .push((grp_char, PermDitValues::<LHSS>::new(arr, locs)));
+    }
+
+    fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+        self.spin_inv_local
+            .push((grp_char, HigherSpinInv::<LHSS>::new(locs)));
+    }
+
     fn n_sites(&self) -> usize {
         self.n_sites
     }
@@ -329,45 +235,56 @@ impl<const LHSS: usize> DitGrpInner<LHSS> {
     }
 }
 
-/// Consume a `Vec<DitGrpElement>` and split it into the two typed vecs for
-/// `DitGrpInner<LHSS>`.  Panics if any element carries the wrong variant.
-macro_rules! build_dit_inner {
-    ($lhss:literal, $value_var:ident, $spin_inv_var:ident,
-     $n_sites:expr, $lattice:expr, $local:expr) => {{
-        let mut value_local = Vec::new();
-        let mut spin_inv_local = Vec::new();
-        for el in $local {
-            match el.op {
-                DitLocalOp::$value_var(op) => value_local.push((el.grp_char, op)),
-                DitLocalOp::$spin_inv_var(op) => spin_inv_local.push((el.grp_char, op)),
-                _ => panic!(
-                    "DitSymmetryGrp: expected LHSS={} op but element carries a different variant",
-                    $lhss
-                ),
-            }
-        }
-        DitGrpInner::<$lhss> {
-            n_sites: $n_sites,
-            lattice: $lattice,
-            value_local,
-            spin_inv_local,
-        }
-    }};
-}
-
 // ---------------------------------------------------------------------------
 // DitGrpDyn — private, runtime-LHSS fallback (LHSS ≥ 6)
 // ---------------------------------------------------------------------------
 
+/// Local operation for the dynamic (LHSS ≥ 6) fallback path.
+#[allow(dead_code)] // dit basis not yet implemented
 #[derive(Clone)]
-struct DitGrpDyn {
+enum DynLocalOp {
+    Value(DynamicPermDitValues),
+    SpinInv(DynamicHigherSpinInv),
+}
+
+#[allow(dead_code)] // dit basis not yet implemented
+#[derive(Clone)]
+pub(crate) struct DitGrpDyn {
     n_sites: usize,
     lhss: usize,
     lattice: Vec<LatticeElement>,
-    local: Vec<DitGrpElement>,
+    local: Vec<(Complex<f64>, DynLocalOp)>,
 }
 
+#[allow(dead_code)] // dit basis not yet implemented
 impl DitGrpDyn {
+    fn new_empty(lhss: usize, n_sites: usize) -> Self {
+        DitGrpDyn {
+            n_sites,
+            lhss,
+            lattice: Vec::new(),
+            local: Vec::new(),
+        }
+    }
+
+    fn push_lattice(&mut self, el: LatticeElement) {
+        self.lattice.push(el);
+    }
+
+    fn push_value_perm(&mut self, grp_char: Complex<f64>, perm: Vec<u8>, locs: Vec<usize>) {
+        self.local.push((
+            grp_char,
+            DynLocalOp::Value(DynamicPermDitValues::new(self.lhss, perm, locs)),
+        ));
+    }
+
+    fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+        self.local.push((
+            grp_char,
+            DynLocalOp::SpinInv(DynamicHigherSpinInv::new(self.lhss, locs)),
+        ));
+    }
+
     fn n_sites(&self) -> usize {
         self.n_sites
     }
@@ -382,10 +299,13 @@ impl DitGrpDyn {
         for lat in &self.lattice {
             images.push(lat.apply(state, one));
         }
-        for loc in &self.local {
-            let (loc_state, loc_coeff) = loc.apply(state, one);
+        for (char_, op) in &self.local {
+            let loc_state = match op {
+                DynLocalOp::Value(v) => v.apply(state),
+                DynLocalOp::SpinInv(s) => s.apply(state),
+            };
             for lat in &self.lattice {
-                images.push(lat.apply(loc_state, loc_coeff));
+                images.push(lat.apply(loc_state, *char_));
             }
         }
         images
@@ -419,89 +339,62 @@ impl DitGrpDyn {
 }
 
 // ---------------------------------------------------------------------------
-// DitSymmetryGrp — public
+// DitSymGrpInner — LHSS dispatch enum (LHSS > 2)
 // ---------------------------------------------------------------------------
 
 #[derive(Clone)]
-enum DitSymGrpInner {
+pub(crate) enum DitSymGrpInner {
     Lhss3(DitGrpInner<3>),
     Lhss4(DitGrpInner<4>),
     Lhss5(DitGrpInner<5>),
     LhssDyn(DitGrpDyn),
 }
 
-/// A symmetry group for dit bases with LHSS > 2.
-///
-/// Unlike `HardcoreSymmetryGrp<B>`, this type carries **no `B` type
-/// parameter**: the integer width is only needed when `get_refstate` and
-/// `check_refstate` are called.
-///
-/// LHSS dispatch happens **once** at construction time.  For LHSS ∈ {3, 4, 5}
-/// the group is stored in a fully-typed inner struct (`DitGrpInner<LHSS>`)
-/// that keeps value and spin-inversion ops in separate vecs — the hot path
-/// contains no enum dispatch at all.  LHSS ≥ 6 falls back to a dynamic
-/// runtime representation.
-///
-/// # Panics
-/// `new` panics if elements have mismatched `n_sites` or `lhss`, or if an
-/// element's `DitLocalOp` variant does not match the resolved `lhss`.
-#[derive(Clone)]
-pub struct DitSymmetryGrp(DitSymGrpInner);
-
-impl DitSymmetryGrp {
-    pub fn new(lattice: Vec<LatticeElement>, local: Vec<DitGrpElement>) -> Self {
-        // validate n_sites
-        let mut n_sites_opt: Option<usize> = None;
-        for n in lattice
-            .iter()
-            .map(|l| l.n_sites())
-            .chain(local.iter().map(|e| e.n_sites))
-        {
-            match n_sites_opt {
-                None => n_sites_opt = Some(n),
-                Some(existing) => assert_eq!(
-                    existing, n,
-                    "DitSymmetryGrp: n_sites mismatch ({existing} vs {n})"
-                ),
-            }
+impl DitSymGrpInner {
+    fn new_empty(lhss: usize, n_sites: usize) -> Self {
+        match lhss {
+            3 => DitSymGrpInner::Lhss3(DitGrpInner::<3>::new_empty(n_sites)),
+            4 => DitSymGrpInner::Lhss4(DitGrpInner::<4>::new_empty(n_sites)),
+            5 => DitSymGrpInner::Lhss5(DitGrpInner::<5>::new_empty(n_sites)),
+            _ => DitSymGrpInner::LhssDyn(DitGrpDyn::new_empty(lhss, n_sites)),
         }
-        let n_sites = n_sites_opt.unwrap_or(0);
-
-        // validate lhss consistency
-        let mut lhss_opt: Option<usize> = None;
-        for l in local.iter().map(|e| e.lhss) {
-            match lhss_opt {
-                None => lhss_opt = Some(l),
-                Some(existing) => assert_eq!(
-                    existing, l,
-                    "DitSymmetryGrp: lhss mismatch ({existing} vs {l})"
-                ),
-            }
-        }
-        let lhss = lhss_opt.unwrap_or(3);
-
-        let inner = match lhss {
-            3 => DitSymGrpInner::Lhss3(build_dit_inner!(
-                3, Value3, SpinInv3, n_sites, lattice, local
-            )),
-            4 => DitSymGrpInner::Lhss4(build_dit_inner!(
-                4, Value4, SpinInv4, n_sites, lattice, local
-            )),
-            5 => DitSymGrpInner::Lhss5(build_dit_inner!(
-                5, Value5, SpinInv5, n_sites, lattice, local
-            )),
-            _ => DitSymGrpInner::LhssDyn(DitGrpDyn {
-                n_sites,
-                lhss,
-                lattice,
-                local,
-            }),
-        };
-        DitSymmetryGrp(inner)
     }
 
-    pub fn n_sites(&self) -> usize {
-        match &self.0 {
+    pub(crate) fn push_lattice(&mut self, el: LatticeElement) {
+        match self {
+            DitSymGrpInner::Lhss3(g) => g.push_lattice(el),
+            DitSymGrpInner::Lhss4(g) => g.push_lattice(el),
+            DitSymGrpInner::Lhss5(g) => g.push_lattice(el),
+            DitSymGrpInner::LhssDyn(g) => g.push_lattice(el),
+        }
+    }
+
+    pub(crate) fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+        match self {
+            DitSymGrpInner::Lhss3(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInner::Lhss4(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInner::Lhss5(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInner::LhssDyn(g) => g.push_spin_inv(grp_char, locs),
+        }
+    }
+
+    pub(crate) fn push_value_perm(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: Vec<u8>,
+        locs: Vec<usize>,
+    ) {
+        match self {
+            DitSymGrpInner::Lhss3(g) => g.push_value_perm(grp_char, perm, locs),
+            DitSymGrpInner::Lhss4(g) => g.push_value_perm(grp_char, perm, locs),
+            DitSymGrpInner::Lhss5(g) => g.push_value_perm(grp_char, perm, locs),
+            DitSymGrpInner::LhssDyn(g) => g.push_value_perm(grp_char, perm, locs),
+        }
+    }
+
+    #[allow(dead_code)] // dit basis not yet implemented
+    pub(crate) fn n_sites(&self) -> usize {
+        match self {
             DitSymGrpInner::Lhss3(g) => g.n_sites(),
             DitSymGrpInner::Lhss4(g) => g.n_sites(),
             DitSymGrpInner::Lhss5(g) => g.n_sites(),
@@ -509,8 +402,9 @@ impl DitSymmetryGrp {
         }
     }
 
-    pub fn lhss(&self) -> usize {
-        match &self.0 {
+    #[allow(dead_code)] // dit basis not yet implemented
+    pub(crate) fn lhss(&self) -> usize {
+        match self {
             DitSymGrpInner::Lhss3(_) => 3,
             DitSymGrpInner::Lhss4(_) => 4,
             DitSymGrpInner::Lhss5(_) => 5,
@@ -518,8 +412,9 @@ impl DitSymmetryGrp {
         }
     }
 
-    pub fn get_refstate<B: BitInt>(&self, state: B) -> (B, Complex<f64>) {
-        match &self.0 {
+    #[allow(dead_code)] // dit basis not yet implemented
+    pub(crate) fn get_refstate<B: BitInt>(&self, state: B) -> (B, Complex<f64>) {
+        match self {
             DitSymGrpInner::Lhss3(g) => g.get_refstate(state),
             DitSymGrpInner::Lhss4(g) => g.get_refstate(state),
             DitSymGrpInner::Lhss5(g) => g.get_refstate(state),
@@ -527,8 +422,9 @@ impl DitSymmetryGrp {
         }
     }
 
-    pub fn check_refstate<B: BitInt>(&self, state: B) -> (B, f64) {
-        match &self.0 {
+    #[allow(dead_code)] // dit basis not yet implemented
+    pub(crate) fn check_refstate<B: BitInt>(&self, state: B) -> (B, f64) {
+        match self {
             DitSymGrpInner::Lhss3(g) => g.check_refstate(state),
             DitSymGrpInner::Lhss4(g) => g.check_refstate(state),
             DitSymGrpInner::Lhss5(g) => g.check_refstate(state),
@@ -538,112 +434,154 @@ impl DitSymmetryGrp {
 }
 
 // ---------------------------------------------------------------------------
-// GrpOpDesc — type-erased description, independent of B
+// SymmetryGrp — public unified builder
 // ---------------------------------------------------------------------------
 
-/// Stores the data for a local symmetry operation before the basis integer
-/// type `B` is known.
+/// A symmetry group that resolves both the basis integer type `B` (from
+/// `n_sites`) and the local Hilbert-space size `lhss` at construction time.
 ///
-/// Used by the Python FFI layer: elements are described at Python call time,
-/// then converted to concrete typed elements inside `PySymmetryGrp::new`
-/// once `n_sites` (and therefore `B`) is resolved.
-#[derive(Clone, Debug)]
-pub enum GrpOpDesc {
-    /// XOR with a fixed mask (Z₂ bit-flip, LHSS=2 only).
-    Bitflip {
-        n_sites: usize,
-        /// Site indices to flip. `None` = all `n_sites` bits.
-        locs: Option<Vec<usize>>,
-    },
-    /// Uniform value permutation on a subset of sites (LHSS > 2).
-    LocalValue {
-        n_sites: usize,
-        lhss: usize,
+/// Elements are added with the mutable builder methods:
+/// - [`add_lattice`](SymmetryGrp::add_lattice) — site-permutation symmetry
+/// - [`add_local_inv`](SymmetryGrp::add_local_inv) — spin inversion / bit-flip
+/// - [`add_local_perm`](SymmetryGrp::add_local_perm) — on-site value permutation (LHSS > 2 only)
+///
+/// The group is immediately usable after construction; there is no separate
+/// `.build()` step.
+#[derive(Clone)]
+pub struct SymmetryGrp {
+    lhss: usize,
+    n_sites: usize,
+    inner: SymGrpInner,
+}
+
+#[derive(Clone)]
+enum SymGrpInner {
+    /// LHSS = 2 path: concrete `B` resolved from `n_sites` at construction.
+    Hardcore(SymmetryGrpInner),
+    /// LHSS > 2 path: `B` is only needed at `get_refstate` / `check_refstate`
+    /// call sites; LHSS dispatch happens once at construction.
+    Dit(DitSymGrpInner),
+}
+
+impl SymmetryGrp {
+    /// Construct an empty symmetry group.
+    ///
+    /// Both `B` (selected from `n_sites`) and the LHSS dispatch (from `lhss`)
+    /// are resolved here, once, at construction time.
+    ///
+    /// Elements are added after construction via [`add_lattice`](Self::add_lattice),
+    /// [`add_local_inv`](Self::add_local_inv), and [`add_local_perm`](Self::add_local_perm).
+    ///
+    /// Returns `Err` if `n_sites > 8192`.
+    pub fn new(lhss: usize, n_sites: usize) -> Result<Self, QuSpinError> {
+        let inner = if lhss == 2 {
+            let hc = crate::select_b_for_n_sites!(
+                n_sites,
+                B,
+                return Err(QuSpinError::ValueError(format!(
+                    "n_sites={n_sites} exceeds the maximum supported value of 8192"
+                ))),
+                { SymmetryGrpInner::from(HardcoreSymmetryGrp::<B>::new_empty(n_sites)) }
+            );
+            SymGrpInner::Hardcore(hc)
+        } else {
+            SymGrpInner::Dit(DitSymGrpInner::new_empty(lhss, n_sites))
+        };
+        Ok(SymmetryGrp {
+            lhss,
+            n_sites,
+            inner,
+        })
+    }
+
+    /// The local Hilbert-space size for this group.
+    pub fn lhss(&self) -> usize {
+        self.lhss
+    }
+
+    /// The number of lattice sites.
+    pub fn n_sites(&self) -> usize {
+        self.n_sites
+    }
+
+    /// Add a lattice (site-permutation) symmetry element.
+    ///
+    /// `perm[src] = dst` maps source site `src` to destination `dst`.
+    /// The length of `perm` must equal `self.n_sites`.
+    pub fn add_lattice(&mut self, grp_char: Complex<f64>, perm: Vec<usize>) {
+        let el = LatticeElement::new(
+            grp_char,
+            PermDitLocations::new(self.lhss, &perm),
+            self.n_sites,
+        );
+        match &mut self.inner {
+            SymGrpInner::Hardcore(hc) => hc.push_lattice(el),
+            SymGrpInner::Dit(dit) => dit.push_lattice(el),
+        }
+    }
+
+    /// Add a spin-inversion / bit-flip symmetry element.
+    ///
+    /// For LHSS = 2: XOR-flips the bits at the specified site indices.
+    /// For LHSS > 2: maps `v → lhss − v − 1` at the specified sites.
+    ///
+    /// `locs` is the list of site indices on which the operation acts.
+    pub fn add_local_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+        match &mut self.inner {
+            SymGrpInner::Hardcore(hc) => hc.push_local_inv(grp_char, &locs),
+            SymGrpInner::Dit(dit) => dit.push_spin_inv(grp_char, locs),
+        }
+    }
+
+    /// Add an on-site value-permutation symmetry element (LHSS > 2 only).
+    ///
+    /// `perm[v] = w` maps local occupation `v` to `w` at each site in `locs`.
+    /// The length of `perm` must equal `self.lhss`.
+    ///
+    /// Returns `Err` if `self.lhss == 2` (no value permutation for two-valued dits).
+    pub fn add_local_perm(
+        &mut self,
+        grp_char: Complex<f64>,
         perm: Vec<u8>,
         locs: Vec<usize>,
-    },
-    /// Spin inversion `v → lhss − v − 1` on a subset of sites (LHSS > 2).
-    SpinInversion {
-        n_sites: usize,
-        lhss: usize,
-        locs: Vec<usize>,
-    },
-}
-
-impl GrpOpDesc {
-    pub fn n_sites(&self) -> usize {
-        match self {
-            GrpOpDesc::Bitflip { n_sites, .. } => *n_sites,
-            GrpOpDesc::LocalValue { n_sites, .. } => *n_sites,
-            GrpOpDesc::SpinInversion { n_sites, .. } => *n_sites,
-        }
-    }
-
-    /// Convert a `Bitflip` desc into a `HardcoreGrpElement<B>`.
-    ///
-    /// Returns `Err` if this desc is not a `Bitflip`.
-    pub fn into_hardcore_element<B: BitInt>(
-        self,
-        grp_char: Complex<f64>,
-    ) -> Result<HardcoreGrpElement<B>, QuSpinError> {
-        match self {
-            GrpOpDesc::Bitflip { n_sites, locs } => {
-                let effective: Vec<usize> = match locs {
-                    Some(l) => l,
-                    None => (0..n_sites).collect(),
-                };
-                let mask = effective.iter().fold(B::from_u64(0), |acc, &site| {
-                    if site < B::BITS as usize {
-                        acc | (B::from_u64(1) << site)
-                    } else {
-                        acc
-                    }
-                });
-                Ok(HardcoreGrpElement::new(
-                    grp_char,
-                    PermDitMask::new(mask),
-                    n_sites,
-                ))
+    ) -> Result<(), QuSpinError> {
+        match &mut self.inner {
+            SymGrpInner::Hardcore(_) => Err(QuSpinError::ValueError(
+                "value permutation is not supported for LHSS=2 (hardcore) groups".to_string(),
+            )),
+            SymGrpInner::Dit(dit) => {
+                dit.push_value_perm(grp_char, perm, locs);
+                Ok(())
             }
-            _ => Err(QuSpinError::ValueError(
-                "expected a Bitflip op for a hardcore (LHSS=2) symmetry group".to_string(),
-            )),
         }
     }
 
-    /// Convert a `LocalValue` or `SpinInversion` desc into a `DitGrpElement`.
+    /// Access the hardcore (LHSS=2) inner dispatch type.
     ///
-    /// Returns `Err` if this desc is a `Bitflip`.
-    pub fn into_dit_element(self, grp_char: Complex<f64>) -> Result<DitGrpElement, QuSpinError> {
-        match self {
-            GrpOpDesc::LocalValue {
-                n_sites,
-                lhss,
-                perm,
-                locs,
-            } => Ok(DitGrpElement::new(
-                grp_char,
-                n_sites,
-                lhss,
-                DitLocalOp::new_value(lhss, perm, locs),
-            )),
-            GrpOpDesc::SpinInversion {
-                n_sites,
-                lhss,
-                locs,
-            } => Ok(DitGrpElement::new(
-                grp_char,
-                n_sites,
-                lhss,
-                DitLocalOp::new_spin_inv(lhss, locs),
-            )),
-            GrpOpDesc::Bitflip { .. } => Err(QuSpinError::ValueError(
-                "expected a LocalValue or SpinInversion op for a dit (LHSS>2) symmetry group"
-                    .to_string(),
-            )),
+    /// Used by `quspin-py` to construct `SymmetricSubspace<B>` via `with_sym_grp!`.
+    /// Returns `None` for dit groups.
+    pub fn as_hardcore(&self) -> Option<&SymmetryGrpInner> {
+        match &self.inner {
+            SymGrpInner::Hardcore(hc) => Some(hc),
+            SymGrpInner::Dit(_) => None,
+        }
+    }
+
+    /// Access the dit (LHSS>2) inner dispatch type.
+    ///
+    /// Returns `None` for hardcore groups.
+    #[allow(dead_code)] // dit basis not yet implemented
+    pub(crate) fn as_dit(&self) -> Option<&DitSymGrpInner> {
+        match &self.inner {
+            SymGrpInner::Dit(dit) => Some(dit),
+            SymGrpInner::Hardcore(_) => None,
         }
     }
 }
+
+// `Clone` on SymGrpKind requires Clone on the variants.
+// SymmetryGrpInner already derives Clone; DitSymGrpInner does too.
+// SymGrpInner is defined above with Clone.
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -652,142 +590,95 @@ impl GrpOpDesc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bitbasis::PermDitLocations;
 
-    fn id_lattice(n_sites: usize) -> LatticeElement {
-        let locs: Vec<usize> = (0..n_sites).collect();
-        LatticeElement::new(
-            Complex::new(1.0, 0.0),
-            PermDitLocations::new(2, &locs),
-            n_sites,
-        )
-    }
-
-    // --- HardcoreSymmetryGrp ---
+    // --- SymmetryGrp builder (LHSS=2) ---
 
     #[test]
     fn hardcore_bitflip_get_refstate() {
-        let mask: u32 = 0b11;
-        let el = HardcoreGrpElement::new(Complex::new(1.0, 0.0), PermDitMask::new(mask), 2);
-        let grp = HardcoreSymmetryGrp::new(vec![id_lattice(2)], vec![el]).unwrap();
-        // |01⟩=1: images include flip(1)=2. ref = 2.
-        let (ref_s, _) = grp.get_refstate(0b01u32);
-        assert_eq!(ref_s, 0b10u32);
-    }
+        // 2-site chain: translation (identity) + full bit-flip.
+        let mut grp = SymmetryGrp::new(2, 2).unwrap();
+        grp.add_lattice(Complex::new(1.0, 0.0), vec![0, 1]); // identity translation
+        grp.add_local_inv(Complex::new(1.0, 0.0), vec![0, 1]); // flip both sites
 
-    #[test]
-    fn hardcore_check_refstate_norm() {
-        let mask: u32 = 0b11;
-        let el = HardcoreGrpElement::new(Complex::new(1.0, 0.0), PermDitMask::new(mask), 2);
-        let grp = HardcoreSymmetryGrp::new(vec![id_lattice(2)], vec![el]).unwrap();
-        let (_, norm) = grp.check_refstate(0b01u32);
-        assert_eq!(norm, 1.0);
+        // state |01⟩=1: image under flip = |10⟩=2 → ref = 2
+        let grp_inner = grp.as_hardcore().unwrap();
+        match grp_inner {
+            SymmetryGrpInner::Sym32(g) => {
+                let (ref_s, _) = g.get_refstate(0b01u32);
+                assert_eq!(ref_s, 0b10u32);
+            }
+            _ => panic!("expected Sym32"),
+        }
     }
 
     #[test]
     fn hardcore_translation() {
-        // 3-site translation: site 0→1, 1→2, 2→0 (forward perm = [1, 2, 0])
-        let lat = LatticeElement::new(
-            Complex::new(1.0, 0.0),
-            PermDitLocations::new(2, &[1, 2, 0]),
-            3,
-        );
-        let grp = HardcoreSymmetryGrp::<u32>::new(vec![lat], vec![]).unwrap();
-        // state |001⟩=1, T(|001⟩)=|010⟩=2 → ref = 2
-        let (ref_s, _) = grp.get_refstate(0b001u32);
-        assert_eq!(ref_s, 0b010u32);
+        // 3-site translation: perm [1,2,0]
+        let mut grp = SymmetryGrp::new(2, 3).unwrap();
+        grp.add_lattice(Complex::new(1.0, 0.0), vec![1, 2, 0]);
+
+        let grp_inner = grp.as_hardcore().unwrap();
+        match grp_inner {
+            SymmetryGrpInner::Sym32(g) => {
+                // |001⟩=1, T(|001⟩)=|010⟩=2 → ref = 2
+                let (ref_s, _) = g.get_refstate(0b001u32);
+                assert_eq!(ref_s, 0b010u32);
+            }
+            _ => panic!("expected Sym32"),
+        }
     }
 
     #[test]
-    fn hardcore_n_sites_mismatch_errors() {
-        let lat3 = id_lattice(3);
-        let el2 = HardcoreGrpElement::new(
-            Complex::new(1.0, 0.0),
-            PermDitMask::new(0b11u32),
-            2, // disagrees with lat3
-        );
-        assert!(HardcoreSymmetryGrp::new(vec![lat3], vec![el2]).is_err());
+    fn hardcore_n_sites_too_large_errors() {
+        assert!(SymmetryGrp::new(2, 8193).is_err());
     }
 
-    // --- DitSymmetryGrp ---
+    #[test]
+    fn hardcore_add_local_perm_errors() {
+        let mut grp = SymmetryGrp::new(2, 4).unwrap();
+        assert!(
+            grp.add_local_perm(Complex::new(1.0, 0.0), vec![1, 0], vec![0])
+                .is_err()
+        );
+    }
+
+    // --- SymmetryGrp builder (LHSS>2) ---
 
     #[test]
     fn dit_spin_inversion_get_refstate() {
         use crate::bitbasis::DynamicDitManip;
         // LHSS=3 spin inversion on a 2-site chain.
-        let id = LatticeElement::new(Complex::new(1.0, 0.0), PermDitLocations::new(3, &[0, 1]), 2);
-        let inv_el = DitGrpElement::new(
-            Complex::new(1.0, 0.0),
-            2,
-            3,
-            DitLocalOp::new_spin_inv(3, vec![0, 1]),
-        );
-        let grp = DitSymmetryGrp::new(vec![id], vec![inv_el]);
+        let mut grp = SymmetryGrp::new(3, 2).unwrap();
+        grp.add_lattice(Complex::new(1.0, 0.0), vec![0, 1]); // identity
+        grp.add_local_inv(Complex::new(1.0, 0.0), vec![0, 1]); // spin inv
+
         assert_eq!(grp.n_sites(), 2);
         assert_eq!(grp.lhss(), 3);
 
-        // State with site0=1, site1=0 (LHSS=3, 2 bits/site).
+        let dit = grp.as_dit().unwrap();
         let manip = DynamicDitManip::new(3);
         let state: u32 = manip.set_dit(manip.set_dit(0u32, 1, 0), 0, 1);
-        let (ref_s, _) = grp.get_refstate(state);
-        // Image: site0=1→1, site1=0→2 — should be >= state
+        let (ref_s, _) = dit.get_refstate(state);
         assert!(ref_s >= state);
     }
 
     #[test]
-    #[should_panic(expected = "lhss mismatch")]
-    fn dit_lhss_mismatch_panics() {
-        let el3 = DitGrpElement::new(
-            Complex::new(1.0, 0.0),
-            2,
-            3,
-            DitLocalOp::new_spin_inv(3, vec![0]),
-        );
-        let el4 = DitGrpElement::new(
-            Complex::new(1.0, 0.0),
-            2,
-            4, // disagrees with el3
-            DitLocalOp::new_spin_inv(4, vec![1]),
-        );
-        DitSymmetryGrp::new(vec![], vec![el3, el4]);
-    }
-
-    // --- GrpOpDesc ---
-
-    #[test]
-    fn grp_op_desc_bitflip_into_hardcore() {
-        let desc = GrpOpDesc::Bitflip {
-            n_sites: 4,
-            locs: None,
-        };
-        let el: HardcoreGrpElement<u32> =
-            desc.into_hardcore_element(Complex::new(1.0, 0.0)).unwrap();
-        assert_eq!(el.n_sites, 4);
-    }
-
-    #[test]
-    fn grp_op_desc_local_value_into_dit() {
-        let desc = GrpOpDesc::LocalValue {
-            n_sites: 3,
-            lhss: 3,
-            perm: vec![2, 1, 0],
-            locs: vec![0, 1, 2],
-        };
-        let el = desc.into_dit_element(Complex::new(1.0, 0.0)).unwrap();
-        assert_eq!(el.n_sites, 3);
-        assert_eq!(el.lhss, 3);
-    }
-
-    #[test]
-    fn grp_op_desc_wrong_variant_errors() {
-        let desc = GrpOpDesc::SpinInversion {
-            n_sites: 2,
-            lhss: 3,
-            locs: vec![0],
-        };
+    fn dit_value_perm() {
+        let mut grp = SymmetryGrp::new(3, 2).unwrap();
+        grp.add_lattice(Complex::new(1.0, 0.0), vec![0, 1]);
         assert!(
-            desc.into_hardcore_element::<u32>(Complex::new(1.0, 0.0))
-                .is_err()
+            grp.add_local_perm(Complex::new(1.0, 0.0), vec![2, 1, 0], vec![0, 1])
+                .is_ok()
         );
+        assert_eq!(grp.lhss(), 3);
+    }
+
+    #[test]
+    fn dit_lhss_dyn() {
+        // LHSS=6 falls back to DynLocalOp path.
+        let mut grp = SymmetryGrp::new(6, 2).unwrap();
+        grp.add_lattice(Complex::new(1.0, 0.0), vec![0, 1]);
+        grp.add_local_inv(Complex::new(1.0, 0.0), vec![0, 1]);
+        assert_eq!(grp.lhss(), 6);
     }
 }

@@ -140,7 +140,12 @@ impl PyHardcoreBasis {
         }
         let seed_list = extract_seed_list(seeds)?;
 
-        let inner = quspin_core::with_sym_grp!(&grp.inner, B, sym_grp, {
+        let hc = grp.inner.as_hardcore().ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "symmetric basis requires a hardcore (LHSS=2) symmetry group",
+            )
+        })?;
+        let inner = quspin_core::with_sym_grp!(hc, B, sym_grp, {
             let mut basis = SymmetricSubspace::<B>::new(sym_grp.clone());
             for s in &seed_list {
                 let seed = seed_from_bytes::<B>(s);
