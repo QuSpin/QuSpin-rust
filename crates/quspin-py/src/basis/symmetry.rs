@@ -14,7 +14,7 @@
 use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::basis::symmetry::{GrpElement, LatticeElement, SymmetryGrp};
+use quspin_core::basis::symmetry::{HardcoreGrpElement, HardcoreSymmetryGrp, LatticeElement};
 use quspin_core::basis::{GrpOpDesc, SymmetryGrpInner};
 use quspin_core::bitbasis::PermDitLocations;
 
@@ -302,11 +302,14 @@ impl PySymmetryGrp {
                 "n_sites={n_sites} exceeds the maximum supported value of 8192"
             ))),
             {
-                let local_elements: Vec<GrpElement<B>> = local_descs
+                let local_elements: Result<Vec<HardcoreGrpElement<B>>, PyErr> = local_descs
                     .into_iter()
-                    .map(|(char_, op)| op.into_grp_element::<B>(char_))
+                    .map(|(char_, op)| {
+                        op.into_hardcore_element::<B>(char_)
+                            .map_err(|e| PyErr::from(Error(e)))
+                    })
                     .collect();
-                let grp = SymmetryGrp::<B>::new(lattice_elements, local_elements)
+                let grp = HardcoreSymmetryGrp::<B>::new(lattice_elements, local_elements?)
                     .map_err(|e| PyErr::from(Error(e)))?;
                 SymmetryGrpInner::from(grp)
             }

@@ -1,8 +1,8 @@
 /// Type-erased `SymmetryGrpInner` and the `with_sym_grp!` dispatch macro.
 ///
-/// `SymmetryGrpInner` wraps a `SymmetryGrp<B>` for each supported basis
+/// `SymmetryGrpInner` wraps a `HardcoreSymmetryGrp<B>` for each supported basis
 /// integer width, selected at construction time from `n_sites`.
-use crate::basis::symmetry::SymmetryGrp;
+use crate::basis::symmetry::HardcoreSymmetryGrp;
 use crate::error::QuSpinError;
 
 type B128 = ruint::Uint<128, 2>;
@@ -17,20 +17,20 @@ type B8192 = ruint::Uint<8192, 128>;
 // SymmetryGrpInner
 // ---------------------------------------------------------------------------
 
-/// Type-erased symmetry group: one of 9 concrete `SymmetryGrp<B>` types.
+/// Type-erased symmetry group: one of 9 concrete `HardcoreSymmetryGrp<B>` types.
 ///
 /// The concrete `B` is selected based on `n_sites` at construction time.
 #[derive(Clone)]
 pub enum SymmetryGrpInner {
-    Sym32(SymmetryGrp<u32>),
-    Sym64(SymmetryGrp<u64>),
-    Sym128(SymmetryGrp<B128>),
-    Sym256(SymmetryGrp<B256>),
-    Sym512(SymmetryGrp<B512>),
-    Sym1024(SymmetryGrp<B1024>),
-    Sym2048(SymmetryGrp<B2048>),
-    Sym4096(SymmetryGrp<B4096>),
-    Sym8192(SymmetryGrp<B8192>),
+    Sym32(HardcoreSymmetryGrp<u32>),
+    Sym64(HardcoreSymmetryGrp<u64>),
+    Sym128(HardcoreSymmetryGrp<B128>),
+    Sym256(HardcoreSymmetryGrp<B256>),
+    Sym512(HardcoreSymmetryGrp<B512>),
+    Sym1024(HardcoreSymmetryGrp<B1024>),
+    Sym2048(HardcoreSymmetryGrp<B2048>),
+    Sym4096(HardcoreSymmetryGrp<B4096>),
+    Sym8192(HardcoreSymmetryGrp<B8192>),
 }
 
 // ---------------------------------------------------------------------------
@@ -39,9 +39,9 @@ pub enum SymmetryGrpInner {
 
 macro_rules! impl_from_sym_grp {
     ($B:ty, $variant:ident) => {
-        impl From<SymmetryGrp<$B>> for SymmetryGrpInner {
+        impl From<HardcoreSymmetryGrp<$B>> for SymmetryGrpInner {
             #[inline]
-            fn from(g: SymmetryGrp<$B>) -> Self {
+            fn from(g: HardcoreSymmetryGrp<$B>) -> Self {
                 SymmetryGrpInner::$variant(g)
             }
         }
@@ -76,31 +76,31 @@ impl SymmetryGrpInner {
     /// Wrap a concrete `SymmetryGrp<B>` in the appropriate variant for `n_sites`.
     ///
     /// Returns `Err` if `n_sites > 8192`.
-    pub fn from_grp_32(grp: SymmetryGrp<u32>) -> Self {
+    pub fn from_grp_32(grp: HardcoreSymmetryGrp<u32>) -> Self {
         SymmetryGrpInner::Sym32(grp)
     }
-    pub fn from_grp_64(grp: SymmetryGrp<u64>) -> Self {
+    pub fn from_grp_64(grp: HardcoreSymmetryGrp<u64>) -> Self {
         SymmetryGrpInner::Sym64(grp)
     }
-    pub fn from_grp_128(grp: SymmetryGrp<B128>) -> Self {
+    pub fn from_grp_128(grp: HardcoreSymmetryGrp<B128>) -> Self {
         SymmetryGrpInner::Sym128(grp)
     }
-    pub fn from_grp_256(grp: SymmetryGrp<B256>) -> Self {
+    pub fn from_grp_256(grp: HardcoreSymmetryGrp<B256>) -> Self {
         SymmetryGrpInner::Sym256(grp)
     }
-    pub fn from_grp_512(grp: SymmetryGrp<B512>) -> Self {
+    pub fn from_grp_512(grp: HardcoreSymmetryGrp<B512>) -> Self {
         SymmetryGrpInner::Sym512(grp)
     }
-    pub fn from_grp_1024(grp: SymmetryGrp<B1024>) -> Self {
+    pub fn from_grp_1024(grp: HardcoreSymmetryGrp<B1024>) -> Self {
         SymmetryGrpInner::Sym1024(grp)
     }
-    pub fn from_grp_2048(grp: SymmetryGrp<B2048>) -> Self {
+    pub fn from_grp_2048(grp: HardcoreSymmetryGrp<B2048>) -> Self {
         SymmetryGrpInner::Sym2048(grp)
     }
-    pub fn from_grp_4096(grp: SymmetryGrp<B4096>) -> Self {
+    pub fn from_grp_4096(grp: HardcoreSymmetryGrp<B4096>) -> Self {
         SymmetryGrpInner::Sym4096(grp)
     }
-    pub fn from_grp_8192(grp: SymmetryGrp<B8192>) -> Self {
+    pub fn from_grp_8192(grp: HardcoreSymmetryGrp<B8192>) -> Self {
         SymmetryGrpInner::Sym8192(grp)
     }
 
