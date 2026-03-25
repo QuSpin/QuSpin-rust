@@ -6,7 +6,7 @@
 pub mod spin;
 pub mod value_perm;
 
-pub use spin::{HardcoreGrpElement, HardcoreSymmetryGrp, SpinSymGrp};
+pub use spin::{HardcoreGrpElement, HardcoreSymmetryGrp, SpinSymGrp, SymmetryGrpInner};
 pub use value_perm::ValuePermSymGrp;
 
 use crate::bitbasis::{BitInt, BitStateOp, PermDitLocations};

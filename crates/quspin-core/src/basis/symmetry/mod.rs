@@ -1,4 +1,3 @@
-pub mod dispatch;
 pub mod group;
 
-pub use group::{SpinSymGrp, ValuePermSymGrp};
+pub use group::{SpinSymGrp, SymmetryGrpInner, ValuePermSymGrp};
