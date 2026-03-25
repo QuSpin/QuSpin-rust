@@ -5,6 +5,6 @@ pub mod transform;
 pub use int::BitInt;
 pub use manip::{DitManip, DynamicDitManip};
 pub use transform::{
-    DynamicHigherSpinInv, DynamicPermDitValues, HigherSpinInv, PermDitLocations, PermDitMask,
-    PermDitValues,
+    BitStateOp, DynamicHigherSpinInv, DynamicPermDitValues, HigherSpinInv, PermDitLocations,
+    PermDitMask, PermDitValues,
 };

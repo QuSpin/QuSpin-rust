@@ -2,25 +2,32 @@ use super::int::BitInt;
 use super::manip::{DitManip, DynamicDitManip};
 
 // ---------------------------------------------------------------------------
+// BitStateOp — the shared trait
+// ---------------------------------------------------------------------------
+
+/// A bijective transformation on basis-state integers.
+///
+/// All symmetry operations in this module (site permutations, value
+/// permutations, spin inversion, XOR masks) implement this trait.
+pub trait BitStateOp<I: BitInt> {
+    /// Apply the operation: `state → T(state)`.
+    fn apply(&self, state: I) -> I;
+}
+
+// ---------------------------------------------------------------------------
 // PermDitLocations — permute which site goes where
 // ---------------------------------------------------------------------------
 
 /// Permutation of dit **locations** (sites).
 ///
-/// Stores both the forward permutation and its inverse explicitly, avoiding
-/// the Benes-network approach used in the C++ `perm_dit_locations`.
-///
 /// Convention: `forward[src] = dst` means the dit currently at site `src` is
-/// mapped to site `dst` by [`app`](Self::app).  [`inv`](Self::inv) applies the
-/// inverse mapping.
+/// mapped to site `dst`.
 ///
 /// Mirrors `perm_dit_locations` from `dit_perm.hpp`.
 #[derive(Clone, Debug)]
 pub struct PermDitLocations {
     /// forward_perm[src] = dst
     forward: Vec<usize>,
-    /// inv_perm[dst] = src (precomputed inverse)
-    inverse: Vec<usize>,
     manip: DynamicDitManip,
 }
 
@@ -33,39 +40,25 @@ impl PermDitLocations {
     /// permutation.
     pub fn new(lhss: usize, perm: &[usize]) -> Self {
         let n = perm.len();
-        let mut inverse = vec![0usize; n];
         for (src, &dst) in perm.iter().enumerate() {
             assert!(dst < n, "perm[{src}]={dst} is out of range 0..{n}");
-            inverse[dst] = src;
         }
         PermDitLocations {
             forward: perm.to_vec(),
-            inverse,
             manip: DynamicDitManip::new(lhss),
         }
     }
+}
 
-    /// Apply the forward permutation to basis state `s`.
-    ///
-    /// The dit at site `src` in the input appears at site `forward[src]` in
-    /// the output.
+impl<I: BitInt> BitStateOp<I> for PermDitLocations {
+    /// Apply the forward permutation: the dit at site `src` moves to site
+    /// `forward[src]`.
     #[inline]
-    pub fn app<I: BitInt>(&self, s: I) -> I {
+    fn apply(&self, state: I) -> I {
         let mut out = I::from_u64(0);
         for (src, &dst) in self.forward.iter().enumerate() {
-            let val = self.manip.get_dit(s, src);
+            let val = self.manip.get_dit(state, src);
             out = self.manip.set_dit(out, val, dst);
-        }
-        out
-    }
-
-    /// Apply the inverse permutation to basis state `s`.
-    #[inline]
-    pub fn inv<I: BitInt>(&self, s: I) -> I {
-        let mut out = I::from_u64(0);
-        for (dst, &src) in self.inverse.iter().enumerate() {
-            let val = self.manip.get_dit(s, dst);
-            out = self.manip.set_dit(out, val, src);
         }
         out
     }
@@ -89,23 +82,17 @@ pub struct PermDitValues<const LHSS: usize> {
 }
 
 impl<const LHSS: usize> PermDitValues<LHSS> {
-    /// Construct from a value permutation and a list of target sites.
-    ///
-    /// # Panics
-    /// Panics if `perm.len() != LHSS`.
     pub fn new(perm: [u8; LHSS], locs: Vec<usize>) -> Self {
         PermDitValues { perm, locs }
     }
+}
 
-    /// Apply the value permutation to basis state `s`.
-    ///
-    /// For each site `loc` in `locs`, the dit value `v` is replaced by
-    /// `perm[v]`.
+impl<const LHSS: usize, I: BitInt> BitStateOp<I> for PermDitValues<LHSS> {
     #[inline]
-    pub fn app<I: BitInt>(&self, s: I) -> I {
-        let mut out = s;
+    fn apply(&self, state: I) -> I {
+        let mut out = state;
         for &loc in &self.locs {
-            let v = DitManip::<LHSS>::get_dit(s, loc);
+            let v = DitManip::<LHSS>::get_dit(state, loc);
             out = DitManip::<LHSS>::set_dit(out, self.perm[v] as usize, loc);
         }
         out
@@ -139,12 +126,14 @@ impl DynamicPermDitValues {
             manip: DynamicDitManip::new(lhss),
         }
     }
+}
 
+impl<I: BitInt> BitStateOp<I> for DynamicPermDitValues {
     #[inline]
-    pub fn app<I: BitInt>(&self, s: I) -> I {
-        let mut out = s;
+    fn apply(&self, state: I) -> I {
+        let mut out = state;
         for &loc in &self.locs {
-            let v = self.manip.get_dit(s, loc);
+            let v = self.manip.get_dit(state, loc);
             out = self.manip.set_dit(out, self.perm[v] as usize, loc);
         }
         out
@@ -167,10 +156,12 @@ impl<I: BitInt> PermDitMask<I> {
     pub fn new(mask: I) -> Self {
         PermDitMask { mask }
     }
+}
 
+impl<I: BitInt> BitStateOp<I> for PermDitMask<I> {
     #[inline]
-    pub fn app(&self, s: I) -> I {
-        s ^ self.mask
+    fn apply(&self, state: I) -> I {
+        state ^ self.mask
     }
 }
 
@@ -192,12 +183,14 @@ impl<const LHSS: usize> HigherSpinInv<LHSS> {
     pub fn new(locs: Vec<usize>) -> Self {
         HigherSpinInv { locs }
     }
+}
 
+impl<const LHSS: usize, I: BitInt> BitStateOp<I> for HigherSpinInv<LHSS> {
     #[inline]
-    pub fn app<I: BitInt>(&self, s: I) -> I {
-        let mut out = I::from_u64(0);
+    fn apply(&self, state: I) -> I {
+        let mut out = state;
         for &loc in &self.locs {
-            let v = DitManip::<LHSS>::get_dit(s, loc);
+            let v = DitManip::<LHSS>::get_dit(state, loc);
             out = DitManip::<LHSS>::set_dit(out, LHSS - v - 1, loc);
         }
         out
@@ -224,13 +217,15 @@ impl DynamicHigherSpinInv {
             manip: DynamicDitManip::new(lhss),
         }
     }
+}
 
+impl<I: BitInt> BitStateOp<I> for DynamicHigherSpinInv {
     #[inline]
-    pub fn app<I: BitInt>(&self, s: I) -> I {
+    fn apply(&self, state: I) -> I {
         let lhss = self.manip.lhss;
-        let mut out = I::from_u64(0);
+        let mut out = state;
         for &loc in &self.locs {
-            let v = self.manip.get_dit(s, loc);
+            let v = self.manip.get_dit(state, loc);
             out = self.manip.set_dit(out, lhss - v - 1, loc);
         }
         out
@@ -249,23 +244,18 @@ mod tests {
 
     #[test]
     fn perm_dit_locations_identity() {
-        // Identity permutation: app and inv are both no-ops
         let perm = PermDitLocations::new(2, &[0, 1, 2, 3]);
         let s: u32 = 0b1011;
-        assert_eq!(perm.app(s), s);
-        assert_eq!(perm.inv(s), s);
+        assert_eq!(perm.apply(s), s);
     }
 
     #[test]
     fn perm_dit_locations_swap_lhss2() {
-        // lhss=2 (1 bit/site), swap sites 0 and 1 in a 4-site state
-        // perm = [1, 0, 2, 3]: site 0 → site 1, site 1 → site 0, rest fixed
+        // perm = [1, 0, 2, 3]: site 0 → site 1, site 1 → site 0
         let perm = PermDitLocations::new(2, &[1, 0, 2, 3]);
-        // s = 0b0001 (site 0=1, site 1=0, site 2=0, site 3=0)
-        let s: u32 = 0b0001;
-        let expected: u32 = 0b0010; // site 0→1 means bit 0 moves to position 1
-        assert_eq!(perm.app(s), expected);
-        assert_eq!(perm.inv(perm.app(s)), s); // round-trip
+        let s: u32 = 0b0001; // site 0=1, rest 0
+        let expected: u32 = 0b0010; // site 1=1, rest 0
+        assert_eq!(perm.apply(s), expected);
     }
 
     #[test]
@@ -278,20 +268,17 @@ mod tests {
         s = manip.set_dit(s, 2, 1); // site 1 = 2
         s = manip.set_dit(s, 0, 2); // site 2 = 0
 
-        let out = perm.app(s);
-        // after 0→1, 1→2, 2→0: site 1 = 1, site 2 = 2, site 0 = 0
+        let out = perm.apply(s);
+        // after 0→1, 1→2, 2→0: site 1=1, site 2=2, site 0=0
         assert_eq!(manip.get_dit(out, 0), 0);
         assert_eq!(manip.get_dit(out, 1), 1);
         assert_eq!(manip.get_dit(out, 2), 2);
-
-        assert_eq!(perm.inv(perm.app(s)), s);
     }
 
     // --- PermDitValues ---
 
     #[test]
     fn perm_dit_values_swap_lhss3() {
-        // lhss=3: perm [0,2,1] swaps values 1 and 2, applied at all sites
         let manip = DynamicDitManip::new(3);
         let mut s: u64 = 0;
         s = manip.set_dit(s, 0, 0);
@@ -299,11 +286,10 @@ mod tests {
         s = manip.set_dit(s, 2, 2);
 
         let perm = PermDitValues::<3>::new([0, 2, 1], vec![0, 1, 2]);
-        let out = perm.app(s);
-        // values: 0→0, 1→2, 2→1
-        assert_eq!(manip.get_dit(out, 0), 0);
-        assert_eq!(manip.get_dit(out, 1), 2);
-        assert_eq!(manip.get_dit(out, 2), 1);
+        let out = perm.apply(s);
+        assert_eq!(manip.get_dit(out, 0), 0); // 0→0
+        assert_eq!(manip.get_dit(out, 1), 2); // 1→2
+        assert_eq!(manip.get_dit(out, 2), 1); // 2→1
     }
 
     // --- DynamicPermDitValues ---
@@ -319,7 +305,7 @@ mod tests {
         let static_perm = PermDitValues::<3>::new([0, 2, 1], vec![0, 1, 2]);
         let dynamic_perm = DynamicPermDitValues::new(3, vec![0, 2, 1], vec![0, 1, 2]);
 
-        assert_eq!(static_perm.app(s), dynamic_perm.app(s));
+        assert_eq!(static_perm.apply(s), dynamic_perm.apply(s));
     }
 
     // --- PermDitMask ---
@@ -328,16 +314,15 @@ mod tests {
     fn perm_dit_mask_xor() {
         let mask = PermDitMask::new(0b1010u32);
         let s: u32 = 0b1100;
-        assert_eq!(mask.app(s), 0b0110);
-        // involution: app twice = identity
-        assert_eq!(mask.app(mask.app(s)), s);
+        assert_eq!(mask.apply(s), 0b0110);
+        // involution: apply twice = identity
+        assert_eq!(mask.apply(mask.apply(s)), s);
     }
 
     // --- HigherSpinInv ---
 
     #[test]
     fn higher_spin_inv_lhss3_involution() {
-        // Spin inversion on 3 sites with lhss=3: v → 2-v
         let inv = HigherSpinInv::<3>::new(vec![0, 1, 2]);
         let manip = DynamicDitManip::new(3);
         let mut s: u64 = 0;
@@ -345,23 +330,21 @@ mod tests {
         s = manip.set_dit(s, 1, 1);
         s = manip.set_dit(s, 2, 2);
 
-        let out = inv.app(s);
+        let out = inv.apply(s);
         assert_eq!(manip.get_dit(out, 0), 2); // 2-0=2
         assert_eq!(manip.get_dit(out, 1), 1); // 2-1=1
         assert_eq!(manip.get_dit(out, 2), 0); // 2-2=0
 
-        // involution: apply twice = identity (for sites in locs)
-        assert_eq!(inv.app(out), s);
+        assert_eq!(inv.apply(out), s); // involution
     }
 
     #[test]
     fn higher_spin_inv_lhss2_spin_flip() {
-        // lhss=2 spin flip: 0→1, 1→0
         let inv = HigherSpinInv::<2>::new(vec![0, 1, 2, 3]);
         let s: u32 = 0b1010;
-        let out = inv.app(s);
+        let out = inv.apply(s);
         assert_eq!(out, 0b0101);
-        assert_eq!(inv.app(out), s);
+        assert_eq!(inv.apply(out), s);
     }
 
     // --- DynamicHigherSpinInv ---
@@ -377,25 +360,22 @@ mod tests {
         s = manip.set_dit(s, 1, 1);
         s = manip.set_dit(s, 2, 2);
 
-        assert_eq!(static_inv.app(s), dynamic_inv.app(s));
+        assert_eq!(static_inv.apply(s), dynamic_inv.apply(s));
     }
 
     #[test]
     fn dynamic_higher_spin_inv_partial_sites() {
-        // Only invert sites 1 and 3, leave 0 and 2 unchanged
         let manip = DynamicDitManip::new(4);
         let inv = DynamicHigherSpinInv::new(4, vec![1, 3]);
 
         let mut s: u64 = 0;
         s = manip.set_dit(s, 1, 0); // site 0 = 1 (untouched)
-        s = manip.set_dit(s, 2, 1); // site 1 = 2 → 1
+        s = manip.set_dit(s, 2, 1); // site 1 = 2 → 4-2-1 = 1
         s = manip.set_dit(s, 3, 2); // site 2 = 3 (untouched)
-        s = manip.set_dit(s, 0, 3); // site 3 = 0 → 3
+        s = manip.set_dit(s, 0, 3); // site 3 = 0 → 4-0-1 = 3
 
-        let out = inv.app(s);
-        // sites 0,2 carry over from s (they were 0 initially since out starts at 0,
-        // but only inverted sites are written to out)
-        assert_eq!(manip.get_dit(out, 1), 1); // 4 - 2 - 1
-        assert_eq!(manip.get_dit(out, 3), 3); // 4 - 0 - 1
+        let out = inv.apply(s);
+        assert_eq!(manip.get_dit(out, 1), 1); // 4-2-1
+        assert_eq!(manip.get_dit(out, 3), 3); // 4-0-1
     }
 }

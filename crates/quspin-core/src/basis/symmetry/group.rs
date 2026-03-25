@@ -1,5 +1,5 @@
 use crate::bitbasis::{
-    BitInt, DynamicHigherSpinInv, DynamicPermDitValues, PermDitLocations, PermDitMask,
+    BitInt, BitStateOp, DynamicHigherSpinInv, DynamicPermDitValues, PermDitLocations, PermDitMask,
 };
 use crate::error::QuSpinError;
 use num_complex::Complex;
@@ -32,10 +32,10 @@ impl LatticeElement {
         self.n_sites
     }
 
-    /// Apply this element: returns `(op.app(state), coeff * grp_char)`.
+    /// Apply this element: returns `(op.apply(state), coeff * grp_char)`.
     #[inline]
     pub fn apply<B: BitInt>(&self, state: B, coeff: Complex<f64>) -> (B, Complex<f64>) {
-        (self.op.app(state), coeff * self.grp_char)
+        (self.op.apply(state), coeff * self.grp_char)
     }
 }
 
@@ -62,11 +62,11 @@ pub enum GrpOpKind<B: BitInt> {
 impl<B: BitInt> GrpOpKind<B> {
     /// Apply the operation to `state`.
     #[inline]
-    pub fn app(&self, state: B) -> B {
+    pub fn apply(&self, state: B) -> B {
         match self {
-            GrpOpKind::Bitflip(op) => op.app(state),
-            GrpOpKind::LocalValue(op) => op.app(state),
-            GrpOpKind::SpinInversion(op) => op.app(state),
+            GrpOpKind::Bitflip(op) => op.apply(state),
+            GrpOpKind::LocalValue(op) => op.apply(state),
+            GrpOpKind::SpinInversion(op) => op.apply(state),
         }
     }
 }
@@ -99,10 +99,10 @@ impl<B: BitInt> GrpElement<B> {
         self.n_sites
     }
 
-    /// Apply this element: returns `(op.app(state), coeff * grp_char)`.
+    /// Apply this element: returns `(op.apply(state), coeff * grp_char)`.
     #[inline]
     pub fn apply(&self, state: B, coeff: Complex<f64>) -> (B, Complex<f64>) {
-        (self.op.app(state), coeff * self.grp_char)
+        (self.op.apply(state), coeff * self.grp_char)
     }
 }
 
