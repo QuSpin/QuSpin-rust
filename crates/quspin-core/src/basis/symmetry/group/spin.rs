@@ -1,3 +1,4 @@
+use super::LatticeElement;
 /// Spin-symmetry group types.
 ///
 /// Covers the full LHSS range:
@@ -5,163 +6,13 @@
 /// - LHSS 3–5: [`DitSpinGrpInner<LHSS>`] — compile-time-LHSS spin-inversion hot-path.
 /// - LHSS ≥ 6: [`DitSpinGrpDyn`] — runtime-LHSS spin-inversion fallback.
 ///
-/// Also owns [`SymmetryGrpInner`] (the B-dispatch enum for LHSS=2) and the
-/// [`with_sym_grp!`] macro, which are only needed for the hardcore path.
-///
-/// The public type is [`SpinSymGrp`].
-use super::LatticeElement;
+/// The public type is [`SpinSymGrp`]. B-type dispatch for LHSS = 2 lives in
+/// [`super::dispatch`].
+use super::dispatch::SymmetryGrpInner;
 use crate::basis::traits::SymGrp;
 use crate::bitbasis::{BitInt, BitStateOp, DynamicHigherSpinInv, HigherSpinInv, PermDitMask};
 use crate::error::QuSpinError;
 use num_complex::Complex;
-
-// ---------------------------------------------------------------------------
-// ruint type aliases (used by SymmetryGrpInner and with_sym_grp!)
-// ---------------------------------------------------------------------------
-
-type B128 = ruint::Uint<128, 2>;
-type B256 = ruint::Uint<256, 4>;
-type B512 = ruint::Uint<512, 8>;
-type B1024 = ruint::Uint<1024, 16>;
-type B2048 = ruint::Uint<2048, 32>;
-type B4096 = ruint::Uint<4096, 64>;
-type B8192 = ruint::Uint<8192, 128>;
-
-// ---------------------------------------------------------------------------
-// SymmetryGrpInner — type-erased HardcoreSymmetryGrp<B> (LHSS = 2)
-// ---------------------------------------------------------------------------
-
-/// Type-erased symmetry group: one of 9 concrete `HardcoreSymmetryGrp<B>` types.
-///
-/// The concrete `B` is selected based on `n_sites` at construction time inside
-/// [`SpinSymGrp::new`].
-#[derive(Clone)]
-pub enum SymmetryGrpInner {
-    Sym32(HardcoreSymmetryGrp<u32>),
-    Sym64(HardcoreSymmetryGrp<u64>),
-    Sym128(HardcoreSymmetryGrp<B128>),
-    Sym256(HardcoreSymmetryGrp<B256>),
-    Sym512(HardcoreSymmetryGrp<B512>),
-    Sym1024(HardcoreSymmetryGrp<B1024>),
-    Sym2048(HardcoreSymmetryGrp<B2048>),
-    Sym4096(HardcoreSymmetryGrp<B4096>),
-    Sym8192(HardcoreSymmetryGrp<B8192>),
-}
-
-macro_rules! impl_from_hardcore_grp {
-    ($B:ty, $variant:ident) => {
-        impl From<HardcoreSymmetryGrp<$B>> for SymmetryGrpInner {
-            #[inline]
-            fn from(g: HardcoreSymmetryGrp<$B>) -> Self {
-                SymmetryGrpInner::$variant(g)
-            }
-        }
-    };
-}
-
-impl_from_hardcore_grp!(u32, Sym32);
-impl_from_hardcore_grp!(u64, Sym64);
-impl_from_hardcore_grp!(B128, Sym128);
-impl_from_hardcore_grp!(B256, Sym256);
-impl_from_hardcore_grp!(B512, Sym512);
-impl_from_hardcore_grp!(B1024, Sym1024);
-impl_from_hardcore_grp!(B2048, Sym2048);
-impl_from_hardcore_grp!(B4096, Sym4096);
-impl_from_hardcore_grp!(B8192, Sym8192);
-
-impl SymmetryGrpInner {
-    pub fn n_sites(&self) -> usize {
-        match self {
-            SymmetryGrpInner::Sym32(g) => g.n_sites(),
-            SymmetryGrpInner::Sym64(g) => g.n_sites(),
-            SymmetryGrpInner::Sym128(g) => g.n_sites(),
-            SymmetryGrpInner::Sym256(g) => g.n_sites(),
-            SymmetryGrpInner::Sym512(g) => g.n_sites(),
-            SymmetryGrpInner::Sym1024(g) => g.n_sites(),
-            SymmetryGrpInner::Sym2048(g) => g.n_sites(),
-            SymmetryGrpInner::Sym4096(g) => g.n_sites(),
-            SymmetryGrpInner::Sym8192(g) => g.n_sites(),
-        }
-    }
-
-    pub(crate) fn push_lattice(&mut self, el: LatticeElement) {
-        match self {
-            SymmetryGrpInner::Sym32(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym64(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym128(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym256(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym512(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym1024(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym2048(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym4096(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym8192(g) => g.push_lattice(el),
-        }
-    }
-
-    pub(crate) fn push_inverse(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
-        match self {
-            SymmetryGrpInner::Sym32(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym64(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym128(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym256(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym512(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym1024(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym2048(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym4096(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym8192(g) => g.push_inverse(grp_char, locs),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// with_sym_grp! macro
-// ---------------------------------------------------------------------------
-
-/// Match on a [`SymmetryGrpInner`] reference, injecting a type alias `$B` and
-/// binding `$grp` to the inner `HardcoreSymmetryGrp<B>` reference.
-#[macro_export]
-macro_rules! with_sym_grp {
-    ($inner:expr, $B:ident, $grp:ident, $body:block) => {
-        match $inner {
-            $crate::basis::symmetry::group::spin::SymmetryGrpInner::Sym32($grp) => {
-                type $B = u32;
-                $body
-            }
-            $crate::basis::symmetry::group::spin::SymmetryGrpInner::Sym64($grp) => {
-                type $B = u64;
-                $body
-            }
-            $crate::basis::symmetry::group::spin::SymmetryGrpInner::Sym128($grp) => {
-                type $B = ::ruint::Uint<128, 2>;
-                $body
-            }
-            $crate::basis::symmetry::group::spin::SymmetryGrpInner::Sym256($grp) => {
-                type $B = ::ruint::Uint<256, 4>;
-                $body
-            }
-            $crate::basis::symmetry::group::spin::SymmetryGrpInner::Sym512($grp) => {
-                type $B = ::ruint::Uint<512, 8>;
-                $body
-            }
-            $crate::basis::symmetry::group::spin::SymmetryGrpInner::Sym1024($grp) => {
-                type $B = ::ruint::Uint<1024, 16>;
-                $body
-            }
-            $crate::basis::symmetry::group::spin::SymmetryGrpInner::Sym2048($grp) => {
-                type $B = ::ruint::Uint<2048, 32>;
-                $body
-            }
-            $crate::basis::symmetry::group::spin::SymmetryGrpInner::Sym4096($grp) => {
-                type $B = ::ruint::Uint<4096, 64>;
-                $body
-            }
-            $crate::basis::symmetry::group::spin::SymmetryGrpInner::Sym8192($grp) => {
-                type $B = ::ruint::Uint<8192, 128>;
-                $body
-            }
-        }
-    };
-}
 
 // ---------------------------------------------------------------------------
 // HardcoreGrpElement / HardcoreSymmetryGrp  (LHSS = 2)

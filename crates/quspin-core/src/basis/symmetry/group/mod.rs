@@ -5,13 +5,15 @@
 /// - [`orbit`]: shared orbit helpers (`iter_images`, `get_refstate`, `check_refstate`).
 /// - [`SpinSymGrp`]: lattice + spin-inversion / bit-flip operations.
 /// - [`DitSymGrp`]: lattice + local value-permutation operations (LHSS ≥ 3).
+pub mod dispatch;
 pub mod dit;
 pub(crate) mod orbit;
 pub mod spin;
 pub(crate) mod traits;
 
+pub use dispatch::SymmetryGrpInner;
 pub use dit::DitSymGrp;
-pub use spin::{HardcoreGrpElement, HardcoreSymmetryGrp, SpinSymGrp, SymmetryGrpInner};
+pub use spin::{HardcoreGrpElement, HardcoreSymmetryGrp, SpinSymGrp};
 
 pub(crate) use orbit::{check_refstate, get_refstate};
 pub(crate) use traits::LocalOpItem;
