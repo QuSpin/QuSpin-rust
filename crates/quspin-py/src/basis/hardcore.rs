@@ -146,7 +146,7 @@ impl PyHardcoreBasis {
             )
         })?;
         let inner = quspin_core::with_sym_grp!(hc, B, sym_grp, {
-            let mut basis = SymmetricSubspace::<B>::new(sym_grp.clone());
+            let mut basis = SymmetricSubspace::new(sym_grp.clone());
             for s in &seed_list {
                 let seed = seed_from_bytes::<B>(s);
                 match &ham.inner {

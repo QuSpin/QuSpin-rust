@@ -1,5 +1,4 @@
-use super::{BasisSpace, symmetry::group::HardcoreSymmetryGrp};
-use crate::bitbasis::BitInt;
+use super::{BasisSpace, traits::SymGrp};
 use num_complex::Complex;
 use std::collections::HashMap;
 
@@ -20,16 +19,16 @@ const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
 /// branch).  Rayon-parallel BFS is a deferred optimisation.
 ///
 /// Mirrors `symmetric_subspace<grp_t, bitset_t, norm_t>` from `space.hpp`.
-pub struct SymmetricSubspace<B: BitInt> {
+pub struct SymmetricSubspace<G: SymGrp> {
     /// `(representative_state, orbit_norm)` pairs, sorted by state ascending.
-    states: Vec<(B, f64)>,
+    states: Vec<(G::State, f64)>,
     /// Maps representative state → index in `states`.
-    index_map: HashMap<B, usize>,
-    grp: HardcoreSymmetryGrp<B>,
+    index_map: HashMap<G::State, usize>,
+    grp: G,
 }
 
-impl<B: BitInt> SymmetricSubspace<B> {
-    pub fn new(grp: HardcoreSymmetryGrp<B>) -> Self {
+impl<G: SymGrp> SymmetricSubspace<G> {
+    pub fn new(grp: G) -> Self {
         SymmetricSubspace {
             states: Vec::new(),
             index_map: HashMap::new(),
@@ -44,10 +43,10 @@ impl<B: BitInt> SymmetricSubspace<B> {
     /// no group image is larger) and its norm > 0 (non-zero orbit).
     ///
     /// Mirrors `symmetric_subspace::build` from `space.hpp` (single-thread branch).
-    pub fn build<Op, I, Iter>(&mut self, seed: B, op: Op)
+    pub fn build<Op, I, Iter>(&mut self, seed: G::State, op: Op)
     where
-        Op: Fn(B) -> Iter,
-        Iter: IntoIterator<Item = (num_complex::Complex<f64>, B, I)>,
+        Op: Fn(G::State) -> Iter,
+        Iter: IntoIterator<Item = (Complex<f64>, G::State, I)>,
     {
         // Initialise from seed.
         let (ref_seed, _coeff) = self.grp.get_refstate(seed);
@@ -60,11 +59,11 @@ impl<B: BitInt> SymmetricSubspace<B> {
             self.states.push((ref_seed, norm_seed));
         }
 
-        let mut stack: Vec<B> = vec![ref_seed];
+        let mut stack: Vec<G::State> = vec![ref_seed];
 
         while let Some(state) = stack.pop() {
             // Accumulate (net_amp, sum_of_magnitudes) per output state.
-            let mut contributions: HashMap<B, (Complex<f64>, f64)> = HashMap::new();
+            let mut contributions: HashMap<G::State, (Complex<f64>, f64)> = HashMap::new();
             for (amp, next_state, _cindex) in op(state) {
                 if next_state != state {
                     let e = contributions.entry(next_state).or_default();
@@ -102,22 +101,22 @@ impl<B: BitInt> SymmetricSubspace<B> {
     }
 
     /// Return the representative state and orbit norm for index `i`.
-    pub fn entry(&self, i: usize) -> (B, f64) {
+    pub fn entry(&self, i: usize) -> (G::State, f64) {
         self.states[i]
     }
 
     /// Find the representative and accumulated coefficient for `state`.
-    pub fn get_refstate(&self, state: B) -> (B, num_complex::Complex<f64>) {
+    pub fn get_refstate(&self, state: G::State) -> (G::State, Complex<f64>) {
         self.grp.get_refstate(state)
     }
 
     /// Check whether `state` is a representative and return its norm.
-    pub fn check_refstate(&self, state: B) -> (B, f64) {
+    pub fn check_refstate(&self, state: G::State) -> (G::State, f64) {
         self.grp.check_refstate(state)
     }
 }
 
-impl<B: BitInt> BasisSpace<B> for SymmetricSubspace<B> {
+impl<G: SymGrp> BasisSpace<G::State> for SymmetricSubspace<G> {
     #[inline]
     fn n_sites(&self) -> usize {
         self.grp.n_sites()
@@ -130,12 +129,12 @@ impl<B: BitInt> BasisSpace<B> for SymmetricSubspace<B> {
 
     /// The `i`-th representative state (ascending order).
     #[inline]
-    fn state_at(&self, i: usize) -> B {
+    fn state_at(&self, i: usize) -> G::State {
         self.states[i].0
     }
 
     #[inline]
-    fn index(&self, state: B) -> Option<usize> {
+    fn index(&self, state: G::State) -> Option<usize> {
         self.index_map.get(&state).copied()
     }
 }

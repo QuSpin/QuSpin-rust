@@ -9,4 +9,4 @@ pub use seed::{seed_from_bytes, seed_from_str, state_to_str};
 pub use space::{FullSpace, Subspace};
 pub use sym::SymmetricSubspace;
 pub use symmetry::{SpinSymGrp, ValuePermSymGrp};
-pub use traits::BasisSpace;
+pub use traits::{BasisSpace, SymGrp};

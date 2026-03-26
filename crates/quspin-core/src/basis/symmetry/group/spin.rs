@@ -10,6 +10,7 @@
 ///
 /// The public type is [`SpinSymGrp`].
 use super::LatticeElement;
+use crate::basis::traits::SymGrp;
 use crate::bitbasis::{BitInt, BitStateOp, DynamicHigherSpinInv, HigherSpinInv, PermDitMask};
 use crate::error::QuSpinError;
 use num_complex::Complex;
@@ -263,6 +264,26 @@ impl<B: BitInt> HardcoreSymmetryGrp<B> {
             }
         }
         (ref_state, norm)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SymGrp impl for HardcoreSymmetryGrp<B>
+// ---------------------------------------------------------------------------
+
+impl<B: BitInt> SymGrp for HardcoreSymmetryGrp<B> {
+    type State = B;
+
+    fn n_sites(&self) -> usize {
+        HardcoreSymmetryGrp::n_sites(self)
+    }
+
+    fn get_refstate(&self, state: B) -> (B, num_complex::Complex<f64>) {
+        HardcoreSymmetryGrp::get_refstate(self, state)
+    }
+
+    fn check_refstate(&self, state: B) -> (B, f64) {
+        HardcoreSymmetryGrp::check_refstate(self, state)
     }
 }
 
@@ -600,7 +621,7 @@ impl SpinSymGrp {
 
     /// Access the hardcore (LHSS=2) inner dispatch type.
     ///
-    /// Used by `quspin-py` to construct `SymmetricSubspace<B>` via `with_sym_grp!`.
+    /// Used by `quspin-py` to construct `SymmetricSubspace<HardcoreSymmetryGrp<B>>` via `with_sym_grp!`.
     /// Returns `None` for LHSS > 2 groups.
     pub fn as_hardcore(&self) -> Option<&SymmetryGrpInner> {
         match &self.inner {

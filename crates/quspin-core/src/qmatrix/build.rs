@@ -1,5 +1,5 @@
 use super::{CIndex, Entry, Index, QMatrix};
-use crate::basis::{BasisSpace, SymmetricSubspace};
+use crate::basis::{BasisSpace, SymmetricSubspace, traits::SymGrp};
 use crate::bitbasis::BitInt;
 use crate::hamiltonian::Hamiltonian;
 use crate::primitive::Primitive;
@@ -80,13 +80,13 @@ where
 /// and the matrix element is scaled by the group character and norm ratio.
 ///
 /// Mirrors `qmatrix::calculate_row` for `symmetric_subspace`.
-pub fn build_from_symmetric<H, B, V, I, C>(
+pub fn build_from_symmetric<H, G, V, I, C>(
     ham: &H,
-    basis: &SymmetricSubspace<B>,
+    basis: &SymmetricSubspace<G>,
 ) -> QMatrix<V, I, C>
 where
     H: Hamiltonian<C>,
-    B: BitInt,
+    G: SymGrp,
     V: Primitive,
     I: Index,
     C: CIndex + Copy + Ord,

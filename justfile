@@ -20,7 +20,7 @@ develop:
 
 # Run Rust tests (excludes quspin-py which requires a Python interpreter)
 test-rust:
-    cargo test -p bitbasis -p quspin-core
+    cargo test -p quspin-core
 
 # Run Python tests
 test-python:
@@ -58,7 +58,7 @@ coverage: coverage-run coverage-xml coverage-report
 
 # Run Rust tests with coverage and generate Cobertura XML
 coverage-rust:
-    cargo llvm-cov --cobertura --output-path rust-coverage.xml -p bitbasis -p quspin-core
+    cargo llvm-cov --cobertura --output-path rust-coverage.xml -p quspin-core
 
 # ── Clean ────────────────────────────────────────────────────────────
 
