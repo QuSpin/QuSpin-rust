@@ -17,17 +17,17 @@ class PySpinSymGrp:
     """A spin-symmetry group: lattice permutations + spin-inversion / bit-flip ops.
 
     Mutable builder — construct with ``lhss`` and ``n_sites``, then call
-    :meth:`add_lattice` and :meth:`add_local_inv` to add symmetry elements.
+    :meth:`add_lattice` and :meth:`add_inverse` to add symmetry elements.
 
     For LHSS = 2: local operations are XOR bit-flips (Z₂ symmetry).
     For LHSS > 2: local operations map ``v → lhss − v − 1`` (spin inversion).
 
-    Use :class:`PyValuePermSymGrp` for local value-permutation symmetries.
+    Use :class:`PyDitSymGrp` for local value-permutation symmetries.
 
     Example:
         >>> grp = PySpinSymGrp(lhss=2, n_sites=4)
         >>> grp.add_lattice(grp_char=1.0 + 0j, perm=[1, 2, 3, 0])
-        >>> grp.add_local_inv(grp_char=-1.0 + 0j, locs=[0, 1, 2, 3])
+        >>> grp.add_inverse(grp_char=-1.0 + 0j, locs=[0, 1, 2, 3])
         >>> grp.n_sites
         4
     """
@@ -56,7 +56,7 @@ class PySpinSymGrp:
         """
         ...
 
-    def add_local_inv(self, grp_char: complex, locs: list[int]) -> None:
+    def add_inverse(self, grp_char: complex, locs: list[int]) -> None:
         """Add a spin-inversion / bit-flip symmetry element.
 
         For LHSS = 2: XOR-flips the bits at the specified site indices.
@@ -85,12 +85,12 @@ class PySpinSymGrp:
 
 
 # ---------------------------------------------------------------------------
-# PyValuePermSymGrp
+# PyDitSymGrp
 # ---------------------------------------------------------------------------
 
 
-class PyValuePermSymGrp:
-    """A value-permutation symmetry group: lattice permutations + local value-perm ops.
+class PyDitSymGrp:
+    """A dit symmetry group: lattice permutations + local value-permutation ops.
 
     Mutable builder — construct with ``lhss`` and ``n_sites``, then call
     :meth:`add_lattice` and :meth:`add_local_perm` to add symmetry elements.
@@ -99,7 +99,7 @@ class PyValuePermSymGrp:
     for spin-inversion symmetries.
 
     Example:
-        >>> grp = PyValuePermSymGrp(lhss=3, n_sites=4)
+        >>> grp = PyDitSymGrp(lhss=3, n_sites=4)
         >>> grp.add_lattice(grp_char=1.0 + 0j, perm=[1, 2, 3, 0])
         >>> grp.add_local_perm(grp_char=1.0 + 0j, perm=[2, 1, 0], locs=[0, 1, 2, 3])
         >>> grp.lhss
@@ -107,7 +107,7 @@ class PyValuePermSymGrp:
     """
 
     def __init__(self, lhss: int, n_sites: int) -> None:
-        """Construct an empty value-permutation symmetry group.
+        """Construct an empty dit symmetry group.
 
         Args:
             lhss (int): Local Hilbert-space size. Must be ≥ 3.
@@ -156,7 +156,7 @@ class PyValuePermSymGrp:
         ...
 
     def __repr__(self) -> str:
-        """Return ``PyValuePermSymGrp(lhss=..., n_sites=...)``."""
+        """Return ``PyDitSymGrp(lhss=..., n_sites=...)``."""
         ...
 
 
@@ -347,6 +347,81 @@ class PyBondHamiltonian:
 
     def __repr__(self) -> str:
         """Return ``PyBondHamiltonian(max_site=..., lhss=..., num_cindices=...)``."""
+        ...
+
+
+# ---------------------------------------------------------------------------
+# PyBosonHamiltonian
+# ---------------------------------------------------------------------------
+
+
+class PyBosonHamiltonian:
+    """A bosonic Hamiltonian for LHSS ≥ 2 sites (truncated harmonic oscillator).
+
+    Operators are ``'+'`` (a†), ``'-'`` (a), and ``'n'`` (n̂ = a†a).
+    The number of sites is inferred from the largest site index encountered.
+
+    Conventions:
+    - a†|n⟩ = √(n+1)|n+1⟩  (zero if n = LHSS−1)
+    - a|n⟩  = √n|n−1⟩       (zero if n = 0)
+    - n̂|n⟩ = n|n⟩
+
+    Example:
+        >>> J, mu = 1.0, 0.5
+        >>> H = PyBosonHamiltonian(lhss=3, terms=[
+        ...     [("+-", [(J, 0, 1), (J, 1, 2)])],   # cindex 0: hopping a†_i a_j
+        ...     [("-+", [(J, 0, 1), (J, 1, 2)])],   # cindex 1: hopping a_i a†_j
+        ...     [("n",  [(mu, 0), (mu, 1), (mu, 2)])],  # cindex 2: on-site n
+        ... ])
+        >>> H.lhss
+        3
+        >>> H.max_site
+        2
+    """
+
+    def __init__(
+        self,
+        lhss: int,
+        terms: list[list[tuple[str, list[tuple[Any, ...]]]]],
+    ) -> None:
+        """Construct a bosonic Hamiltonian.
+
+        Args:
+            lhss (int): Local Hilbert-space size (number of levels per site).
+                Must be ≥ 2.
+            terms (list[list[tuple[str, list[tuple]]]]): Outer list indexed by
+                ``cindex``. Each element is a list of ``(op_str, coupling_list)``
+                pairs where:
+
+                - ``op_str`` (str): Operator string — one character per site
+                  acted on (``'+'``, ``'-'``, ``'n'``).
+                - ``coupling_list`` (list[tuple]): Each element is
+                  ``(coeff, site_0, site_1, ...)`` with exactly one site index
+                  per character in ``op_str``.
+
+        Raises:
+            ValueError: If ``lhss < 2``, if ``op_str`` contains an unknown
+                operator character, or if the input structure is malformed.
+        """
+        ...
+
+    @property
+    def lhss(self) -> int:
+        """Local Hilbert-space size (number of levels per site)."""
+        ...
+
+    @property
+    def max_site(self) -> int:
+        """Maximum site index across all operator strings."""
+        ...
+
+    @property
+    def num_cindices(self) -> int:
+        """Number of distinct coefficient indices (outer list length)."""
+        ...
+
+    def __repr__(self) -> str:
+        """Return ``PyBosonHamiltonian(lhss=..., max_site=..., num_cindices=...)``."""
         ...
 
 
@@ -543,6 +618,128 @@ class PyHardcoreBasis:
 
 
 # ---------------------------------------------------------------------------
+# PyDitBasis
+# ---------------------------------------------------------------------------
+
+# A dit seed: a decimal digit string ("012") or a list of ints ([0, 1, 2]).
+# Position i gives the occupation (0 ≤ value < lhss) of site i.
+_DitSeed = str | list[int]
+
+
+class PyDitBasis:
+    """A basis for a bosonic (LHSS ≥ 2) Hilbert space.
+
+    States are stored as packed dit integers: each site occupies
+    ``ceil(log2(lhss))`` bits.
+
+    Seed strings are decimal digit sequences, e.g. ``"012"`` for a 3-site
+    system with lhss=3. Seed lists are ``list[int]`` with values in ``0..lhss``.
+
+    Basis types:
+
+    - **Full**: all ``lhss^n_sites`` computational basis states (total bits ≤ 64).
+    - **Subspace**: the sector reachable from given seed states under a
+      :class:`PyBosonHamiltonian`.
+
+    Example:
+        >>> basis = PyDitBasis.full(n_sites=3, lhss=3)
+        >>> basis.size
+        27
+        >>> basis.state_at(0)
+        '222'
+    """
+
+    @staticmethod
+    def full(n_sites: int, lhss: int) -> PyDitBasis:
+        """Build the full bosonic Hilbert space.
+
+        Contains all ``lhss^n_sites`` computational basis states.
+        Requires ``n_sites * ceil(log2(lhss)) ≤ 64``.
+
+        Args:
+            n_sites (int): Number of lattice sites.
+            lhss (int): Local Hilbert-space size. Must be ≥ 2.
+
+        Returns:
+            PyDitBasis: Full-space basis with ``lhss^n_sites`` states.
+
+        Raises:
+            ValueError: If ``lhss < 2`` or total bits exceed 64.
+        """
+        ...
+
+    @staticmethod
+    def subspace(
+        seeds: Iterable[_DitSeed],
+        ham: PyBosonHamiltonian,
+    ) -> PyDitBasis:
+        """Build the subspace reachable from seed states under a Hamiltonian.
+
+        Args:
+            seeds (Iterable[str | list[int]]): Initial states. Each element is
+                either a decimal digit string (e.g. ``"012"``) or a
+                ``list[int]`` with values in ``0..lhss``.
+            ham (PyBosonHamiltonian): The Hamiltonian whose connectivity
+                defines the sector.
+
+        Returns:
+            PyDitBasis: Subspace basis.
+
+        Raises:
+            ValueError: If any seed is malformed or total bits exceed 8192.
+        """
+        ...
+
+    def state_at(self, i: int) -> str:
+        """Return the ``i``-th basis state as a decimal digit string.
+
+        Args:
+            i (int): Row index, ``0 ≤ i < size``.
+
+        Returns:
+            str: Decimal digit string of length ``n_sites``.
+
+        Raises:
+            IndexError: If ``i`` is out of range.
+        """
+        ...
+
+    def index(self, state: _DitSeed) -> int | None:
+        """Look up the row index of a dit basis state.
+
+        Args:
+            state (str | list[int]): Basis state — a decimal digit string or
+                a ``list[int]`` with values in ``0..lhss``.
+
+        Returns:
+            int | None: Row index, or ``None`` if the state is not present.
+
+        Raises:
+            ValueError: If ``state`` is malformed.
+        """
+        ...
+
+    @property
+    def n_sites(self) -> int:
+        """Number of lattice sites."""
+        ...
+
+    @property
+    def size(self) -> int:
+        """Number of basis states."""
+        ...
+
+    @property
+    def lhss(self) -> int:
+        """Local Hilbert-space size."""
+        ...
+
+    def __repr__(self) -> str:
+        """Return ``PyDitBasis(lhss=..., n_sites=..., size=...)``."""
+        ...
+
+
+# ---------------------------------------------------------------------------
 # PyQMatrix
 # ---------------------------------------------------------------------------
 
@@ -621,6 +818,31 @@ class PyQMatrix:
         Raises:
             ValueError: If ``ham.max_site >= basis.n_sites``, or if ``dtype``
                 is not supported.
+        """
+        ...
+
+    @staticmethod
+    def build_boson_hamiltonian(
+        ham: PyBosonHamiltonian,
+        basis: PyDitBasis,
+        dtype: np.dtype[Any],
+    ) -> PyQMatrix:
+        """Build a sparse matrix from a PyBosonHamiltonian and a dit basis.
+
+        Args:
+            ham (PyBosonHamiltonian): The bosonic Hamiltonian.
+            basis (PyDitBasis): The dit Hilbert space basis (full or subspace).
+            dtype (numpy.dtype): NumPy dtype for matrix element storage.
+                Supported values: ``np.dtype("int8")``, ``np.dtype("int16")``,
+                ``np.dtype("float32")``, ``np.dtype("float64")``,
+                ``np.dtype("complex64")``, ``np.dtype("complex128")``.
+
+        Returns:
+            PyQMatrix: Sparse matrix representation of the Hamiltonian.
+
+        Raises:
+            ValueError: If ``ham.max_site >= basis.n_sites``,
+                ``ham.lhss != basis.lhss``, or ``dtype`` is not supported.
         """
         ...
 

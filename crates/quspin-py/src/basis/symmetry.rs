@@ -5,15 +5,15 @@
 /// ```python
 /// grp = PySpinSymGrp(lhss=2, n_sites=4)
 /// grp.add_lattice(grp_char=1+0j, perm=[1, 2, 3, 0])
-/// grp.add_local_inv(grp_char=-1+0j, locs=[0, 1, 2, 3])
+/// grp.add_inverse(grp_char=-1+0j, locs=[0, 1, 2, 3])
 ///
-/// grp2 = PyValuePermSymGrp(lhss=3, n_sites=4)
+/// grp2 = PyDitSymGrp(lhss=3, n_sites=4)
 /// grp2.add_lattice(grp_char=1+0j, perm=[1, 2, 3, 0])
 /// grp2.add_local_perm(grp_char=1+0j, perm=[2, 1, 0], locs=[0, 1, 2, 3])
 /// ```
 use num_complex::Complex;
 use pyo3::prelude::*;
-use quspin_core::basis::{SpinSymGrp, ValuePermSymGrp};
+use quspin_core::basis::{DitSymGrp, SpinSymGrp};
 
 use crate::error::Error;
 
@@ -26,7 +26,7 @@ use crate::error::Error;
 /// For LHSS = 2: local operations are XOR bit-flips (Z₂ symmetry).
 /// For LHSS > 2: local operations map ``v → lhss − v − 1`` (spin inversion).
 ///
-/// Use :class:`PyValuePermSymGrp` for local value-permutation symmetries.
+/// Use :class:`PyDitSymGrp` for local value-permutation symmetries.
 /// Mixing both op types in the same group is not supported.
 #[pyclass(name = "PySpinSymGrp")]
 pub struct PySpinSymGrp {
@@ -70,8 +70,8 @@ impl PySpinSymGrp {
     ///     grp_char (complex): Group character (eigenvalue of the symmetry
     ///         operator).
     ///     locs (list[int]): Site indices to which the operation is applied.
-    pub fn add_local_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
-        self.inner.add_local_inv(grp_char, locs);
+    pub fn add_inverse(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+        self.inner.add_inverse(grp_char, locs);
     }
 
     /// Number of lattice sites.
@@ -96,24 +96,24 @@ impl PySpinSymGrp {
 }
 
 // ---------------------------------------------------------------------------
-// PyValuePermSymGrp
+// PyDitSymGrp
 // ---------------------------------------------------------------------------
 
-/// A value-permutation symmetry group: lattice permutations + local value-perm ops.
+/// A dit symmetry group: lattice permutations + local value-permutation ops.
 ///
 /// Only supported for LHSS ≥ 3. Use :class:`PySpinSymGrp` for LHSS = 2 or for
 /// spin-inversion symmetries (``v → lhss − v − 1``).
 ///
 /// Mixing value-permutation and spin-inversion ops in the same group is not
 /// supported because the orbit computation would be incomplete.
-#[pyclass(name = "PyValuePermSymGrp")]
-pub struct PyValuePermSymGrp {
-    pub inner: ValuePermSymGrp,
+#[pyclass(name = "PyDitSymGrp")]
+pub struct PyDitSymGrp {
+    pub inner: DitSymGrp,
 }
 
 #[pymethods]
-impl PyValuePermSymGrp {
-    /// Construct an empty value-permutation symmetry group.
+impl PyDitSymGrp {
+    /// Construct an empty dit symmetry group.
     ///
     /// Args:
     ///     lhss (int): Local Hilbert-space size. Must be ≥ 3.
@@ -123,8 +123,8 @@ impl PyValuePermSymGrp {
     ///     ValueError: If ``lhss < 3`` (use :class:`PySpinSymGrp` instead).
     #[new]
     pub fn new(lhss: usize, n_sites: usize) -> PyResult<Self> {
-        let inner = ValuePermSymGrp::new(lhss, n_sites).map_err(|e| PyErr::from(Error(e)))?;
-        Ok(PyValuePermSymGrp { inner })
+        let inner = DitSymGrp::new(lhss, n_sites).map_err(|e| PyErr::from(Error(e)))?;
+        Ok(PyDitSymGrp { inner })
     }
 
     /// Add a lattice (site-permutation) symmetry element.
@@ -166,7 +166,7 @@ impl PyValuePermSymGrp {
 
     pub fn __repr__(&self) -> String {
         format!(
-            "PyValuePermSymGrp(lhss={}, n_sites={})",
+            "PyDitSymGrp(lhss={}, n_sites={})",
             self.inner.lhss(),
             self.inner.n_sites(),
         )

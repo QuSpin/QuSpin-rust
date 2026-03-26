@@ -1,3 +1,3 @@
 pub mod group;
 
-pub use group::{SpinSymGrp, SymmetryGrpInner, ValuePermSymGrp};
+pub use group::{DitSymGrp, SpinSymGrp, SymmetryGrpInner};

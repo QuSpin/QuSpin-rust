@@ -4,6 +4,8 @@ import numpy as np
 import pytest
 
 from quspin_rs._rs import (
+    PyBosonHamiltonian,
+    PyDitBasis,
     PyHardcoreBasis,
     PyHardcoreHamiltonian,
     PyQMatrix,
@@ -282,7 +284,7 @@ class TestSymmetricBasis:
 
     def test_bitflip_symmetry(self):
         grp = PySpinSymGrp(lhss=2, n_sites=N)
-        grp.add_local_inv(grp_char=1.0 + 0j, locs=list(range(N)))
+        grp.add_inverse(grp_char=1.0 + 0j, locs=list(range(N)))
         assert grp.n_sites == N
         h = make_ham()
         # 0b1110 = 14 is the partner of 0b0001 = 1; 14 > 1 so 0b1110 is canonical.
@@ -316,9 +318,9 @@ class TestSymmetricBasis:
     def test_bitflip_explicit_locs_same_as_all(self):
         # Flipping all sites explicitly should give same basis as flipping all.
         grp_all = PySpinSymGrp(lhss=2, n_sites=N)
-        grp_all.add_local_inv(grp_char=1.0 + 0j, locs=list(range(N)))
+        grp_all.add_inverse(grp_char=1.0 + 0j, locs=list(range(N)))
         grp_explicit = PySpinSymGrp(lhss=2, n_sites=N)
-        grp_explicit.add_local_inv(grp_char=1.0 + 0j, locs=[0, 1, 2, 3])
+        grp_explicit.add_inverse(grp_char=1.0 + 0j, locs=[0, 1, 2, 3])
         h = make_ham()
         seeds = ["0111"]
         b_all = PyHardcoreBasis.symmetric(seeds, h, grp_all)
@@ -343,3 +345,177 @@ class TestSymmetricBasis:
     def test_lhss2_n_sites_too_large_raises(self):
         with pytest.raises(Exception):
             PySpinSymGrp(lhss=2, n_sites=8193)
+
+
+# ---------------------------------------------------------------------------
+# PyBosonHamiltonian
+# ---------------------------------------------------------------------------
+
+LHSS = 3
+N_BOSON = 3  # 3-site chain
+
+
+def make_boson_ham() -> PyBosonHamiltonian:
+    """Bose-Hubbard hopping: H = Σ_i (a†_i a_{i+1} + h.c.)"""
+    return PyBosonHamiltonian(
+        lhss=LHSS,
+        terms=[
+            [("+-", [(1.0, 0, 1), (1.0, 1, 2)])],  # a†_i a_j, cindex 0
+            [("-+", [(1.0, 0, 1), (1.0, 1, 2)])],  # a_i a†_j, cindex 1
+        ],
+    )
+
+
+class TestBosonHamiltonian:
+    def test_lhss(self):
+        h = make_boson_ham()
+        assert h.lhss == LHSS
+
+    def test_max_site(self):
+        h = make_boson_ham()
+        assert h.max_site == N_BOSON - 1
+
+    def test_num_cindices(self):
+        h = make_boson_ham()
+        assert h.num_cindices == 2
+
+    def test_number_op(self):
+        h = PyBosonHamiltonian(lhss=4, terms=[[("n", [(1.0, 0), (1.0, 1)])]])
+        assert h.lhss == 4
+        assert h.num_cindices == 1
+
+    def test_bad_op_char_raises(self):
+        with pytest.raises(Exception):
+            PyBosonHamiltonian(lhss=3, terms=[[("x", [(1.0, 0)])]])
+
+    def test_lhss_too_small_raises(self):
+        with pytest.raises(Exception):
+            PyBosonHamiltonian(lhss=1, terms=[[("n", [(1.0, 0)])]])
+
+
+# ---------------------------------------------------------------------------
+# PyDitBasis — full
+# ---------------------------------------------------------------------------
+
+
+class TestDitBasisFull:
+    def test_full_size(self):
+        basis = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
+        assert basis.size == LHSS**N_BOSON
+
+    def test_full_size_various_lhss(self):
+        for lhss in [2, 3, 4, 5]:
+            for n in [1, 2, 3]:
+                b = PyDitBasis.full(n_sites=n, lhss=lhss)
+                assert b.size == lhss**n
+
+    def test_n_sites(self):
+        basis = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
+        assert basis.n_sites == N_BOSON
+
+    def test_lhss_property(self):
+        basis = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
+        assert basis.lhss == LHSS
+
+    def test_state_at_returns_string(self):
+        basis = PyDitBasis.full(n_sites=2, lhss=3)
+        s = basis.state_at(0)
+        assert isinstance(s, str)
+        assert len(s) == 2
+
+    def test_full_too_many_bits_raises(self):
+        # lhss=3 needs 2 bits/site; 33 sites → 66 bits > 64
+        with pytest.raises(Exception):
+            PyDitBasis.full(n_sites=33, lhss=3)
+
+
+# ---------------------------------------------------------------------------
+# PyDitBasis — subspace
+# ---------------------------------------------------------------------------
+
+
+class TestDitBasisSubspace:
+    def test_subspace_size_at_least_1(self):
+        h = make_boson_ham()
+        basis = PyDitBasis.subspace(["100"], h)
+        assert basis.size >= 1
+
+    def test_subspace_size_at_most_full(self):
+        h = make_boson_ham()
+        full = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
+        sub = PyDitBasis.subspace(["100"], h)
+        assert sub.size <= full.size
+
+    def test_str_and_list_seeds_equivalent(self):
+        h = make_boson_ham()
+        b_str = PyDitBasis.subspace(["100"], h)
+        b_list = PyDitBasis.subspace([[1, 0, 0]], h)
+        assert b_str.size == b_list.size
+
+    def test_number_conserving_subspace_size(self):
+        # n̂ only Hamiltonian doesn't connect states → each seed gives size 1.
+        h = PyBosonHamiltonian(lhss=3, terms=[[("n", [(1.0, 0)])]])
+        basis = PyDitBasis.subspace(["010"], h)
+        assert basis.size == 1
+
+    def test_invalid_seed_char_raises(self):
+        h = make_boson_ham()
+        with pytest.raises(Exception):
+            PyDitBasis.subspace(["9xx"], h)  # invalid for lhss=3
+
+    def test_invalid_seed_value_raises(self):
+        h = make_boson_ham()
+        with pytest.raises(Exception):
+            PyDitBasis.subspace([[3, 0, 0]], h)  # 3 >= lhss=3
+
+
+# ---------------------------------------------------------------------------
+# PyQMatrix — boson
+# ---------------------------------------------------------------------------
+
+
+class TestQMatrixBoson:
+    def _make(self, dtype=np.float64):
+        h = make_boson_ham()
+        basis = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
+        return PyQMatrix.build_boson_hamiltonian(h, basis, np.dtype(dtype))
+
+    def test_build_returns_qmatrix(self):
+        mat = self._make()
+        assert isinstance(mat, PyQMatrix)
+
+    def test_dim_matches_basis(self):
+        h = make_boson_ham()
+        basis = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
+        mat = PyQMatrix.build_boson_hamiltonian(h, basis, np.dtype("float64"))
+        assert mat.dim == basis.size
+
+    def test_nnz_positive(self):
+        mat = self._make()
+        assert mat.nnz > 0
+
+    def test_dot_overwrite(self):
+        mat = self._make()
+        coeff = np.array([1.0, 1.0], dtype=np.float64)
+        v = np.random.default_rng(10).standard_normal(mat.dim)
+        out = np.zeros(mat.dim, dtype=np.float64)
+        mat.dot(coeff, v, out, True)
+        assert not np.allclose(out, 0.0)
+
+    def test_lhss_mismatch_raises(self):
+        h = PyBosonHamiltonian(lhss=3, terms=[[("n", [(1.0, 0)])]])
+        basis = PyDitBasis.full(n_sites=2, lhss=4)  # lhss mismatch
+        with pytest.raises(Exception):
+            PyQMatrix.build_boson_hamiltonian(h, basis, np.dtype("float64"))
+
+    def test_number_op_diagonal(self):
+        """n̂ on a single site gives a diagonal matrix with occupation eigenvalues."""
+        h = PyBosonHamiltonian(lhss=3, terms=[[("n", [(1.0, 0)])]])
+        basis = PyDitBasis.full(n_sites=1, lhss=3)
+        mat = PyQMatrix.build_boson_hamiltonian(h, basis, np.dtype("float64"))
+        coeff = np.array([1.0], dtype=np.float64)
+        v = np.ones(mat.dim, dtype=np.float64)
+        out = np.zeros(mat.dim, dtype=np.float64)
+        mat.dot(coeff, v, out, True)
+        # full 1-site lhss=3 basis: states [2,1,0] (descending), so out = [2,1,0]
+        np.testing.assert_allclose(sorted(out), [0.0, 1.0, 2.0], atol=1e-12)

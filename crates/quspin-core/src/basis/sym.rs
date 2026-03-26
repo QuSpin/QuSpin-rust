@@ -174,7 +174,7 @@ mod tests {
         let n = n_sites as usize;
         let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(n);
         grp.push_lattice(id_lattice(n));
-        grp.push_local_inv(Complex::new(1.0, 0.0), &(0..n).collect::<Vec<_>>());
+        grp.push_inverse(Complex::new(1.0, 0.0), &(0..n).collect::<Vec<_>>());
         grp
     }
 
@@ -184,7 +184,7 @@ mod tests {
         // Orbits: {0↔3}, {1↔2}. Representatives (largest): 3, 2.
         let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(2);
         grp.push_lattice(id_lattice(2));
-        grp.push_local_inv(Complex::new(1.0, 0.0), &[0, 1]);
+        grp.push_inverse(Complex::new(1.0, 0.0), &[0, 1]);
         let mut sym = SymmetricSubspace::new(grp);
         sym.build(0u32, x_op(2));
 

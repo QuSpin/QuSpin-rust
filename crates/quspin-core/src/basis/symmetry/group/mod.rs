@@ -1,24 +1,31 @@
 /// Symmetry group types.
 ///
 /// - [`LatticeElement`]: shared site-permutation element used by both group kinds.
+/// - [`traits::LocalOpItem`]: trait abstracting local symmetry operations.
+/// - [`orbit`]: shared orbit helpers (`iter_images`, `get_refstate`, `check_refstate`).
 /// - [`SpinSymGrp`]: lattice + spin-inversion / bit-flip operations.
-/// - [`ValuePermSymGrp`]: lattice + local value-permutation operations (LHSS ≥ 3).
+/// - [`DitSymGrp`]: lattice + local value-permutation operations (LHSS ≥ 3).
+pub mod dit;
+pub(crate) mod orbit;
 pub mod spin;
-pub mod value_perm;
+pub(crate) mod traits;
 
+pub use dit::DitSymGrp;
 pub use spin::{HardcoreGrpElement, HardcoreSymmetryGrp, SpinSymGrp, SymmetryGrpInner};
-pub use value_perm::ValuePermSymGrp;
+
+pub(crate) use orbit::{check_refstate, get_refstate};
+pub(crate) use traits::LocalOpItem;
 
 use crate::bitbasis::{BitInt, BitStateOp, PermDitLocations};
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
-// LatticeElement — shared by both SpinSymGrp and ValuePermSymGrp
+// LatticeElement — shared by both SpinSymGrp and DitSymGrp
 // ---------------------------------------------------------------------------
 
 /// A site-permutation symmetry element with an associated group character.
 ///
-/// Used by both [`SpinSymGrp`] and [`ValuePermSymGrp`].
+/// Used by both [`SpinSymGrp`] and [`DitSymGrp`].
 #[derive(Clone)]
 pub struct LatticeElement {
     pub grp_char: Complex<f64>,

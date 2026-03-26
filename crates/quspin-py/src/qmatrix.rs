@@ -24,10 +24,12 @@ use quspin_core::qmatrix::build::{build_from_basis, build_from_symmetric};
 use quspin_core::qmatrix::dispatch::{IntoQMatrixInner, QMatrixInner};
 use quspin_core::{with_plain_basis, with_sym_basis};
 
+use crate::basis::dit::PyDitBasis;
 use crate::basis::hardcore::PyHardcoreBasis;
 use crate::dtype::{FromPyDescr, ValueDType};
 use crate::error::Error;
-use crate::hamiltonian::PyHardcoreHamiltonian;
+use crate::hamiltonian::{PyBosonHamiltonian, PyHardcoreHamiltonian};
+use quspin_core::hamiltonian::boson::dispatch::BosonHamiltonianInner;
 use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
 use quspin_core::with_value_dtype;
 
@@ -178,6 +180,59 @@ impl PyQMatrix {
                 })
             })
         };
+
+        Ok(PyQMatrix { inner: mat_inner })
+    }
+
+    /// Build a sparse matrix from a `PyBosonHamiltonian` and a dit basis.
+    ///
+    /// Args:
+    ///     ham (PyBosonHamiltonian): The bosonic Hamiltonian.
+    ///     basis (PyDitBasis): The dit Hilbert space basis (full or subspace).
+    ///     dtype (numpy.dtype): NumPy dtype for matrix element storage.
+    ///
+    /// Returns:
+    ///     PyQMatrix: Sparse matrix representation of the Hamiltonian.
+    ///
+    /// Raises:
+    ///     ValueError: If ``ham.max_site >= basis.n_sites``, ``ham.lhss !=
+    ///         basis.lhss``, or if ``dtype`` is not supported.
+    #[staticmethod]
+    pub fn build_boson_hamiltonian(
+        py: Python<'_>,
+        ham: &PyBosonHamiltonian,
+        basis: &PyDitBasis,
+        dtype: &Bound<'_, numpy::PyArrayDescr>,
+    ) -> PyResult<Self> {
+        if ham.inner.max_site() >= basis.inner.n_sites() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Hamiltonian max_site={} is out of range for basis with n_sites={}",
+                ham.inner.max_site(),
+                basis.inner.n_sites()
+            )));
+        }
+        if ham.inner.lhss() != basis.lhss {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Hamiltonian lhss={} does not match basis lhss={}",
+                ham.inner.lhss(),
+                basis.lhss
+            )));
+        }
+        let v_dtype = <ValueDType as FromPyDescr>::from_descr(py, dtype).map_err(Error::from)?;
+
+        let mat_inner = with_value_dtype!(v_dtype, V, {
+            with_plain_basis!(&basis.inner, B, plain_basis, {
+                match &ham.inner {
+                    BosonHamiltonianInner::Ham8(h) => {
+                        build_from_basis::<_, B, V, i64, u8, _>(h, plain_basis).into_qmatrix_inner()
+                    }
+                    BosonHamiltonianInner::Ham16(h) => {
+                        build_from_basis::<_, B, V, i64, u16, _>(h, plain_basis)
+                            .into_qmatrix_inner()
+                    }
+                }
+            })
+        });
 
         Ok(PyQMatrix { inner: mat_inner })
     }

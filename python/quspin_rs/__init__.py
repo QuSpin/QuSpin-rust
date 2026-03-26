@@ -16,19 +16,23 @@ backend::
 from quspin_rs._rs import (
     PyBondHamiltonian,
     PyBondTerm,
+    PyBosonHamiltonian,
+    PyDitBasis,
+    PyDitSymGrp,
     PyHardcoreBasis,
     PyHardcoreHamiltonian,
     PyQMatrix,
     PySpinSymGrp,
-    PyValuePermSymGrp,
 )
 
 __all__ = [
     "PyBondHamiltonian",
     "PyBondTerm",
+    "PyBosonHamiltonian",
+    "PyDitBasis",
+    "PyDitSymGrp",
     "PyHardcoreBasis",
     "PyHardcoreHamiltonian",
     "PyQMatrix",
     "PySpinSymGrp",
-    "PyValuePermSymGrp",
 ]

@@ -1,7 +1,9 @@
 pub mod bond;
+pub mod boson;
 pub mod hardcore;
 
 pub use bond::{BondHamiltonian, BondHamiltonianInner, BondTerm};
+pub use boson::{BosonHamiltonian, BosonHamiltonianInner, BosonOp, BosonOpEntry};
 pub use hardcore::{HardcoreHamiltonian, HardcoreHamiltonianInner, HardcoreOp, OpEntry};
 
 use crate::bitbasis::BitInt;

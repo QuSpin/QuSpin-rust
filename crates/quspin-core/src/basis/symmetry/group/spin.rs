@@ -98,17 +98,17 @@ impl SymmetryGrpInner {
         }
     }
 
-    pub(crate) fn push_local_inv(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
+    pub(crate) fn push_inverse(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
         match self {
-            SymmetryGrpInner::Sym32(g) => g.push_local_inv(grp_char, locs),
-            SymmetryGrpInner::Sym64(g) => g.push_local_inv(grp_char, locs),
-            SymmetryGrpInner::Sym128(g) => g.push_local_inv(grp_char, locs),
-            SymmetryGrpInner::Sym256(g) => g.push_local_inv(grp_char, locs),
-            SymmetryGrpInner::Sym512(g) => g.push_local_inv(grp_char, locs),
-            SymmetryGrpInner::Sym1024(g) => g.push_local_inv(grp_char, locs),
-            SymmetryGrpInner::Sym2048(g) => g.push_local_inv(grp_char, locs),
-            SymmetryGrpInner::Sym4096(g) => g.push_local_inv(grp_char, locs),
-            SymmetryGrpInner::Sym8192(g) => g.push_local_inv(grp_char, locs),
+            SymmetryGrpInner::Sym32(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Sym64(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Sym128(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Sym256(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Sym512(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Sym1024(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Sym2048(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Sym4096(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Sym8192(g) => g.push_inverse(grp_char, locs),
         }
     }
 }
@@ -189,6 +189,13 @@ impl<B: BitInt> HardcoreGrpElement<B> {
     }
 }
 
+impl<B: BitInt> super::LocalOpItem<B> for HardcoreGrpElement<B> {
+    #[inline]
+    fn apply_local(&self, state: B) -> (B, Complex<f64>) {
+        (self.op.apply(state), self.grp_char)
+    }
+}
+
 #[derive(Clone)]
 pub struct HardcoreSymmetryGrp<B: BitInt> {
     n_sites: usize,
@@ -209,7 +216,7 @@ impl<B: BitInt> HardcoreSymmetryGrp<B> {
         self.lattice.push(el);
     }
 
-    pub fn push_local_inv(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
+    pub fn push_inverse(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
         let mask = locs.iter().fold(B::from_u64(0), |acc, &site| {
             if site < B::BITS as usize {
                 acc | (B::from_u64(1) << site)
@@ -228,42 +235,12 @@ impl<B: BitInt> HardcoreSymmetryGrp<B> {
         self.n_sites
     }
 
-    fn iter_images(&self, state: B) -> impl Iterator<Item = (B, Complex<f64>)> + '_ {
-        let one = Complex::new(1.0, 0.0);
-        let lattice_images = self.lattice.iter().map(move |el| el.apply(state, one));
-        let local_then_lattice = self.local.iter().flat_map(move |loc| {
-            let (loc_state, loc_coeff) = loc.apply(state, one);
-            self.lattice
-                .iter()
-                .map(move |lat| lat.apply(loc_state, loc_coeff))
-        });
-        lattice_images.chain(local_then_lattice)
-    }
-
     pub fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
-        let mut best = state;
-        let mut best_coeff = Complex::new(1.0, 0.0);
-        for (s, c) in self.iter_images(state) {
-            if s > best {
-                best = s;
-                best_coeff = c;
-            }
-        }
-        (best, best_coeff)
+        super::get_refstate(&self.lattice, &self.local, state)
     }
 
     pub fn check_refstate(&self, state: B) -> (B, f64) {
-        let mut ref_state = state;
-        let mut norm = 0.0_f64;
-        for (s, _) in self.iter_images(state) {
-            if s > ref_state {
-                ref_state = s;
-            }
-            if s == state {
-                norm += 1.0;
-            }
-        }
-        (ref_state, norm)
+        super::check_refstate(&self.lattice, &self.local, state)
     }
 }
 
@@ -324,45 +301,12 @@ impl<const LHSS: usize> DitSpinGrpInner<LHSS> {
         self.n_sites
     }
 
-    fn iter_images<B: BitInt>(&self, state: B) -> Vec<(B, Complex<f64>)> {
-        let one = Complex::new(1.0, 0.0);
-        let mut images = Vec::with_capacity(self.lattice.len() * (1 + self.local.len()));
-        for lat in &self.lattice {
-            images.push(lat.apply(state, one));
-        }
-        for (char_, op) in &self.local {
-            let loc_state = op.apply(state);
-            for lat in &self.lattice {
-                images.push(lat.apply(loc_state, *char_));
-            }
-        }
-        images
-    }
-
     fn get_refstate<B: BitInt>(&self, state: B) -> (B, Complex<f64>) {
-        let mut best = state;
-        let mut best_coeff = Complex::new(1.0, 0.0);
-        for (s, c) in self.iter_images(state) {
-            if s > best {
-                best = s;
-                best_coeff = c;
-            }
-        }
-        (best, best_coeff)
+        super::get_refstate(&self.lattice, &self.local, state)
     }
 
     fn check_refstate<B: BitInt>(&self, state: B) -> (B, f64) {
-        let mut ref_state = state;
-        let mut norm = 0.0_f64;
-        for (s, _) in self.iter_images(state) {
-            if s > ref_state {
-                ref_state = s;
-            }
-            if s == state {
-                norm += 1.0;
-            }
-        }
-        (ref_state, norm)
+        super::check_refstate(&self.lattice, &self.local, state)
     }
 }
 
@@ -407,45 +351,12 @@ impl DitSpinGrpDyn {
         self.lhss
     }
 
-    fn iter_images<B: BitInt>(&self, state: B) -> Vec<(B, Complex<f64>)> {
-        let one = Complex::new(1.0, 0.0);
-        let mut images = Vec::with_capacity(self.lattice.len() * (1 + self.local.len()));
-        for lat in &self.lattice {
-            images.push(lat.apply(state, one));
-        }
-        for (char_, op) in &self.local {
-            let loc_state = op.apply(state);
-            for lat in &self.lattice {
-                images.push(lat.apply(loc_state, *char_));
-            }
-        }
-        images
-    }
-
     fn get_refstate<B: BitInt>(&self, state: B) -> (B, Complex<f64>) {
-        let mut best = state;
-        let mut best_coeff = Complex::new(1.0, 0.0);
-        for (s, c) in self.iter_images(state) {
-            if s > best {
-                best = s;
-                best_coeff = c;
-            }
-        }
-        (best, best_coeff)
+        super::get_refstate(&self.lattice, &self.local, state)
     }
 
     fn check_refstate<B: BitInt>(&self, state: B) -> (B, f64) {
-        let mut ref_state = state;
-        let mut norm = 0.0_f64;
-        for (s, _) in self.iter_images(state) {
-            if s > ref_state {
-                ref_state = s;
-            }
-            if s == state {
-                norm += 1.0;
-            }
-        }
-        (ref_state, norm)
+        super::check_refstate(&self.lattice, &self.local, state)
     }
 }
 
@@ -539,7 +450,7 @@ impl DitSpinSymGrpInner {
 /// - For LHSS = 2: local operations are XOR bit-flips (Z₂ symmetry).
 /// - For LHSS > 2: local operations map `v → lhss − v − 1` (spin inversion).
 ///
-/// Use [`ValuePermSymGrp`](super::ValuePermSymGrp) for local value-permutation
+/// Use [`DitSymGrp`](super::DitSymGrp) for local value-permutation
 /// symmetries (LHSS > 2). Mixing both op types in the same group is not
 /// supported because the orbit computation would be incomplete.
 #[derive(Clone)]
@@ -612,9 +523,9 @@ impl SpinSymGrp {
     ///
     /// For LHSS = 2: XOR-flips the bits at the specified site indices.
     /// For LHSS > 2: maps `v → lhss − v − 1` at the specified sites.
-    pub fn add_local_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+    pub fn add_inverse(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
         match &mut self.inner {
-            SpinSymGrpInner::Hardcore(hc) => hc.push_local_inv(grp_char, &locs),
+            SpinSymGrpInner::Hardcore(hc) => hc.push_inverse(grp_char, &locs),
             SpinSymGrpInner::Dit(dit) => dit.push_spin_inv(grp_char, locs),
         }
     }
@@ -654,7 +565,7 @@ mod tests {
     fn spin_sym_bitflip_get_refstate() {
         let mut grp = SpinSymGrp::new(2, 2).unwrap();
         grp.add_lattice(Complex::new(1.0, 0.0), vec![0, 1]);
-        grp.add_local_inv(Complex::new(1.0, 0.0), vec![0, 1]);
+        grp.add_inverse(Complex::new(1.0, 0.0), vec![0, 1]);
 
         let grp_inner = grp.as_hardcore().unwrap();
         match grp_inner {
@@ -691,7 +602,7 @@ mod tests {
         use crate::bitbasis::DynamicDitManip;
         let mut grp = SpinSymGrp::new(3, 2).unwrap();
         grp.add_lattice(Complex::new(1.0, 0.0), vec![0, 1]);
-        grp.add_local_inv(Complex::new(1.0, 0.0), vec![0, 1]);
+        grp.add_inverse(Complex::new(1.0, 0.0), vec![0, 1]);
 
         assert_eq!(grp.n_sites(), 2);
         assert_eq!(grp.lhss(), 3);
@@ -707,7 +618,7 @@ mod tests {
     fn spin_sym_lhss_dyn() {
         let mut grp = SpinSymGrp::new(6, 2).unwrap();
         grp.add_lattice(Complex::new(1.0, 0.0), vec![0, 1]);
-        grp.add_local_inv(Complex::new(1.0, 0.0), vec![0, 1]);
+        grp.add_inverse(Complex::new(1.0, 0.0), vec![0, 1]);
         assert_eq!(grp.lhss(), 6);
     }
 }
