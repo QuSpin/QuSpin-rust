@@ -9,8 +9,6 @@ use pyo3::prelude::*;
 
 #[pymodule]
 fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<basis::PyLatticeElement>()?;
-    m.add_class::<basis::PyGrpElement>()?;
     m.add_class::<basis::PySpinSymGrp>()?;
     m.add_class::<basis::PyValuePermSymGrp>()?;
     m.add_class::<hamiltonian::PyHardcoreHamiltonian>()?;

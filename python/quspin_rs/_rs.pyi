@@ -9,144 +9,6 @@ import numpy as np
 import numpy.typing as npt
 
 # ---------------------------------------------------------------------------
-# PyLatticeElement
-# ---------------------------------------------------------------------------
-
-
-class PyLatticeElement:
-    """A lattice symmetry element: a site permutation with a group character.
-
-    Represents a spatial symmetry operation (e.g., translation or reflection)
-    that permutes the lattice sites and carries an associated group character.
-
-    Example:
-        >>> T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 3, 0], lhss=2)
-    """
-
-    def __init__(
-        self,
-        grp_char: complex,
-        perm: list[int],
-        lhss: int,
-    ) -> None:
-        """Create a lattice symmetry element.
-
-        Args:
-            grp_char (complex): Group character (eigenvalue of the symmetry
-                operator, e.g., ``1+0j`` for even parity, ``-1+0j`` for odd).
-            perm (list[int]): Forward site permutation where ``perm[src] = dst``.
-                The length of ``perm`` determines the number of sites.
-            lhss (int): Local Hilbert space size (e.g., ``2`` for spin-1/2,
-                ``3`` for spin-1).
-        """
-        ...
-
-    def __repr__(self) -> str:
-        """Return ``PyLatticeElement(grp_char=..., perm=[...], lhss=...)``."""
-        ...
-
-
-# ---------------------------------------------------------------------------
-# PyGrpElement
-# ---------------------------------------------------------------------------
-
-
-class PyGrpElement:
-    """A local (on-site) symmetry group element with a group character.
-
-    Encodes one of three types of local operation — bit-flip, value permutation,
-    or spin inversion — before the concrete basis integer type is resolved.
-    Use the static factory methods to construct instances.
-
-    Example:
-        >>> P = PyGrpElement.bitflip(grp_char=-1.0 + 0j, n_sites=4)
-        >>> Q = PyGrpElement.spin_inversion(
-        ...     grp_char=1.0 + 0j, n_sites=4, lhss=2, locs=[0, 1, 2, 3]
-        ... )
-    """
-
-    @staticmethod
-    def bitflip(
-        grp_char: complex,
-        n_sites: int,
-        locs: list[int] | None = None,
-    ) -> PyGrpElement:
-        """Create a Z₂ bit-flip (XOR-with-mask) symmetry element.
-
-        Applies ``state ^= mask`` where ``mask`` has a 1-bit at each site in
-        ``locs``. For spin-1/2 this is a spin-flip symmetry.
-
-        Args:
-            grp_char (complex): Group character (eigenvalue of the symmetry
-                operator).
-            n_sites (int): Total number of sites in the system.
-            locs (list[int] | None): Site indices whose bits are flipped.
-                If ``None``, all ``n_sites`` bits are flipped.
-
-        Returns:
-            PyGrpElement: A new bit-flip symmetry element.
-        """
-        ...
-
-    @staticmethod
-    def local_value(
-        grp_char: complex,
-        n_sites: int,
-        lhss: int,
-        perm: list[int],
-        locs: list[int],
-    ) -> PyGrpElement:
-        """Create a local dit-value permutation symmetry element.
-
-        For each site in ``locs``, maps the local occupation value
-        ``v → perm[v]``. Requires ``len(perm) == lhss``.
-
-        Args:
-            grp_char (complex): Group character (eigenvalue of the symmetry
-                operator).
-            n_sites (int): Total number of sites in the system.
-            lhss (int): Local Hilbert space size (number of distinct dit values).
-            perm (list[int]): Value permutation of length ``lhss``.
-                Entry ``i`` is the image of dit value ``i``.
-            locs (list[int]): Site indices to which the permutation is applied.
-
-        Returns:
-            PyGrpElement: A new local-value permutation symmetry element.
-        """
-        ...
-
-    @staticmethod
-    def spin_inversion(
-        grp_char: complex,
-        n_sites: int,
-        lhss: int,
-        locs: list[int],
-    ) -> PyGrpElement:
-        """Create a spin-inversion symmetry element.
-
-        Maps each dit value ``v → lhss - v - 1`` at the specified sites.
-        For spin-1/2 (``lhss=2``) this swaps ``0 ↔ 1``; for spin-1
-        (``lhss=3``) it maps ``0 ↔ 2`` and fixes ``1``.
-
-        Args:
-            grp_char (complex): Group character (eigenvalue of the symmetry
-                operator).
-            n_sites (int): Total number of sites in the system.
-            lhss (int): Local Hilbert space size.
-            locs (list[int]): Site indices to which the inversion is applied.
-
-        Returns:
-            PyGrpElement: A new spin-inversion symmetry element.
-        """
-        ...
-
-    def __repr__(self) -> str:
-        """Return the factory-call form, e.g.
-        ``PyGrpElement.bitflip(grp_char=(1+0j), n_sites=4, locs=None)``."""
-        ...
-
-
-# ---------------------------------------------------------------------------
 # PySpinSymGrp
 # ---------------------------------------------------------------------------
 
@@ -154,49 +16,62 @@ class PyGrpElement:
 class PySpinSymGrp:
     """A spin-symmetry group: lattice permutations + spin-inversion / bit-flip ops.
 
-    Combines spatial (lattice) symmetries with on-site spin-inversion operations.
-    For LHSS = 2 this is a bit-flip (Z₂) symmetry; for LHSS > 2 it maps
-    ``v → lhss - v - 1``.
+    Mutable builder — construct with ``lhss`` and ``n_sites``, then call
+    :meth:`add_lattice` and :meth:`add_local_inv` to add symmetry elements.
 
-    Only accepts ``PyGrpElement.bitflip`` and ``PyGrpElement.spin_inversion``
-    local elements. Use :class:`PyValuePermSymGrp` for local value-permutation
-    symmetries.
+    For LHSS = 2: local operations are XOR bit-flips (Z₂ symmetry).
+    For LHSS > 2: local operations map ``v → lhss − v − 1`` (spin inversion).
+
+    Use :class:`PyValuePermSymGrp` for local value-permutation symmetries.
 
     Example:
-        >>> T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 3, 0], lhss=2)
-        >>> P = PyGrpElement.bitflip(grp_char=-1.0 + 0j, n_sites=4)
-        >>> grp = PySpinSymGrp(lattice=[T], local=[P])
+        >>> grp = PySpinSymGrp(lhss=2, n_sites=4)
+        >>> grp.add_lattice(grp_char=1.0 + 0j, perm=[1, 2, 3, 0])
+        >>> grp.add_local_inv(grp_char=-1.0 + 0j, locs=[0, 1, 2, 3])
         >>> grp.n_sites
         4
     """
 
-    def __init__(
-        self,
-        lattice: list[PyLatticeElement],
-        local: list[PyGrpElement],
-    ) -> None:
-        """Construct a spin-symmetry group from lattice and local elements.
-
-        Infers ``n_sites`` and ``lhss`` from the supplied elements and validates
-        that all elements agree.
+    def __init__(self, lhss: int, n_sites: int) -> None:
+        """Construct an empty spin-symmetry group.
 
         Args:
-            lattice (list[PyLatticeElement]): Spatial symmetry elements (site
-                permutations). The permutation length determines ``n_sites``.
-            local (list[PyGrpElement]): On-site symmetry elements. Only
-                ``bitflip`` and ``spin_inversion`` elements are accepted.
+            lhss (int): Local Hilbert-space size (e.g. ``2`` for spin-1/2,
+                ``3`` for spin-1).
+            n_sites (int): Number of lattice sites.
 
         Raises:
-            ValueError: If any two elements disagree on ``n_sites`` or ``lhss``,
-                if a ``local_value`` element is supplied (use
-                :class:`PyValuePermSymGrp` instead), or if ``n_sites`` exceeds
-                8192.
+            ValueError: If ``lhss = 2`` and ``n_sites > 8192``.
+        """
+        ...
+
+    def add_lattice(self, grp_char: complex, perm: list[int]) -> None:
+        """Add a lattice (site-permutation) symmetry element.
+
+        Args:
+            grp_char (complex): Group character (eigenvalue of the symmetry
+                operator, e.g. ``1+0j`` for even parity, ``-1+0j`` for odd).
+            perm (list[int]): Forward site permutation where ``perm[src] = dst``.
+                Must have length ``n_sites``.
+        """
+        ...
+
+    def add_local_inv(self, grp_char: complex, locs: list[int]) -> None:
+        """Add a spin-inversion / bit-flip symmetry element.
+
+        For LHSS = 2: XOR-flips the bits at the specified site indices.
+        For LHSS > 2: maps ``v → lhss − v − 1`` at the specified sites.
+
+        Args:
+            grp_char (complex): Group character (eigenvalue of the symmetry
+                operator).
+            locs (list[int]): Site indices to which the operation is applied.
         """
         ...
 
     @property
     def n_sites(self) -> int:
-        """Number of sites in the system."""
+        """Number of lattice sites."""
         ...
 
     @property
@@ -205,7 +80,7 @@ class PySpinSymGrp:
         ...
 
     def __repr__(self) -> str:
-        """Return ``PySpinSymGrp(n_sites=..., lhss=...)``."""
+        """Return ``PySpinSymGrp(lhss=..., n_sites=...)``."""
         ...
 
 
@@ -217,47 +92,62 @@ class PySpinSymGrp:
 class PyValuePermSymGrp:
     """A value-permutation symmetry group: lattice permutations + local value-perm ops.
 
-    Only supported for LHSS > 2. Only accepts ``PyGrpElement.local_value``
-    local elements. Use :class:`PySpinSymGrp` for spin-inversion or bit-flip
-    symmetries.
+    Mutable builder — construct with ``lhss`` and ``n_sites``, then call
+    :meth:`add_lattice` and :meth:`add_local_perm` to add symmetry elements.
+
+    Only supported for LHSS ≥ 3. Use :class:`PySpinSymGrp` for LHSS = 2 or
+    for spin-inversion symmetries.
 
     Example:
-        >>> T = PyLatticeElement(grp_char=1.0 + 0j, perm=[1, 2, 3, 0], lhss=3)
-        >>> Q = PyGrpElement.local_value(
-        ...     grp_char=1.0 + 0j, n_sites=4, lhss=3, perm=[2, 1, 0], locs=[0, 1, 2, 3]
-        ... )
-        >>> grp = PyValuePermSymGrp(lattice=[T], local=[Q])
+        >>> grp = PyValuePermSymGrp(lhss=3, n_sites=4)
+        >>> grp.add_lattice(grp_char=1.0 + 0j, perm=[1, 2, 3, 0])
+        >>> grp.add_local_perm(grp_char=1.0 + 0j, perm=[2, 1, 0], locs=[0, 1, 2, 3])
         >>> grp.lhss
         3
     """
 
-    def __init__(
-        self,
-        lattice: list[PyLatticeElement],
-        local: list[PyGrpElement],
-    ) -> None:
-        """Construct a value-permutation symmetry group from lattice and local elements.
-
-        Infers ``n_sites`` and ``lhss`` from the supplied elements and validates
-        that all elements agree.
+    def __init__(self, lhss: int, n_sites: int) -> None:
+        """Construct an empty value-permutation symmetry group.
 
         Args:
-            lattice (list[PyLatticeElement]): Spatial symmetry elements (site
-                permutations). The permutation length determines ``n_sites``.
-            local (list[PyGrpElement]): On-site symmetry elements. Only
-                ``local_value`` elements are accepted.
+            lhss (int): Local Hilbert-space size. Must be ≥ 3.
+            n_sites (int): Number of lattice sites.
 
         Raises:
-            ValueError: If ``lhss < 3`` (use :class:`PySpinSymGrp` for
-                ``lhss = 2``), if any two elements disagree on ``n_sites`` or
-                ``lhss``, or if a ``bitflip`` / ``spin_inversion`` element is
-                supplied.
+            ValueError: If ``lhss < 3`` (use :class:`PySpinSymGrp` instead).
+        """
+        ...
+
+    def add_lattice(self, grp_char: complex, perm: list[int]) -> None:
+        """Add a lattice (site-permutation) symmetry element.
+
+        Args:
+            grp_char (complex): Group character (eigenvalue of the symmetry
+                operator, e.g. ``1+0j`` for even parity, ``-1+0j`` for odd).
+            perm (list[int]): Forward site permutation where ``perm[src] = dst``.
+                Must have length ``n_sites``.
+        """
+        ...
+
+    def add_local_perm(
+        self, grp_char: complex, perm: list[int], locs: list[int]
+    ) -> None:
+        """Add an on-site value-permutation symmetry element.
+
+        Maps local occupation ``v → perm[v]`` at each site in ``locs``.
+
+        Args:
+            grp_char (complex): Group character (eigenvalue of the symmetry
+                operator).
+            perm (list[int]): Value permutation of length ``lhss``.
+                Entry ``i`` is the image of dit value ``i``.
+            locs (list[int]): Site indices to which the permutation is applied.
         """
         ...
 
     @property
     def n_sites(self) -> int:
-        """Number of sites in the system."""
+        """Number of lattice sites."""
         ...
 
     @property
@@ -266,7 +156,7 @@ class PyValuePermSymGrp:
         ...
 
     def __repr__(self) -> str:
-        """Return ``PyValuePermSymGrp(n_sites=..., lhss=...)``."""
+        """Return ``PyValuePermSymGrp(lhss=..., n_sites=...)``."""
         ...
 
 
