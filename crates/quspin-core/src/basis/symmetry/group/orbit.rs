@@ -80,9 +80,7 @@ pub(crate) fn check_refstate<B: BitInt, L: LocalOpItem<B>>(
     let mut ref_state = state;
     let mut norm = 0u32;
     for (s, _) in iter_images(lattice, local, state) {
-        if s > ref_state {
-            ref_state = s;
-        }
+        ref_state = ref_state.max(s);
         norm += (s == state) as u32;
     }
     (ref_state, norm as f64)
@@ -128,9 +126,7 @@ pub(crate) fn check_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
     for lat in lattice {
         for ((state, o), norm) in states.iter().zip(out.iter_mut()).zip(norms.iter_mut()) {
             let s = lat.apply_state(*state);
-            if s > o.0 {
-                o.0 = s;
-            }
+            o.0 = o.0.max(s);
             *norm += (s == *state) as u32;
         }
     }
