@@ -59,10 +59,9 @@ pub(crate) fn get_refstate<B: BitInt, L: LocalOpItem<B>>(
     let mut best = state;
     let mut best_coeff = Complex::new(1.0, 0.0);
     for (s, c) in iter_images(lattice, local, state) {
-        if s > best {
-            best = s;
-            best_coeff = c;
-        }
+        let cond = s > best;
+        best = best.max(s);
+        best_coeff = if cond { c } else { best_coeff };
     }
     (best, best_coeff)
 }
