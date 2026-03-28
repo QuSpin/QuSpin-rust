@@ -11,7 +11,7 @@ use quspin_core::basis::{
 };
 use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
 
-use super::symmetry::PySpinSymGrp;
+use super::symmetry::{PyFermionicSymGrp, PySpinSymGrp};
 
 // ---------------------------------------------------------------------------
 // PyHardcoreBasis
@@ -143,6 +143,63 @@ impl PyHardcoreBasis {
         let hc = grp.inner.as_hardcore().ok_or_else(|| {
             pyo3::exceptions::PyValueError::new_err(
                 "symmetric basis requires a spin-symmetry group with LHSS=2",
+            )
+        })?;
+        let inner = quspin_core::with_sym_grp!(hc, B, sym_grp, {
+            let mut basis = SymmetricSubspace::new(sym_grp.clone());
+            for s in &seed_list {
+                let seed = seed_from_bytes::<B>(s);
+                match &ham.inner {
+                    HardcoreHamiltonianInner::Ham8(h) => {
+                        basis.build(seed, |state| h.apply_smallvec(state).into_iter());
+                    }
+                    HardcoreHamiltonianInner::Ham16(h) => {
+                        basis.build(seed, |state| h.apply_smallvec(state).into_iter());
+                    }
+                }
+            }
+            HardcoreBasisInner::from(basis)
+        });
+
+        Ok(PyHardcoreBasis { inner })
+    }
+
+    /// Build a symmetry-reduced subspace for a fermionic system.
+    ///
+    /// Like :meth:`symmetric`, but accepts a :class:`PyFermionicSymGrp` whose
+    /// lattice elements include Jordan-Wigner permutation signs.
+    ///
+    /// Args:
+    ///     seeds (Iterable[str | list[int]]): Initial states (same format as
+    ///         ``subspace``).
+    ///     ham (PyHardcoreHamiltonian): The Hamiltonian defining connectivity.
+    ///     grp (PyFermionicSymGrp): The fermionic symmetry group.
+    ///
+    /// Returns:
+    ///     PyHardcoreBasis: Symmetry-reduced fermionic basis.
+    ///
+    /// Raises:
+    ///     ValueError: If ``ham.n_sites != grp.n_sites``, if any seed is
+    ///         malformed, or if ``n_sites`` exceeds 8192.
+    #[staticmethod]
+    pub fn symmetric_fermionic(
+        seeds: &Bound<'_, PyAny>,
+        ham: &PyHardcoreHamiltonian,
+        grp: &PyFermionicSymGrp,
+    ) -> PyResult<Self> {
+        let n_sites = ham.inner.max_site() + 1;
+        if grp.n_sites() != n_sites {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "n_sites mismatch: fermionic symmetry group has {} sites but Hamiltonian has {}",
+                grp.n_sites(),
+                n_sites
+            )));
+        }
+        let seed_list = extract_seed_list(seeds)?;
+
+        let hc = grp.inner.as_hardcore().ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "symmetric fermionic basis requires a fermionic symmetry group",
             )
         })?;
         let inner = quspin_core::with_sym_grp!(hc, B, sym_grp, {

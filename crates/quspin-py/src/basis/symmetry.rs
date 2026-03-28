@@ -10,10 +10,13 @@
 /// grp2 = PyDitSymGrp(lhss=3, n_sites=4)
 /// grp2.add_lattice(grp_char=1+0j, perm=[1, 2, 3, 0])
 /// grp2.add_local_perm(grp_char=1+0j, perm=[2, 1, 0], locs=[0, 1, 2, 3])
+///
+/// grp3 = PyFermionicSymGrp(n_sites=4)
+/// grp3.add_lattice(grp_char=1+0j, perm=[1, 2, 3, 0])
 /// ```
 use num_complex::Complex;
 use pyo3::prelude::*;
-use quspin_core::basis::{DitSymGrp, SpinSymGrp};
+use quspin_core::basis::{DitSymGrp, FermionicSymGrp, SpinSymGrp};
 
 use crate::error::Error;
 
@@ -170,5 +173,69 @@ impl PyDitSymGrp {
             self.inner.lhss(),
             self.inner.n_sites(),
         )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PyFermionicSymGrp
+// ---------------------------------------------------------------------------
+
+/// A fermionic symmetry group: lattice permutations with Jordan-Wigner sign
+/// tracking.
+///
+/// All lattice elements automatically include the fermionic permutation sign
+/// based on the pre-image state, implementing the Jordan-Wigner transformation
+/// for site-permutation symmetries.
+///
+/// Use :class:`PySpinSymGrp` for bosonic systems.
+///
+/// Example:
+///     >>> grp = PyFermionicSymGrp(n_sites=4)
+///     >>> grp.add_lattice(grp_char=1.0+0j, perm=[1, 2, 3, 0])
+///     >>> grp.n_sites
+///     4
+#[pyclass(name = "PyFermionicSymGrp")]
+pub struct PyFermionicSymGrp {
+    pub inner: FermionicSymGrp,
+}
+
+#[pymethods]
+impl PyFermionicSymGrp {
+    /// Construct an empty fermionic symmetry group.
+    ///
+    /// Args:
+    ///     n_sites (int): Number of lattice sites. Maximum value is 8192.
+    ///
+    /// Raises:
+    ///     ValueError: If ``n_sites > 8192``.
+    #[new]
+    pub fn new(n_sites: usize) -> PyResult<Self> {
+        let inner = FermionicSymGrp::new(n_sites).map_err(|e| PyErr::from(Error(e)))?;
+        Ok(PyFermionicSymGrp { inner })
+    }
+
+    /// Add a lattice (site-permutation) symmetry element with fermionic sign
+    /// tracking.
+    ///
+    /// The Jordan-Wigner sign of the permutation acting on the pre-image state
+    /// is automatically included in the group character.
+    ///
+    /// Args:
+    ///     grp_char (complex): Group character (eigenvalue of the symmetry
+    ///         operator, e.g. ``1+0j`` for even parity, ``-1+0j`` for odd).
+    ///     perm (list[int]): Forward site permutation where ``perm[src] = dst``.
+    ///         Must have length ``n_sites``.
+    pub fn add_lattice(&mut self, grp_char: Complex<f64>, perm: Vec<usize>) {
+        self.inner.add_lattice(grp_char, perm);
+    }
+
+    /// Number of lattice sites.
+    #[getter]
+    pub fn n_sites(&self) -> usize {
+        self.inner.n_sites()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("PyFermionicSymGrp(n_sites={})", self.inner.n_sites())
     }
 }

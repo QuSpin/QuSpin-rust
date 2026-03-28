@@ -4,4 +4,4 @@ pub mod symmetry;
 
 pub use dit::PyDitBasis;
 pub use hardcore::PyHardcoreBasis;
-pub use symmetry::{PyDitSymGrp, PySpinSymGrp};
+pub use symmetry::{PyDitSymGrp, PyFermionicSymGrp, PySpinSymGrp};

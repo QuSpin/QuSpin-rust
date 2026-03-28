@@ -1,4 +1,4 @@
-use super::LatticeElement;
+use super::dispatch::SymmetryGrpInner;
 /// Spin-symmetry group types.
 ///
 /// Covers the full LHSS range:
@@ -8,9 +8,11 @@ use super::LatticeElement;
 ///
 /// The public type is [`SpinSymGrp`]. B-type dispatch for LHSS = 2 lives in
 /// [`super::dispatch`].
-use super::dispatch::SymmetryGrpInner;
+use super::{BenesLatticeElement, LatticeElement};
 use crate::basis::traits::SymGrp;
-use crate::bitbasis::{BitInt, BitStateOp, DynamicHigherSpinInv, HigherSpinInv, PermDitMask};
+use crate::bitbasis::{
+    BenesPermDitLocations, BitInt, BitStateOp, DynamicHigherSpinInv, HigherSpinInv, PermDitMask,
+};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
@@ -50,7 +52,7 @@ impl<B: BitInt> super::LocalOpItem<B> for HardcoreGrpElement<B> {
 #[derive(Clone)]
 pub struct HardcoreSymmetryGrp<B: BitInt> {
     n_sites: usize,
-    lattice: Vec<LatticeElement>,
+    lattice: Vec<BenesLatticeElement<B>>,
     pub local: Vec<HardcoreGrpElement<B>>,
 }
 
@@ -63,8 +65,13 @@ impl<B: BitInt> HardcoreSymmetryGrp<B> {
         }
     }
 
-    pub fn push_lattice(&mut self, el: LatticeElement) {
-        self.lattice.push(el);
+    /// Add a lattice (site-permutation) symmetry element backed by a Benes network.
+    ///
+    /// `fermionic=true` enables Jordan-Wigner sign tracking.
+    pub fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize], fermionic: bool) {
+        let op = BenesPermDitLocations::<B>::new(2, perm, fermionic);
+        self.lattice
+            .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
     }
 
     pub fn push_inverse(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
@@ -379,15 +386,17 @@ impl SpinSymGrp {
     ///
     /// `perm[src] = dst` maps source site `src` to destination `dst`.
     pub fn add_lattice(&mut self, grp_char: Complex<f64>, perm: Vec<usize>) {
-        use crate::bitbasis::PermDitLocations;
-        let el = LatticeElement::new(
-            grp_char,
-            PermDitLocations::new(self.lhss, &perm),
-            self.n_sites,
-        );
         match &mut self.inner {
-            SpinSymGrpInner::Hardcore(hc) => hc.push_lattice(el),
-            SpinSymGrpInner::Dit(dit) => dit.push_lattice(el),
+            SpinSymGrpInner::Hardcore(hc) => hc.push_lattice(grp_char, &perm, false),
+            SpinSymGrpInner::Dit(dit) => {
+                use crate::bitbasis::PermDitLocations;
+                let el = LatticeElement::new(
+                    grp_char,
+                    PermDitLocations::new(self.lhss, &perm),
+                    self.n_sites,
+                );
+                dit.push_lattice(el);
+            }
         }
     }
 

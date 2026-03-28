@@ -5,7 +5,7 @@
 /// - [`check_refstate`] — find the representative and orbit norm (scalar).
 /// - [`check_refstate_batch`] — batch variant of `check_refstate` structured
 ///   for auto-vectorisation across a slice of states.
-use super::{LatticeElement, traits::LocalOpItem};
+use super::traits::{LatEl, LocalOpItem};
 use crate::bitbasis::BitInt;
 use num_complex::Complex;
 use smallvec::SmallVec;
@@ -30,20 +30,23 @@ const ORBIT_INLINE_CAP: usize = 64;
 ///
 /// Returns a stack-allocated [`SmallVec`] that avoids heap allocation for
 /// orbits up to [`ORBIT_INLINE_CAP`] elements.
-pub(crate) fn iter_images<B: BitInt, L: LocalOpItem<B>>(
-    lattice: &[LatticeElement],
+pub(crate) fn iter_images<B: BitInt, E: LatEl<B>, L: LocalOpItem<B>>(
+    lattice: &[E],
     local: &[L],
     state: B,
 ) -> SmallVec<[(B, Complex<f64>); ORBIT_INLINE_CAP]> {
-    let one = Complex::new(1.0, 0.0);
     let mut images = SmallVec::new();
     for lat in lattice {
-        images.push(lat.apply(state, one));
+        let s = lat.apply_state(state);
+        let c = lat.grp_char_for(state);
+        images.push((s, c));
     }
     for item in local {
         let (loc_state, char_) = item.apply_local(state);
         for lat in lattice {
-            images.push(lat.apply(loc_state, char_));
+            let s = lat.apply_state(loc_state);
+            let c = char_ * lat.grp_char_for(loc_state);
+            images.push((s, c));
         }
     }
     images
@@ -51,8 +54,8 @@ pub(crate) fn iter_images<B: BitInt, L: LocalOpItem<B>>(
 
 /// Return the orbit representative (largest state in the orbit) and the
 /// group-character coefficient accumulated to reach it.
-pub(crate) fn get_refstate<B: BitInt, L: LocalOpItem<B>>(
-    lattice: &[LatticeElement],
+pub(crate) fn get_refstate<B: BitInt, E: LatEl<B>, L: LocalOpItem<B>>(
+    lattice: &[E],
     local: &[L],
     state: B,
 ) -> (B, Complex<f64>) {
@@ -74,16 +77,11 @@ pub(crate) fn get_refstate<B: BitInt, L: LocalOpItem<B>>(
 /// `out`.  The loop order places orbit elements in the outer loop and states
 /// in the inner loop, amortising the orbit traversal across the batch.
 ///
-/// The coefficient select (`if cond { lat.grp_char } else { o.1 }`) involves
-/// `Complex<f64>` so the inner loop does not auto-vectorise as cleanly as
-/// [`check_refstate_batch`]; the benefit here is loop amortisation rather
-/// than SIMD.
-///
 /// # Panics
 ///
 /// Panics if `states.len() != out.len()`.
-pub(crate) fn get_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
-    lattice: &[LatticeElement],
+pub(crate) fn get_refstate_batch<B: BitInt, E: LatEl<B>, L: LocalOpItem<B>>(
+    lattice: &[E],
     local: &[L],
     states: &[B],
     out: &mut [(B, Complex<f64>)],
@@ -101,9 +99,10 @@ pub(crate) fn get_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
     for lat in lattice {
         for (state, o) in states.iter().zip(out.iter_mut()) {
             let s = lat.apply_state(*state);
+            let c = lat.grp_char_for(*state);
             let cond = s > o.0;
             o.0 = o.0.max(s);
-            o.1 = if cond { lat.grp_char } else { o.1 };
+            o.1 = if cond { c } else { o.1 };
         }
     }
 
@@ -124,7 +123,7 @@ pub(crate) fn get_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
             for lat in lattice {
                 for ((loc, lc), o) in loc_states.iter().zip(loc_chars.iter()).zip(out.iter_mut()) {
                     let s = lat.apply_state(*loc);
-                    let c = lc * lat.grp_char;
+                    let c = *lc * lat.grp_char_for(*loc);
                     let cond = s > o.0;
                     o.0 = o.0.max(s);
                     o.1 = if cond { c } else { o.1 };
@@ -139,8 +138,8 @@ pub(crate) fn get_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
 /// The norm is the number of orbit images that equal `state` (used to
 /// determine whether `state` is a valid symmetric-basis representative and to
 /// compute the normalisation factor).
-pub(crate) fn check_refstate<B: BitInt, L: LocalOpItem<B>>(
-    lattice: &[LatticeElement],
+pub(crate) fn check_refstate<B: BitInt, E: LatEl<B>, L: LocalOpItem<B>>(
+    lattice: &[E],
     local: &[L],
     state: B,
 ) -> (B, f64) {
@@ -169,8 +168,8 @@ pub(crate) fn check_refstate<B: BitInt, L: LocalOpItem<B>>(
 /// # Panics
 ///
 /// Panics if `states.len() != out.len()`.
-pub(crate) fn check_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
-    lattice: &[LatticeElement],
+pub(crate) fn check_refstate_batch<B: BitInt, E: LatEl<B>, L: LocalOpItem<B>>(
+    lattice: &[E],
     local: &[L],
     states: &[B],
     out: &mut [(B, f64)],
@@ -179,17 +178,12 @@ pub(crate) fn check_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
     assert_eq!(n, out.len());
 
     // Initialise representatives; norms start at zero.
-    // Using a separate u32 buffer keeps norm accumulation in the same
-    // register width as the state type, enabling LLVM to vectorise both
-    // the max-update and the equality-count loops uniformly.
     for (state, o) in states.iter().zip(out.iter_mut()) {
         o.0 = *state;
     }
     let mut norms = vec![0u32; n];
 
     // Lattice-only images: apply each lattice element to the whole batch.
-    // This inner loop over states is independent across iterations and will
-    // be auto-vectorised by LLVM for u32/u64 state types.
     for lat in lattice {
         for ((state, o), norm) in states.iter().zip(out.iter_mut()).zip(norms.iter_mut()) {
             let s = lat.apply_state(*state);
@@ -198,9 +192,7 @@ pub(crate) fn check_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
         }
     }
 
-    // Local-then-lattice images.  Compute loc_states for the whole batch
-    // first, then apply each lattice element uniformly — keeping the
-    // innermost loop over states independent.
+    // Local-then-lattice images.
     if !local.is_empty() {
         let mut loc_states: Vec<B> = vec![B::from_u64(0); n];
         for item in local {
@@ -236,6 +228,7 @@ pub(crate) fn check_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::basis::symmetry::group::LatticeElement;
     use crate::bitbasis::{PermDitLocations, PermDitMask};
     use num_complex::Complex;
 
@@ -264,7 +257,11 @@ mod tests {
     #[test]
     fn iter_images_identity_lattice_only() {
         let lattice = vec![lat(one(), &[0, 1], 2)];
-        let images = iter_images::<u32, (Complex<f64>, PermDitMask<u32>)>(&lattice, &[], 0b01u32);
+        let images = iter_images::<u32, LatticeElement, (Complex<f64>, PermDitMask<u32>)>(
+            &lattice,
+            &[],
+            0b01u32,
+        );
         assert_eq!(images.len(), 1);
         assert_eq!(images[0].0, 0b01u32);
         assert_eq!(images[0].1, one());
@@ -273,7 +270,11 @@ mod tests {
     #[test]
     fn iter_images_two_lattice_elements() {
         let lattice = vec![lat(one(), &[0, 1], 2), lat(one(), &[1, 0], 2)];
-        let images = iter_images::<u32, (Complex<f64>, PermDitMask<u32>)>(&lattice, &[], 0b01u32);
+        let images = iter_images::<u32, LatticeElement, (Complex<f64>, PermDitMask<u32>)>(
+            &lattice,
+            &[],
+            0b01u32,
+        );
         assert_eq!(images.len(), 2);
         let states: Vec<u32> = images.iter().map(|(s, _)| *s).collect();
         assert!(states.contains(&0b01u32));
@@ -298,7 +299,11 @@ mod tests {
     #[test]
     fn iter_images_character_accumulated() {
         let lattice = vec![lat(minus_one(), &[0, 1], 2)];
-        let images = iter_images::<u32, (Complex<f64>, PermDitMask<u32>)>(&lattice, &[], 0b01u32);
+        let images = iter_images::<u32, LatticeElement, (Complex<f64>, PermDitMask<u32>)>(
+            &lattice,
+            &[],
+            0b01u32,
+        );
         assert_eq!(images[0].1, minus_one());
     }
 
@@ -307,24 +312,33 @@ mod tests {
     #[test]
     fn get_refstate_returns_max() {
         let lattice = vec![lat(one(), &[0, 1], 2), lat(one(), &[1, 0], 2)];
-        let (ref_s, _) =
-            get_refstate::<u32, (Complex<f64>, PermDitMask<u32>)>(&lattice, &[], 0b01u32);
+        let (ref_s, _) = get_refstate::<u32, LatticeElement, (Complex<f64>, PermDitMask<u32>)>(
+            &lattice,
+            &[],
+            0b01u32,
+        );
         assert_eq!(ref_s, 0b10u32);
     }
 
     #[test]
     fn get_refstate_already_max_unchanged() {
         let lattice = vec![lat(one(), &[0, 1], 2), lat(one(), &[1, 0], 2)];
-        let (ref_s, _) =
-            get_refstate::<u32, (Complex<f64>, PermDitMask<u32>)>(&lattice, &[], 0b10u32);
+        let (ref_s, _) = get_refstate::<u32, LatticeElement, (Complex<f64>, PermDitMask<u32>)>(
+            &lattice,
+            &[],
+            0b10u32,
+        );
         assert_eq!(ref_s, 0b10u32);
     }
 
     #[test]
     fn get_refstate_coeff_from_winning_image() {
         let lattice = vec![lat(one(), &[0, 1], 2), lat(minus_one(), &[1, 0], 2)];
-        let (ref_s, coeff) =
-            get_refstate::<u32, (Complex<f64>, PermDitMask<u32>)>(&lattice, &[], 0b01u32);
+        let (ref_s, coeff) = get_refstate::<u32, LatticeElement, (Complex<f64>, PermDitMask<u32>)>(
+            &lattice,
+            &[],
+            0b01u32,
+        );
         assert_eq!(ref_s, 0b10u32);
         assert_eq!(coeff, minus_one());
     }
@@ -334,16 +348,22 @@ mod tests {
     #[test]
     fn check_refstate_norm_counts_self_images() {
         let lattice = vec![lat(one(), &[0, 1], 2)];
-        let (_, norm) =
-            check_refstate::<u32, (Complex<f64>, PermDitMask<u32>)>(&lattice, &[], 0b01u32);
+        let (_, norm) = check_refstate::<u32, LatticeElement, (Complex<f64>, PermDitMask<u32>)>(
+            &lattice,
+            &[],
+            0b01u32,
+        );
         assert_eq!(norm, 1.0);
     }
 
     #[test]
     fn check_refstate_z2_orbit_max_norm2() {
         let lattice = vec![lat(one(), &[0, 1], 2), lat(one(), &[1, 0], 2)];
-        let (ref_s, norm) =
-            check_refstate::<u32, (Complex<f64>, PermDitMask<u32>)>(&lattice, &[], 0b11u32);
+        let (ref_s, norm) = check_refstate::<u32, LatticeElement, (Complex<f64>, PermDitMask<u32>)>(
+            &lattice,
+            &[],
+            0b11u32,
+        );
         assert_eq!(ref_s, 0b11u32);
         assert_eq!(norm, 2.0);
     }
@@ -351,8 +371,11 @@ mod tests {
     #[test]
     fn check_refstate_non_max_norm1() {
         let lattice = vec![lat(one(), &[0, 1], 2), lat(one(), &[1, 0], 2)];
-        let (ref_s, norm) =
-            check_refstate::<u32, (Complex<f64>, PermDitMask<u32>)>(&lattice, &[], 0b01u32);
+        let (ref_s, norm) = check_refstate::<u32, LatticeElement, (Complex<f64>, PermDitMask<u32>)>(
+            &lattice,
+            &[],
+            0b01u32,
+        );
         assert_eq!(ref_s, 0b10u32);
         assert_eq!(norm, 1.0);
     }

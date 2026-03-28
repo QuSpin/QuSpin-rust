@@ -6,6 +6,7 @@ import pytest
 from quspin_rs._rs import (
     PyBosonHamiltonian,
     PyDitBasis,
+    PyFermionHamiltonian,
     PyHardcoreBasis,
     PyHardcoreHamiltonian,
     PyQMatrix,
@@ -519,3 +520,109 @@ class TestQMatrixBoson:
         mat.dot(coeff, v, out, True)
         # full 1-site lhss=3 basis: states [2,1,0] (descending), so out = [2,1,0]
         np.testing.assert_allclose(sorted(out), [0.0, 1.0, 2.0], atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# PyFermionHamiltonian
+# ---------------------------------------------------------------------------
+
+N_FERM = 4  # 4-site chain (8 orbitals: sites 0,1,...,7)
+
+
+def make_ferm_hopping() -> PyFermionHamiltonian:
+    """Fermionic hopping: H = Σ_i t(c†_{i+1} c_i + h.c.)
+
+    Uses sites 0,1,2,3 on a 4-site chain.
+    cindex 0: c†_1 c_0 + c†_3 c_2  (hop right)
+    cindex 1: c†_0 c_1 + c†_2 c_3  (hop left / h.c.)
+    Together these form a Hermitian hopping Hamiltonian.
+    """
+    return PyFermionHamiltonian(
+        [
+            # cindex 0: c†_{i+1} c_i  (hop right)
+            [("+-", [(1.0, 1, 0), (1.0, 3, 2)])],
+            # cindex 1: c†_i c_{i+1}  (hop left / h.c.)
+            [("+-", [(1.0, 0, 1), (1.0, 2, 3)])],
+        ]
+    )
+
+
+class TestFermionHamiltonian:
+    def test_max_site(self):
+        h = make_ferm_hopping()
+        assert h.max_site == 3
+
+    def test_num_cindices(self):
+        h = make_ferm_hopping()
+        assert h.num_cindices == 2
+
+    def test_number_op(self):
+        h = PyFermionHamiltonian([[("n", [(1.0, 0), (1.0, 1)])]])
+        assert h.num_cindices == 1
+        assert h.max_site == 1
+
+    def test_bad_op_char_raises(self):
+        with pytest.raises(Exception):
+            PyFermionHamiltonian([[("x", [(1.0, 0)])]])
+
+    def test_repr(self):
+        h = make_ferm_hopping()
+        r = repr(h)
+        assert "PyFermionHamiltonian" in r
+
+
+# ---------------------------------------------------------------------------
+# PyQMatrix — fermion
+# ---------------------------------------------------------------------------
+
+
+class TestQMatrixFermion:
+    def _basis(self, n_sites=4):
+        return PyHardcoreBasis.full(n_sites=n_sites)
+
+    def test_build_returns_qmatrix(self):
+        h = make_ferm_hopping()
+        basis = self._basis()
+        mat = PyQMatrix.build_fermion_hamiltonian(h, basis, np.dtype("complex128"))
+        assert isinstance(mat, PyQMatrix)
+
+    def test_dim_matches_basis(self):
+        h = make_ferm_hopping()
+        basis = self._basis()
+        mat = PyQMatrix.build_fermion_hamiltonian(h, basis, np.dtype("complex128"))
+        assert mat.dim == basis.size
+
+    def test_nnz_positive(self):
+        h = make_ferm_hopping()
+        basis = self._basis()
+        mat = PyQMatrix.build_fermion_hamiltonian(h, basis, np.dtype("complex128"))
+        assert mat.nnz > 0
+
+    def test_number_op_diagonal(self):
+        """n̂ on site 0 gives a diagonal matrix with occupancy eigenvalues (0 or 1)."""
+        h = PyFermionHamiltonian([[("n", [(1.0, 0)])]])
+        basis = PyHardcoreBasis.full(n_sites=1)
+        mat = PyQMatrix.build_fermion_hamiltonian(h, basis, np.dtype("float64"))
+        coeff = np.array([1.0], dtype=np.float64)
+        v = np.ones(mat.dim, dtype=np.float64)
+        out = np.zeros(mat.dim, dtype=np.float64)
+        mat.dot(coeff, v, out, True)
+        # 1-site hardcore basis: states |1⟩ and |0⟩; n̂|1⟩=|1⟩, n̂|0⟩=0
+        np.testing.assert_allclose(sorted(out), [0.0, 1.0], atol=1e-12)
+
+    def test_hopping_is_hermitian(self):
+        """The hopping Hamiltonian (hop right + hop left) should be Hermitian."""
+        h = make_ferm_hopping()
+        basis = self._basis()
+        coeff = np.array([1.0, 1.0], dtype=np.float64)
+        mat = PyQMatrix.build_fermion_hamiltonian(h, basis, np.dtype("float64"))
+        dim = mat.dim
+        rng = np.random.default_rng(42)
+        # Check H·v == Hᵀ·v for several random v (real Hermitian ↔ symmetric)
+        for _ in range(3):
+            v = rng.standard_normal(dim)
+            out1 = np.zeros(dim, dtype=np.float64)
+            out2 = np.zeros(dim, dtype=np.float64)
+            mat.dot(coeff, v, out1, True)
+            mat.dot_transpose(coeff, v, out2, True)
+            np.testing.assert_allclose(out1, out2, atol=1e-12)

@@ -7,18 +7,21 @@
 /// - [`DitSymGrp`]: lattice + local value-permutation operations (LHSS ≥ 3).
 pub mod dispatch;
 pub mod dit;
+pub mod fermion_grp;
 pub(crate) mod orbit;
 pub mod spin;
 pub(crate) mod traits;
 
 pub use dispatch::SymmetryGrpInner;
 pub use dit::DitSymGrp;
+pub use fermion_grp::FermionicSymGrp;
 pub use spin::{HardcoreGrpElement, HardcoreSymmetryGrp, SpinSymGrp};
+// BenesLatticeElement is declared below in this file — no re-export alias needed.
 
 pub(crate) use orbit::{check_refstate, get_refstate};
-pub(crate) use traits::LocalOpItem;
+pub(crate) use traits::{LatEl, LocalOpItem};
 
-use crate::bitbasis::{BitInt, BitStateOp, PermDitLocations};
+use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, PermDitLocations};
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
@@ -61,5 +64,63 @@ impl LatticeElement {
     #[inline]
     pub fn apply_state<B: BitInt>(&self, state: B) -> B {
         self.op.apply(state)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LatEl impls for LatticeElement
+// ---------------------------------------------------------------------------
+
+impl<B: BitInt> LatEl<B> for LatticeElement {
+    #[inline]
+    fn apply_state(&self, state: B) -> B {
+        self.op.apply(state)
+    }
+
+    #[inline]
+    fn grp_char_for(&self, _state: B) -> Complex<f64> {
+        self.grp_char
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BenesLatticeElement — Benes-backed lattice element (bosonic or fermionic)
+// ---------------------------------------------------------------------------
+
+/// A lattice element backed by a Benes permutation network.
+///
+/// Supports both bosonic (`fermionic=false`) and fermionic (`fermionic=true`)
+/// symmetry. When fermionic, [`grp_char_for`](LatEl::grp_char_for) multiplies
+/// in the Jordan-Wigner permutation sign computed from the pre-image state.
+#[derive(Clone)]
+pub struct BenesLatticeElement<B: BitInt> {
+    pub grp_char: Complex<f64>,
+    pub n_sites: usize,
+    pub op: BenesPermDitLocations<B>,
+}
+
+impl<B: BitInt> BenesLatticeElement<B> {
+    pub fn new(grp_char: Complex<f64>, op: BenesPermDitLocations<B>, n_sites: usize) -> Self {
+        BenesLatticeElement {
+            grp_char,
+            n_sites,
+            op,
+        }
+    }
+
+    pub fn n_sites(&self) -> usize {
+        self.n_sites
+    }
+}
+
+impl<B: BitInt> LatEl<B> for BenesLatticeElement<B> {
+    #[inline]
+    fn apply_state(&self, state: B) -> B {
+        self.op.apply(state)
+    }
+
+    #[inline]
+    fn grp_char_for(&self, state: B) -> Complex<f64> {
+        self.grp_char * Complex::new(self.op.fermionic_sign(state), 0.0)
     }
 }

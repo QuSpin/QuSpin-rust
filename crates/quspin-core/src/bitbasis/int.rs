@@ -36,6 +36,9 @@ pub trait BitInt:
     /// Narrow `self` to `usize`. Only valid when `self` is known to be small
     /// (e.g. after masking to a dit value); no bounds checking in release mode.
     fn to_usize(self) -> usize;
+
+    /// Count the number of set bits (Hamming weight / popcount).
+    fn count_ones(self) -> u32;
 }
 
 // --- u32 ---
@@ -56,6 +59,11 @@ impl BitInt for u32 {
     fn to_usize(self) -> usize {
         self as usize
     }
+
+    #[inline]
+    fn count_ones(self) -> u32 {
+        u32::count_ones(self)
+    }
 }
 
 // --- u64 ---
@@ -75,6 +83,11 @@ impl BitInt for u64 {
     #[inline]
     fn to_usize(self) -> usize {
         self as usize
+    }
+
+    #[inline]
+    fn count_ones(self) -> u32 {
+        u64::count_ones(self)
     }
 }
 
@@ -104,6 +117,12 @@ impl<const N: usize, const LIMBS: usize> BitInt for Uint<N, LIMBS> {
         // Limbs are little-endian (limb 0 is least significant 64-bit chunk).
         // Safe because this is only called after masking to a small dit value.
         *self.as_limbs().first().unwrap_or(&0) as usize
+    }
+
+    #[inline]
+    fn count_ones(self) -> u32 {
+        // ruint::Uint::count_ones returns usize; cast to u32.
+        Uint::<N, LIMBS>::count_ones(&self) as u32
     }
 }
 

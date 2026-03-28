@@ -5,7 +5,7 @@
 /// - [`with_sym_grp!`]: match macro that injects the concrete `B` type alias
 ///   and a binding to the inner group, used by call-sites that need to be
 ///   generic over `B`.
-use super::{LatticeElement, spin::HardcoreSymmetryGrp};
+use super::spin::HardcoreSymmetryGrp;
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
@@ -77,17 +77,17 @@ impl SymmetryGrpInner {
         }
     }
 
-    pub(crate) fn push_lattice(&mut self, el: LatticeElement) {
+    pub(crate) fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize], fermionic: bool) {
         match self {
-            SymmetryGrpInner::Sym32(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym64(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym128(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym256(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym512(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym1024(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym2048(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym4096(g) => g.push_lattice(el),
-            SymmetryGrpInner::Sym8192(g) => g.push_lattice(el),
+            SymmetryGrpInner::Sym32(g) => g.push_lattice(grp_char, perm, fermionic),
+            SymmetryGrpInner::Sym64(g) => g.push_lattice(grp_char, perm, fermionic),
+            SymmetryGrpInner::Sym128(g) => g.push_lattice(grp_char, perm, fermionic),
+            SymmetryGrpInner::Sym256(g) => g.push_lattice(grp_char, perm, fermionic),
+            SymmetryGrpInner::Sym512(g) => g.push_lattice(grp_char, perm, fermionic),
+            SymmetryGrpInner::Sym1024(g) => g.push_lattice(grp_char, perm, fermionic),
+            SymmetryGrpInner::Sym2048(g) => g.push_lattice(grp_char, perm, fermionic),
+            SymmetryGrpInner::Sym4096(g) => g.push_lattice(grp_char, perm, fermionic),
+            SymmetryGrpInner::Sym8192(g) => g.push_lattice(grp_char, perm, fermionic),
         }
     }
 

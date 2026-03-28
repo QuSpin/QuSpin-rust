@@ -11,6 +11,7 @@ use pyo3::prelude::*;
 fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<basis::PySpinSymGrp>()?;
     m.add_class::<basis::PyDitSymGrp>()?;
+    m.add_class::<basis::PyFermionicSymGrp>()?;
     m.add_class::<hamiltonian::PyHardcoreHamiltonian>()?;
     m.add_class::<hamiltonian::PyBondTerm>()?;
     m.add_class::<hamiltonian::PyBondHamiltonian>()?;

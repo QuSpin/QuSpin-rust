@@ -11,5 +11,5 @@ pub use seed::{
 };
 pub use space::{FullSpace, Subspace};
 pub use sym::{NormInt, SymmetricSubspace, SymmetricSubspaceInner};
-pub use symmetry::{DitSymGrp, SpinSymGrp};
+pub use symmetry::{DitSymGrp, FermionicSymGrp, SpinSymGrp};
 pub use traits::{BasisSpace, SymGrp};

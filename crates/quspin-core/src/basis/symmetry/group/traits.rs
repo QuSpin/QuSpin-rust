@@ -27,3 +27,23 @@ impl<B: BitInt, Op: BitStateOp<B>> LocalOpItem<B> for (Complex<f64>, Op) {
         (self.1.apply(state), self.0)
     }
 }
+
+// ---------------------------------------------------------------------------
+// LatEl
+// ---------------------------------------------------------------------------
+
+/// A lattice element with state-dependent group character.
+///
+/// For bosonic elements: `grp_char_for` returns a constant.
+/// For fermionic elements: `grp_char_for` includes the Jordan-Wigner
+/// permutation sign computed from the current state.
+pub(crate) trait LatEl<B: BitInt> {
+    /// Apply the site permutation, returning the new state.
+    fn apply_state(&self, state: B) -> B;
+
+    /// Return the group character for the given pre-image state.
+    ///
+    /// For bosonic elements this is a constant independent of `state`.
+    /// For fermionic elements this includes the Jordan-Wigner sign.
+    fn grp_char_for(&self, state: B) -> Complex<f64>;
+}

@@ -1,3 +1,3 @@
 pub mod group;
 
-pub use group::{DitSymGrp, SpinSymGrp, SymmetryGrpInner};
+pub use group::{DitSymGrp, FermionicSymGrp, SpinSymGrp, SymmetryGrpInner};

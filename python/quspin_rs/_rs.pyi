@@ -161,6 +161,67 @@ class PyDitSymGrp:
 
 
 # ---------------------------------------------------------------------------
+# PyFermionicSymGrp
+# ---------------------------------------------------------------------------
+
+
+class PyFermionicSymGrp:
+    """A fermionic symmetry group: lattice permutations with Jordan-Wigner sign
+    tracking.
+
+    Mutable builder — construct with ``n_sites``, then call :meth:`add_lattice`
+    to add symmetry elements.
+
+    All lattice elements automatically include the fermionic permutation sign
+    based on the pre-image state, implementing the Jordan-Wigner transformation
+    for site-permutation symmetries.
+
+    Use :class:`PySpinSymGrp` for bosonic systems.
+
+    Example:
+        >>> grp = PyFermionicSymGrp(n_sites=4)
+        >>> grp.add_lattice(grp_char=1.0 + 0j, perm=[1, 2, 3, 0])
+        >>> grp.n_sites
+        4
+    """
+
+    def __init__(self, n_sites: int) -> None:
+        """Construct an empty fermionic symmetry group.
+
+        Args:
+            n_sites (int): Number of lattice sites. Maximum value is 8192.
+
+        Raises:
+            ValueError: If ``n_sites > 8192``.
+        """
+        ...
+
+    def add_lattice(self, grp_char: complex, perm: list[int]) -> None:
+        """Add a lattice (site-permutation) symmetry element with fermionic sign
+        tracking.
+
+        The Jordan-Wigner sign of the permutation acting on the pre-image state
+        is automatically included in the group character.
+
+        Args:
+            grp_char (complex): Group character (eigenvalue of the symmetry
+                operator, e.g. ``1+0j`` for even parity, ``-1+0j`` for odd).
+            perm (list[int]): Forward site permutation where ``perm[src] = dst``.
+                Must have length ``n_sites``.
+        """
+        ...
+
+    @property
+    def n_sites(self) -> int:
+        """Number of lattice sites."""
+        ...
+
+    def __repr__(self) -> str:
+        """Return ``PyFermionicSymGrp(n_sites=...)``."""
+        ...
+
+
+# ---------------------------------------------------------------------------
 # PyHardcoreHamiltonian
 # ---------------------------------------------------------------------------
 
@@ -597,6 +658,32 @@ class PyHardcoreBasis:
         Raises:
             ValueError: If ``ham.n_sites != grp.n_sites``, if ``grp.lhss != 2``,
                 if any seed is malformed, or if ``n_sites`` exceeds 8192.
+        """
+        ...
+
+    @staticmethod
+    def symmetric_fermionic(
+        seeds: Iterable[_Seed],
+        ham: PyHardcoreHamiltonian,
+        grp: PyFermionicSymGrp,
+    ) -> PyHardcoreBasis:
+        """Build a symmetry-reduced subspace for a fermionic system.
+
+        Like :meth:`symmetric`, but accepts a :class:`PyFermionicSymGrp` whose
+        lattice elements include Jordan-Wigner permutation signs.
+
+        Args:
+            seeds (Iterable[str | list[int]]): Initial states (same format as
+                :meth:`subspace`).
+            ham (PyHardcoreHamiltonian): The Hamiltonian defining connectivity.
+            grp (PyFermionicSymGrp): The fermionic symmetry group.
+
+        Returns:
+            PyHardcoreBasis: Symmetry-reduced fermionic basis.
+
+        Raises:
+            ValueError: If ``ham.n_sites != grp.n_sites``, if any seed is
+                malformed, or if ``n_sites`` exceeds 8192.
         """
         ...
 
