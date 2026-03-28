@@ -274,18 +274,18 @@ impl<B: BitInt> BenesPermDitLocations<B> {
         // Build bit-level target permutation.
         // Convention: c_tgt[dst_bit] = src_bit (output bit dst comes from input bit src).
         // perm[src_site] = dst_site: bits of src_site appear at dst_site in output.
-        let mut c_tgt: Vec<i32> = vec![-1i32; bits];
+        let mut c_tgt: Vec<Option<usize>> = vec![None; bits];
         for (src, &dst) in perm.iter().enumerate() {
             for j in 0..bits_per_dit {
                 let src_bit = src * bits_per_dit + j;
                 let dst_bit = dst * bits_per_dit + j;
-                c_tgt[dst_bit] = src_bit as i32;
+                c_tgt[dst_bit] = Some(src_bit);
             }
         }
         // Fill remaining positions with identity.
         for (i, entry) in c_tgt.iter_mut().enumerate().take(bits) {
-            if *entry == -1 {
-                *entry = i as i32;
+            if entry.is_none() {
+                *entry = Some(i);
             }
         }
 
