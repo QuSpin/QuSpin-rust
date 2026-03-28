@@ -10,6 +10,6 @@ pub use seed::{
     state_to_str,
 };
 pub use space::{FullSpace, Subspace};
-pub use sym::SymmetricSubspace;
+pub use sym::{NormInt, SymmetricSubspace, SymmetricSubspaceInner};
 pub use symmetry::{DitSymGrp, SpinSymGrp};
 pub use traits::{BasisSpace, SymGrp};

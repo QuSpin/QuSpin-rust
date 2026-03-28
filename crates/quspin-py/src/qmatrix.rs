@@ -86,11 +86,11 @@ impl PyQMatrix {
                 with_sym_basis!(&basis.inner, B, sym_basis, {
                     match &ham.inner {
                         HardcoreHamiltonianInner::Ham8(h) => {
-                            build_from_symmetric::<_, _, V, i64, u8>(h, sym_basis)
+                            build_from_symmetric::<_, _, _, V, i64, u8>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
                         HardcoreHamiltonianInner::Ham16(h) => {
-                            build_from_symmetric::<_, _, V, i64, u16>(h, sym_basis)
+                            build_from_symmetric::<_, _, _, V, i64, u16>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
                     }
@@ -154,11 +154,11 @@ impl PyQMatrix {
                 with_sym_basis!(&basis.inner, B, sym_basis, {
                     match &ham.inner {
                         BondHamiltonianInner::Ham8(h) => {
-                            build_from_symmetric::<_, _, V, i64, u8>(h, sym_basis)
+                            build_from_symmetric::<_, _, _, V, i64, u8>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
                         BondHamiltonianInner::Ham16(h) => {
-                            build_from_symmetric::<_, _, V, i64, u16>(h, sym_basis)
+                            build_from_symmetric::<_, _, _, V, i64, u16>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
                     }

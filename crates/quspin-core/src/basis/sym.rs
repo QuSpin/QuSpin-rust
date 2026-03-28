@@ -6,6 +6,61 @@ use std::collections::HashMap;
 const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
 
 // ---------------------------------------------------------------------------
+// NormInt
+// ---------------------------------------------------------------------------
+
+/// Storage type for orbit norms inside [`SymmetricSubspace`].
+///
+/// The orbit norm is a small non-negative integer bounded by the symmetry
+/// group order.  Using a narrower integer than `f64` reduces memory by up to
+/// 8×; the `f64` value is only materialised at the [`entry`](SymmetricSubspace::entry)
+/// API boundary.
+///
+/// Choose based on `n_sites`:
+/// - `n_sites <= 32` → `u8`  (max group order 256 fits in u8)
+/// - `n_sites <= 64` → `u16`
+/// - `n_sites >  64` → `u32`
+///
+/// [`SymmetricSubspaceInner`] performs this dispatch automatically.
+pub trait NormInt: Copy + Send + Sync + 'static {
+    fn from_norm(norm: f64) -> Self;
+    fn to_f64(self) -> f64;
+}
+
+impl NormInt for u8 {
+    #[inline]
+    fn from_norm(norm: f64) -> Self {
+        norm as u8
+    }
+    #[inline]
+    fn to_f64(self) -> f64 {
+        f64::from(self)
+    }
+}
+
+impl NormInt for u16 {
+    #[inline]
+    fn from_norm(norm: f64) -> Self {
+        norm as u16
+    }
+    #[inline]
+    fn to_f64(self) -> f64 {
+        f64::from(self)
+    }
+}
+
+impl NormInt for u32 {
+    #[inline]
+    fn from_norm(norm: f64) -> Self {
+        norm as u32
+    }
+    #[inline]
+    fn to_f64(self) -> f64 {
+        f64::from(self)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SymmetricSubspace
 // ---------------------------------------------------------------------------
 
@@ -15,19 +70,23 @@ const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
 /// orbit norm (number of distinct group images).  States are sorted in
 /// ascending order by representative; a `HashMap` provides O(1) lookup.
 ///
+/// The type parameter `N` controls how norms are stored in memory; see
+/// [`NormInt`] for the recommended choice.  [`SymmetricSubspaceInner`]
+/// dispatches `N` automatically based on `n_sites`.
+///
 /// Construction is currently sequential (matching the C++ single-thread
 /// branch).  Rayon-parallel BFS is a deferred optimisation.
 ///
 /// Mirrors `symmetric_subspace<grp_t, bitset_t, norm_t>` from `space.hpp`.
-pub struct SymmetricSubspace<G: SymGrp> {
+pub struct SymmetricSubspace<G: SymGrp, N: NormInt = u32> {
     /// `(representative_state, orbit_norm)` pairs, sorted by state ascending.
-    states: Vec<(G::State, f64)>,
+    states: Vec<(G::State, N)>,
     /// Maps representative state → index in `states`.
     index_map: HashMap<G::State, usize>,
     grp: G,
 }
 
-impl<G: SymGrp> SymmetricSubspace<G> {
+impl<G: SymGrp, N: NormInt> SymmetricSubspace<G, N> {
     pub fn new(grp: G) -> Self {
         SymmetricSubspace {
             states: Vec::new(),
@@ -56,7 +115,7 @@ impl<G: SymGrp> SymmetricSubspace<G> {
             && let std::collections::hash_map::Entry::Vacant(e) = self.index_map.entry(ref_seed)
         {
             e.insert(self.states.len());
-            self.states.push((ref_seed, norm_seed));
+            self.states.push((ref_seed, N::from_norm(norm_seed)));
         }
 
         let mut stack: Vec<G::State> = vec![ref_seed];
@@ -95,7 +154,7 @@ impl<G: SymGrp> SymmetricSubspace<G> {
                         self.index_map.entry(next_ref)
                 {
                     e.insert(self.states.len());
-                    self.states.push((next_ref, next_norm));
+                    self.states.push((next_ref, N::from_norm(next_norm)));
                     stack.push(next_ref);
                 }
             }
@@ -113,8 +172,13 @@ impl<G: SymGrp> SymmetricSubspace<G> {
     }
 
     /// Return the representative state and orbit norm for index `i`.
+    ///
+    /// The norm is cast to `f64` at this boundary; internally it is stored as
+    /// `N` (typically `u8`, `u16`, or `u32`) to reduce memory usage.
+    #[inline]
     pub fn entry(&self, i: usize) -> (G::State, f64) {
-        self.states[i]
+        let (s, n) = self.states[i];
+        (s, n.to_f64())
     }
 
     /// Find the representative and accumulated coefficient for `state`.
@@ -133,7 +197,7 @@ impl<G: SymGrp> SymmetricSubspace<G> {
     }
 }
 
-impl<G: SymGrp> BasisSpace<G::State> for SymmetricSubspace<G> {
+impl<G: SymGrp, N: NormInt> BasisSpace<G::State> for SymmetricSubspace<G, N> {
     #[inline]
     fn n_sites(&self) -> usize {
         self.grp.n_sites()
@@ -153,6 +217,119 @@ impl<G: SymGrp> BasisSpace<G::State> for SymmetricSubspace<G> {
     #[inline]
     fn index(&self, state: G::State) -> Option<usize> {
         self.index_map.get(&state).copied()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SymmetricSubspaceInner — dispatch N based on n_sites
+// ---------------------------------------------------------------------------
+
+/// A [`SymmetricSubspace`] with the norm storage type selected automatically
+/// from `n_sites` at construction time:
+///
+/// | `n_sites` | `N`  | bytes/state |
+/// |-----------|------|-------------|
+/// | ≤ 32      | `u8` | `size_of(B) + 1` |
+/// | ≤ 64      | `u16`| `size_of(B) + 2` |
+/// | > 64      | `u32`| `size_of(B) + 4` |
+pub enum SymmetricSubspaceInner<G: SymGrp> {
+    U8(SymmetricSubspace<G, u8>),
+    U16(SymmetricSubspace<G, u16>),
+    U32(SymmetricSubspace<G, u32>),
+}
+
+impl<G: SymGrp> SymmetricSubspaceInner<G> {
+    /// Construct a new empty subspace, choosing the norm storage type based on
+    /// `grp.n_sites()`.
+    pub fn new(grp: G) -> Self {
+        match grp.n_sites() {
+            n if n <= 32 => Self::U8(SymmetricSubspace::new(grp)),
+            n if n <= 64 => Self::U16(SymmetricSubspace::new(grp)),
+            _ => Self::U32(SymmetricSubspace::new(grp)),
+        }
+    }
+
+    pub fn build<Op, I, Iter>(&mut self, seed: G::State, op: Op)
+    where
+        Op: Fn(G::State) -> Iter,
+        Iter: IntoIterator<Item = (Complex<f64>, G::State, I)>,
+    {
+        match self {
+            Self::U8(inner) => inner.build(seed, op),
+            Self::U16(inner) => inner.build(seed, op),
+            Self::U32(inner) => inner.build(seed, op),
+        }
+    }
+
+    #[inline]
+    pub fn entry(&self, i: usize) -> (G::State, f64) {
+        match self {
+            Self::U8(inner) => inner.entry(i),
+            Self::U16(inner) => inner.entry(i),
+            Self::U32(inner) => inner.entry(i),
+        }
+    }
+
+    pub fn get_refstate(&self, state: G::State) -> (G::State, Complex<f64>) {
+        match self {
+            Self::U8(inner) => inner.get_refstate(state),
+            Self::U16(inner) => inner.get_refstate(state),
+            Self::U32(inner) => inner.get_refstate(state),
+        }
+    }
+
+    pub fn get_refstate_batch(&self, states: &[G::State], out: &mut [(G::State, Complex<f64>)]) {
+        match self {
+            Self::U8(inner) => inner.get_refstate_batch(states, out),
+            Self::U16(inner) => inner.get_refstate_batch(states, out),
+            Self::U32(inner) => inner.get_refstate_batch(states, out),
+        }
+    }
+
+    pub fn check_refstate(&self, state: G::State) -> (G::State, f64) {
+        match self {
+            Self::U8(inner) => inner.check_refstate(state),
+            Self::U16(inner) => inner.check_refstate(state),
+            Self::U32(inner) => inner.check_refstate(state),
+        }
+    }
+}
+
+impl<G: SymGrp> BasisSpace<G::State> for SymmetricSubspaceInner<G> {
+    #[inline]
+    fn n_sites(&self) -> usize {
+        match self {
+            Self::U8(inner) => inner.n_sites(),
+            Self::U16(inner) => inner.n_sites(),
+            Self::U32(inner) => inner.n_sites(),
+        }
+    }
+
+    #[inline]
+    fn size(&self) -> usize {
+        match self {
+            Self::U8(inner) => inner.size(),
+            Self::U16(inner) => inner.size(),
+            Self::U32(inner) => inner.size(),
+        }
+    }
+
+    #[inline]
+    fn state_at(&self, i: usize) -> G::State {
+        match self {
+            Self::U8(inner) => inner.state_at(i),
+            Self::U16(inner) => inner.state_at(i),
+            Self::U32(inner) => inner.state_at(i),
+        }
+    }
+
+    #[inline]
+    fn index(&self, state: G::State) -> Option<usize> {
+        match self {
+            Self::U8(inner) => inner.index(state),
+            Self::U16(inner) => inner.index(state),
+            Self::U32(inner) => inner.index(state),
+        }
     }
 }
 
@@ -202,7 +379,7 @@ mod tests {
         let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(2);
         grp.push_lattice(id_lattice(2));
         grp.push_inverse(Complex::new(1.0, 0.0), &[0, 1]);
-        let mut sym = SymmetricSubspace::new(grp);
+        let mut sym = SymmetricSubspace::<_, u32>::new(grp);
         sym.build(0u32, x_op(2));
 
         assert_eq!(sym.size(), 2);
@@ -216,7 +393,7 @@ mod tests {
         // state is its own representative with norm = 1.
         let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(3);
         grp.push_lattice(id_lattice(3));
-        let mut sym = SymmetricSubspace::new(grp);
+        let mut sym = SymmetricSubspace::<_, u32>::new(grp);
         sym.build(0u32, x_op(3));
 
         // All 2^3 = 8 states should be present.
@@ -227,7 +404,7 @@ mod tests {
     fn symmetric_subspace_sorted_ascending() {
         let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(3);
         grp.push_lattice(id_lattice(3));
-        let mut sym = SymmetricSubspace::new(grp);
+        let mut sym = SymmetricSubspace::<_, u32>::new(grp);
         sym.build(0u32, x_op(3));
 
         for i in 1..sym.size() {
@@ -238,5 +415,34 @@ mod tests {
     #[test]
     fn symmetric_subspace_bitflip_grp_helper() {
         let _ = bitflip_grp(3); // verify construction doesn't panic
+    }
+
+    #[test]
+    fn norm_int_dispatch_u8() {
+        // n_sites=2 → U8 variant
+        let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(2);
+        grp.push_lattice(id_lattice(2));
+        grp.push_inverse(Complex::new(1.0, 0.0), &[0, 1]);
+        let mut sym = SymmetricSubspaceInner::new(grp);
+        assert!(matches!(sym, SymmetricSubspaceInner::U8(_)));
+        sym.build(0u32, x_op(2));
+        assert_eq!(sym.size(), 2);
+        assert!(sym.index(3u32).is_some());
+    }
+
+    #[test]
+    fn norm_int_roundtrip() {
+        // entry() must return the same norm as check_refstate would compute.
+        // With 1 lattice element (identity) and 1 local op (full flip), only
+        // the identity maps each representative back to itself, so norm = 1.
+        let mut grp = HardcoreSymmetryGrp::<u32>::new_empty(2);
+        grp.push_lattice(id_lattice(2));
+        grp.push_inverse(Complex::new(1.0, 0.0), &[0, 1]);
+        let mut sym = SymmetricSubspace::<_, u8>::new(grp);
+        sym.build(0u32, x_op(2));
+        for i in 0..sym.size() {
+            let (_, norm) = sym.entry(i);
+            assert_eq!(norm, 1.0);
+        }
     }
 }
