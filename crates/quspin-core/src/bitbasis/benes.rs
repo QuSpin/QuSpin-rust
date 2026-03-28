@@ -366,6 +366,46 @@ mod tests {
     }
 
     #[test]
+    fn fuzz_random_permutations_and_inputs() {
+        // Generate many random permutations of all 32 bits and many random
+        // input values, checking benes_fwd against naive_apply_perm for each
+        // (permutation, input) pair.
+        //
+        // Uses a simple LCG so the test is deterministic and fast.
+        let mut rng: u64 = 0xDEAD_BEEF_1234_5678;
+        let mut next = || -> u64 {
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            rng
+        };
+
+        const N_PERMS: usize = 200;
+        const N_INPUTS_PER_PERM: usize = 500;
+
+        for perm_idx in 0..N_PERMS {
+            // Build a random permutation of 32 bits via Fisher-Yates.
+            let mut perm: Vec<i32> = (0i32..32).collect();
+            for i in (1..32usize).rev() {
+                let j = (next() >> 33) as usize % (i + 1);
+                perm.swap(i, j);
+            }
+
+            let net = gen_benes::<u32>(&perm);
+
+            for _ in 0..N_INPUTS_PER_PERM {
+                let x = next() as u32;
+                let expected = naive_apply_perm(x, &perm);
+                let got = benes_fwd(&net, x);
+                assert_eq!(
+                    got, expected,
+                    "perm#{perm_idx} failed for x={x:#010x}: got {got:#010x}, expected {expected:#010x}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn reverse_permutation() {
         // Reverse first 8 bits. c_tgt convention: c_tgt[dst] = src.
         // Reverse means output bit i comes from input bit 7-i for i in 0..8.
