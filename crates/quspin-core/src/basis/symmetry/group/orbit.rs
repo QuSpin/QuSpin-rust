@@ -149,9 +149,7 @@ pub(crate) fn check_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
                     .zip(norms.iter_mut())
                 {
                     let s = lat.apply_state(*loc);
-                    if s > o.0 {
-                        o.0 = s;
-                    }
+                    o.0 = o.0.max(s);
                     *norm += (s == *state) as u32;
                 }
             }
