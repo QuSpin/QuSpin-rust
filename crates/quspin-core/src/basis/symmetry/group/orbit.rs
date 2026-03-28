@@ -78,16 +78,14 @@ pub(crate) fn check_refstate<B: BitInt, L: LocalOpItem<B>>(
     state: B,
 ) -> (B, f64) {
     let mut ref_state = state;
-    let mut norm = 0.0_f64;
+    let mut norm = 0u32;
     for (s, _) in iter_images(lattice, local, state) {
         if s > ref_state {
             ref_state = s;
         }
-        if s == state {
-            norm += 1.0;
-        }
+        norm += (s == state) as u32;
     }
-    (ref_state, norm)
+    (ref_state, norm as f64)
 }
 
 // ---------------------------------------------------------------------------
@@ -112,25 +110,28 @@ pub(crate) fn check_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
     states: &[B],
     out: &mut [(B, f64)],
 ) {
-    assert_eq!(states.len(), out.len());
+    let n = states.len();
+    assert_eq!(n, out.len());
 
-    // Initialise each output to (state, 0.0).
+    // Initialise representatives; norms start at zero.
+    // Using a separate u32 buffer keeps norm accumulation in the same
+    // register width as the state type, enabling LLVM to vectorise both
+    // the max-update and the equality-count loops uniformly.
     for (state, o) in states.iter().zip(out.iter_mut()) {
-        *o = (*state, 0.0);
+        o.0 = *state;
     }
+    let mut norms = vec![0u32; n];
 
     // Lattice-only images: apply each lattice element to the whole batch.
     // This inner loop over states is independent across iterations and will
     // be auto-vectorised by LLVM for u32/u64 state types.
     for lat in lattice {
-        for (state, o) in states.iter().zip(out.iter_mut()) {
+        for ((state, o), norm) in states.iter().zip(out.iter_mut()).zip(norms.iter_mut()) {
             let s = lat.apply_state(*state);
             if s > o.0 {
                 o.0 = s;
             }
-            if s == *state {
-                o.1 += 1.0;
-            }
+            *norm += (s == *state) as u32;
         }
     }
 
@@ -138,24 +139,32 @@ pub(crate) fn check_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
     // first, then apply each lattice element uniformly — keeping the
     // innermost loop over states independent.
     if !local.is_empty() {
-        let mut loc_states: Vec<B> = vec![B::from_u64(0); states.len()];
+        let mut loc_states: Vec<B> = vec![B::from_u64(0); n];
         for item in local {
             for (state, loc) in states.iter().zip(loc_states.iter_mut()) {
                 let (ls, _) = item.apply_local(*state);
                 *loc = ls;
             }
             for lat in lattice {
-                for ((loc, state), o) in loc_states.iter().zip(states.iter()).zip(out.iter_mut()) {
+                for (((loc, state), o), norm) in loc_states
+                    .iter()
+                    .zip(states.iter())
+                    .zip(out.iter_mut())
+                    .zip(norms.iter_mut())
+                {
                     let s = lat.apply_state(*loc);
                     if s > o.0 {
                         o.0 = s;
                     }
-                    if s == *state {
-                        o.1 += 1.0;
-                    }
+                    *norm += (s == *state) as u32;
                 }
             }
         }
+    }
+
+    // Write norms as f64 in a single final pass.
+    for (o, norm) in out.iter_mut().zip(norms.iter()) {
+        o.1 = *norm as f64;
     }
 }
 
