@@ -1,10 +1,10 @@
+use super::dispatch::HardcoreSymmetryGrp;
 /// Fermionic symmetry group type.
 ///
 /// Extends the hardcore (LHSS=2) basis with Jordan-Wigner permutation signs.
 /// Each lattice element includes the fermionic sign of the permutation acting
 /// on the pre-image state.
 use super::dispatch::SymmetryGrpInner;
-use super::inner::HardcoreSymmetryGrp;
 use crate::error::QuSpinError;
 use num_complex::Complex;
 

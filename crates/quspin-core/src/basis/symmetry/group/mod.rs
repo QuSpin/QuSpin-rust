@@ -8,7 +8,6 @@
 pub mod dispatch;
 pub mod dit;
 pub mod fermion_grp;
-pub(crate) mod inner;
 pub(crate) mod orbit;
 pub mod spin;
 pub(crate) mod traits;
