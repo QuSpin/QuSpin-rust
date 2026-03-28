@@ -71,12 +71,24 @@ impl<G: SymGrp> SymmetricSubspace<G> {
                     e.1 += amp.norm();
                 }
             }
-            for (next_state, (net_amp, scale)) in contributions {
-                if net_amp.norm() <= scale * AMP_CANCEL_TOL {
-                    continue;
-                }
-                let (next_ref, _coeff) = self.grp.get_refstate(next_state);
-                let (_ref2, next_norm) = self.grp.check_refstate(next_ref);
+
+            // Collect non-cancelled candidates.
+            let candidates: Vec<G::State> = contributions
+                .iter()
+                .filter(|(_, (net_amp, scale))| net_amp.norm() > scale * AMP_CANCEL_TOL)
+                .map(|(&s, _)| s)
+                .collect();
+
+            if candidates.is_empty() {
+                continue;
+            }
+
+            // Batch-find the representative for each candidate, then process.
+            let mut batch_out: Vec<(G::State, f64)> = vec![(candidates[0], 0.0); candidates.len()];
+            self.grp.check_refstate_batch(&candidates, &mut batch_out);
+
+            for (next_ref, _) in batch_out {
+                let (_, next_norm) = self.grp.check_refstate(next_ref);
 
                 if next_norm > 0.0
                     && let std::collections::hash_map::Entry::Vacant(e) =

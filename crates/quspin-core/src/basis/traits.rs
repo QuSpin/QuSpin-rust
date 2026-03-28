@@ -36,4 +36,21 @@ pub trait SymGrp {
     /// Return the representative state and the orbit norm (number of images
     /// equal to `state` under the full group action).
     fn check_refstate(&self, state: Self::State) -> (Self::State, f64);
+
+    /// Batch variant of [`check_refstate`].
+    ///
+    /// Writes `(representative, norm)` for each element of `states` into the
+    /// corresponding element of `out`.  The default implementation calls the
+    /// scalar [`check_refstate`](Self::check_refstate) for each state;
+    /// implementations may override this with a SIMD-optimised version.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `states.len() != out.len()`.
+    fn check_refstate_batch(&self, states: &[Self::State], out: &mut [(Self::State, f64)]) {
+        assert_eq!(states.len(), out.len());
+        for (state, o) in states.iter().zip(out.iter_mut()) {
+            *o = self.check_refstate(*state);
+        }
+    }
 }

@@ -93,6 +93,12 @@ impl<B: BitInt> HardcoreSymmetryGrp<B> {
     pub fn check_refstate(&self, state: B) -> (B, f64) {
         super::check_refstate(&self.lattice, &self.local, state)
     }
+
+    /// Batch variant: computes `check_refstate` for every element of `states`
+    /// in a single pass with loop order optimised for auto-vectorisation.
+    pub fn check_refstate_batch(&self, states: &[B], out: &mut [(B, f64)]) {
+        super::orbit::check_refstate_batch(&self.lattice, &self.local, states, out);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +118,10 @@ impl<B: BitInt> SymGrp for HardcoreSymmetryGrp<B> {
 
     fn check_refstate(&self, state: B) -> (B, f64) {
         HardcoreSymmetryGrp::check_refstate(self, state)
+    }
+
+    fn check_refstate_batch(&self, states: &[B], out: &mut [(B, f64)]) {
+        HardcoreSymmetryGrp::check_refstate_batch(self, states, out);
     }
 }
 

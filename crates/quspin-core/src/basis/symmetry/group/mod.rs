@@ -48,8 +48,18 @@ impl LatticeElement {
         self.n_sites
     }
 
+    /// Apply the permutation and accumulate the group character into `coeff`.
     #[inline]
     pub fn apply<B: BitInt>(&self, state: B, coeff: Complex<f64>) -> (B, Complex<f64>) {
         (self.op.apply(state), coeff * self.grp_char)
+    }
+
+    /// Apply only the site permutation, discarding the group character.
+    ///
+    /// Used by the batch orbit helpers where the character is not needed
+    /// (e.g. [`check_refstate_batch`](super::orbit::check_refstate_batch)).
+    #[inline]
+    pub fn apply_state<B: BitInt>(&self, state: B) -> B {
+        self.op.apply(state)
     }
 }

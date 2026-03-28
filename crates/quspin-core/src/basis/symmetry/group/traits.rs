@@ -1,4 +1,5 @@
-/// Shared traits for local symmetry operations.
+/// Shared traits for local symmetry operations, and `SymGrp` impls for the
+/// group types defined in this module.
 use crate::bitbasis::{BitInt, BitStateOp};
 use num_complex::Complex;
 
