@@ -1,7 +1,7 @@
 /// Dit symmetry group types.
 ///
 /// The public type is [`DitSymGrp`]. Inner types live in [`super::dispatch`].
-use super::dispatch::{SymGrpInner, SymmetryGrpInner};
+use super::dispatch::{DitGrpInner, SymmetryGrpInner};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
@@ -45,7 +45,7 @@ impl DitSymGrp {
             return Err(QuSpinError::ValueError(format!(
                 "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, exceeding the 8192-bit maximum"
             ))),
-            { SymmetryGrpInner::from(SymGrpInner::<B>::new_empty(lhss, n_sites, false)) }
+            { SymmetryGrpInner::from(DitGrpInner::<B>::new_empty(lhss, n_sites, false)) }
         );
         Ok(DitSymGrp {
             lhss,

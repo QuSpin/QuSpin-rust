@@ -1,7 +1,7 @@
 /// Spin-symmetry group types.
 ///
 /// The public type is [`SpinSymGrp`]. B-type dispatch lives in [`super::dispatch`].
-use super::dispatch::{SymGrpInner, SymmetryGrpInner};
+use super::dispatch::{DitGrpInner, HardcoreGrpInner, SymmetryGrpInner};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
@@ -42,7 +42,13 @@ impl SpinSymGrp {
             return Err(QuSpinError::ValueError(format!(
                 "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, exceeding the 8192-bit maximum"
             ))),
-            { SymmetryGrpInner::from(SymGrpInner::<B>::new_empty(lhss, n_sites, false)) }
+            {
+                if lhss == 2 {
+                    SymmetryGrpInner::from(HardcoreGrpInner::<B>::new_empty(lhss, n_sites, false))
+                } else {
+                    SymmetryGrpInner::from(DitGrpInner::<B>::new_empty(lhss, n_sites, false))
+                }
+            }
         );
         Ok(SpinSymGrp {
             lhss,
@@ -82,10 +88,9 @@ impl SpinSymGrp {
 
     /// Access the inner dispatch type.
     ///
-    /// Used by `quspin-py` to construct `SymmetricSubspace<SymGrpInner<B>>` via `with_sym_grp!`.
-    /// Returns `None` for LHSS > 2 groups where the inner type does not support
-    /// a hardcore (LHSS=2) subspace — currently returns `Some` for all groups
-    /// since the unified `SymGrpInner` is used for all LHSS values.
+    /// Used by `quspin-py` to construct `SymmetricSubspace<HardcoreGrpInner<B>>` via `with_sym_grp!`.
+    /// Returns `None` for LHSS > 2 groups (which hold a `Dit*` inner variant that
+    /// is not supported by the hardcore subspace builder).
     pub fn as_hardcore(&self) -> Option<&SymmetryGrpInner> {
         // Only LHSS=2 is currently wired to the hardcore subspace builder in quspin-py.
         if self.lhss == 2 {
@@ -117,7 +122,7 @@ mod tests {
 
         let grp_inner = grp.as_hardcore().unwrap();
         match grp_inner {
-            SymmetryGrpInner::Sym32(g) => {
+            SymmetryGrpInner::Hc32(g) => {
                 let (ref_s, _) = g.get_refstate(0b01u32);
                 assert_eq!(ref_s, 0b10u32);
             }
@@ -132,7 +137,7 @@ mod tests {
 
         let grp_inner = grp.as_hardcore().unwrap();
         match grp_inner {
-            SymmetryGrpInner::Sym32(g) => {
+            SymmetryGrpInner::Hc32(g) => {
                 let (ref_s, _) = g.get_refstate(0b001u32);
                 assert_eq!(ref_s, 0b010u32);
             }
@@ -155,15 +160,15 @@ mod tests {
         assert_eq!(grp.n_sites(), 2);
         assert_eq!(grp.lhss(), 3);
 
-        // n_sites=2, lhss=3 => bits_per_dit=2, n_bits=4 => Sym32
+        // n_sites=2, lhss=3 => bits_per_dit=2, n_bits=4 => Dit32
         let manip = DynamicDitManip::new(3);
         let state: u32 = manip.set_dit(manip.set_dit(0u32, 1, 0), 0, 1);
         match grp.inner() {
-            SymmetryGrpInner::Sym32(inner) => {
+            SymmetryGrpInner::Dit32(inner) => {
                 let (ref_s, _) = inner.get_refstate(state);
                 assert!(ref_s >= state);
             }
-            _ => panic!("expected Sym32 variant for n_bits=4"),
+            _ => panic!("expected Dit32 variant for n_bits=4"),
         }
     }
 

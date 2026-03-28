@@ -5,14 +5,16 @@ use crate::bitbasis::{
 };
 /// B-type dispatch for the unified symmetry group path.
 ///
-/// - [`SymGrpInner<B>`]: single concrete generic type backing all group
-///   variants (hardcore, dit, fermionic).  Carries `lhss`, `fermionic`, and
-///   two element lists.
-/// - [`SymmetryGrpInner`]: type-erased enum over 9 concrete `SymGrpInner<B>`
-///   types, selected by `n_bits` at construction.
-/// - [`with_sym_grp!`]: match macro that injects the concrete `B` type alias
-///   and a binding to the inner group, used by call-sites that need to be
-///   generic over `B`.
+/// - [`SymGrpBase<B, L>`]: single concrete generic struct backing all group
+///   variants.  `L` is the local-op type: [`PermDitMask<B>`] for LHSS=2
+///   (hardcore/fermionic), [`DynamicPermDitValues`] for LHSS≥3 (dit/boson).
+/// - [`HardcoreGrpInner<B>`]: type alias for LHSS=2 groups.
+/// - [`DitGrpInner<B>`]: type alias for LHSS≥3 groups.
+/// - [`SymmetryGrpInner`]: type-erased enum over 18 concrete inner types
+///   (9 `Hc*` + 9 `Dit*`), selected at construction time based on LHSS and
+///   `n_bits`.
+/// - [`with_sym_grp!`]: match macro for `Hc*` variants; injects a concrete
+///   `B` type alias and a binding to the inner group.
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
@@ -28,55 +30,47 @@ pub(crate) type B4096 = ruint::Uint<4096, 64>;
 pub(crate) type B8192 = ruint::Uint<8192, 128>;
 
 // ---------------------------------------------------------------------------
-// LocalOp<B> — unified local operation (XOR mask or value permutation)
+// SymGrpBase<B, L> — generic inner group (no runtime dispatch on local ops)
 // ---------------------------------------------------------------------------
 
-/// A local symmetry operation stored inside [`SymGrpInner`].
+/// Generic inner symmetry group.
 ///
-/// - `Mask`: XOR bit-flip via [`PermDitMask<B>`] — used for LHSS = 2
-///   spin-inversion / bit-flip ops.  Zero-overhead: a single XOR instruction.
-/// - `Perm`: arbitrary value permutation via [`DynamicPermDitValues`] — used
-///   for LHSS ≥ 3.
+/// The local-op type `L` is monomorphised at the [`SymmetryGrpInner`]
+/// construction site:
+/// - `L = PermDitMask<B>` → [`HardcoreGrpInner<B>`] — LHSS=2, XOR bit-flip.
+/// - `L = DynamicPermDitValues` → [`DitGrpInner<B>`] — LHSS≥3, value perm.
+///
+/// No runtime `match` on the local-op type occurs in the hot path.
 #[derive(Clone)]
-pub(crate) enum LocalOp<B: BitInt> {
-    Mask(PermDitMask<B>),
-    Perm(DynamicPermDitValues),
-}
-
-impl<B: BitInt> BitStateOp<B> for LocalOp<B> {
-    #[inline]
-    fn apply(&self, state: B) -> B {
-        match self {
-            LocalOp::Mask(m) => m.apply(state),
-            LocalOp::Perm(p) => p.apply(state),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SymGrpInner<B> — unified inner group type
-// ---------------------------------------------------------------------------
-
-/// Unified inner symmetry group.
-///
-/// Replaces `HardcoreSymmetryGrp<B>`, `DitValueGrpInner<B,LHSS>`,
-/// `DitValueGrpDyn<B>`, `DitSymGrpInner<B>`, and `DitSymGrpInnerEnum`.
-///
-/// The `lhss` field distinguishes hardcore (2) from dit (≥3).
-/// The `fermionic` flag enables Jordan-Wigner sign tracking for lattice ops.
-#[derive(Clone)]
-pub struct SymGrpInner<B: BitInt> {
+pub struct SymGrpBase<B: BitInt, L> {
     lhss: usize,
     fermionic: bool,
     n_sites: usize,
     lattice: Vec<BenesLatticeElement<B>>,
-    local: Vec<(Complex<f64>, LocalOp<B>)>,
+    local: Vec<(Complex<f64>, L)>,
 }
 
-impl<B: BitInt> SymGrpInner<B> {
+/// Inner group type for LHSS=2 (hardcore bosons / spinless fermions).
+///
+/// Local operations are XOR bit-flip masks ([`PermDitMask<B>`]).
+pub type HardcoreGrpInner<B> = SymGrpBase<B, PermDitMask<B>>;
+
+/// Inner group type for LHSS≥3 (bosons with occupancy ≥3 / higher spin).
+///
+/// Local operations are value permutations ([`DynamicPermDitValues`]).
+pub type DitGrpInner<B> = SymGrpBase<B, DynamicPermDitValues>;
+
+/// Backward-compatible alias: `SymGrpInner<B>` is [`HardcoreGrpInner<B>`].
+pub type SymGrpInner<B> = HardcoreGrpInner<B>;
+
+// ---------------------------------------------------------------------------
+// SymGrpBase: common methods (no L bound needed)
+// ---------------------------------------------------------------------------
+
+impl<B: BitInt, L> SymGrpBase<B, L> {
     /// Construct an empty group.
     pub fn new_empty(lhss: usize, n_sites: usize, fermionic: bool) -> Self {
-        SymGrpInner {
+        SymGrpBase {
             lhss,
             fermionic,
             n_sites,
@@ -104,42 +98,13 @@ impl<B: BitInt> SymGrpInner<B> {
         self.lattice
             .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
     }
+}
 
-    /// Add a local value-permutation element (LHSS ≥ 3).
-    ///
-    /// `perm[v] = w` maps local occupation `v` to `w` at each site in `locs`.
-    pub fn push_local_perm(&mut self, grp_char: Complex<f64>, perm: Vec<u8>, locs: Vec<usize>) {
-        self.local.push((
-            grp_char,
-            LocalOp::Perm(DynamicPermDitValues::new(self.lhss, perm, locs)),
-        ));
-    }
+// ---------------------------------------------------------------------------
+// SymGrpBase: orbit methods (require L: BitStateOp<B> for LocalOpItem blanket)
+// ---------------------------------------------------------------------------
 
-    /// Add a spin-inversion element: maps `v → lhss − v − 1` at each site in `locs`.
-    ///
-    /// For LHSS ≥ 3 uses `DynamicPermDitValues`. For LHSS = 2 use
-    /// [`push_inverse`](Self::push_inverse) for the faster XOR path.
-    pub fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
-        let perm: Vec<u8> = (0..self.lhss).rev().map(|v| v as u8).collect();
-        self.push_local_perm(grp_char, perm, locs);
-    }
-
-    /// Add a spin-inversion / bit-flip element for LHSS = 2.
-    ///
-    /// Builds an XOR mask from `locs` and stores it as a [`LocalOp::Mask`],
-    /// which applies via a single XOR instruction rather than a loop over sites.
-    pub fn push_inverse(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
-        let mask = locs.iter().fold(B::from_u64(0), |acc, &site| {
-            if site < B::BITS as usize {
-                acc | (B::from_u64(1) << site)
-            } else {
-                acc
-            }
-        });
-        self.local
-            .push((grp_char, LocalOp::Mask(PermDitMask::new(mask))));
-    }
-
+impl<B: BitInt, L: BitStateOp<B>> SymGrpBase<B, L> {
     pub fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
         super::get_refstate(&self.lattice, &self.local, state)
     }
@@ -161,105 +126,220 @@ impl<B: BitInt> SymGrpInner<B> {
 }
 
 // ---------------------------------------------------------------------------
-// SymGrp impl for SymGrpInner<B>
+// HardcoreGrpInner-specific methods (LHSS=2, XOR path)
 // ---------------------------------------------------------------------------
 
-impl<B: BitInt> SymGrp for SymGrpInner<B> {
+impl<B: BitInt> SymGrpBase<B, PermDitMask<B>> {
+    /// Add a spin-inversion / bit-flip element for LHSS = 2.
+    ///
+    /// Builds an XOR mask from `locs` and stores it as a [`PermDitMask<B>`],
+    /// which applies via a single XOR instruction rather than a loop over sites.
+    pub fn push_inverse(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
+        let mask = locs.iter().fold(B::from_u64(0), |acc, &site| {
+            if site < B::BITS as usize {
+                acc | (B::from_u64(1) << site)
+            } else {
+                acc
+            }
+        });
+        self.local.push((grp_char, PermDitMask::new(mask)));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DitGrpInner-specific methods (LHSS≥3, value-permutation path)
+// ---------------------------------------------------------------------------
+
+impl<B: BitInt> SymGrpBase<B, DynamicPermDitValues> {
+    /// Add a local value-permutation element (LHSS ≥ 3).
+    ///
+    /// `perm[v] = w` maps local occupation `v` to `w` at each site in `locs`.
+    pub fn push_local_perm(&mut self, grp_char: Complex<f64>, perm: Vec<u8>, locs: Vec<usize>) {
+        self.local
+            .push((grp_char, DynamicPermDitValues::new(self.lhss, perm, locs)));
+    }
+
+    /// Add a spin-inversion element: maps `v → lhss − v − 1` at each site in `locs`.
+    pub fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+        let perm: Vec<u8> = (0..self.lhss).rev().map(|v| v as u8).collect();
+        self.push_local_perm(grp_char, perm, locs);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SymGrp impl for SymGrpBase<B, L>
+// ---------------------------------------------------------------------------
+
+impl<B: BitInt, L: BitStateOp<B>> SymGrp for SymGrpBase<B, L> {
     type State = B;
 
     fn n_sites(&self) -> usize {
-        SymGrpInner::n_sites(self)
+        SymGrpBase::n_sites(self)
     }
 
     fn get_refstate(&self, state: B) -> (B, num_complex::Complex<f64>) {
-        SymGrpInner::get_refstate(self, state)
+        SymGrpBase::get_refstate(self, state)
     }
 
     fn get_refstate_batch(&self, states: &[B], out: &mut [(B, Complex<f64>)]) {
-        SymGrpInner::get_refstate_batch(self, states, out);
+        SymGrpBase::get_refstate_batch(self, states, out);
     }
 
     fn check_refstate(&self, state: B) -> (B, f64) {
-        SymGrpInner::check_refstate(self, state)
+        SymGrpBase::check_refstate(self, state)
     }
 
     fn check_refstate_batch(&self, states: &[B], out: &mut [(B, f64)]) {
-        SymGrpInner::check_refstate_batch(self, states, out);
+        SymGrpBase::check_refstate_batch(self, states, out);
     }
 }
 
 // ---------------------------------------------------------------------------
-// SymmetryGrpInner
+// SymmetryGrpInner — 18-variant type-erased enum
 // ---------------------------------------------------------------------------
 
-/// Type-erased symmetry group: one of 9 concrete `SymGrpInner<B>` types.
+/// Type-erased symmetry group: one of 18 concrete inner types.
 ///
-/// The concrete `B` is selected based on `n_bits` (= `n_sites * bits_per_dit`)
-/// at construction time inside the public wrappers (`SpinSymGrp`, `DitSymGrp`,
-/// `FermionicSymGrp`).
+/// - `Hc*` variants hold [`HardcoreGrpInner<B>`] — LHSS=2 (hardcore / fermionic).
+/// - `Dit*` variants hold [`DitGrpInner<B>`] — LHSS≥3 (dit / boson / higher spin).
+///
+/// The concrete variant is selected based on LHSS and `n_bits`
+/// (= `n_sites * bits_per_dit`) at construction time inside the public
+/// wrappers (`SpinSymGrp`, `DitSymGrp`, `FermionicSymGrp`).
 #[derive(Clone)]
 pub enum SymmetryGrpInner {
-    Sym32(SymGrpInner<u32>),
-    Sym64(SymGrpInner<u64>),
-    Sym128(SymGrpInner<B128>),
-    Sym256(SymGrpInner<B256>),
-    Sym512(SymGrpInner<B512>),
-    Sym1024(SymGrpInner<B1024>),
-    Sym2048(SymGrpInner<B2048>),
-    Sym4096(SymGrpInner<B4096>),
-    Sym8192(SymGrpInner<B8192>),
+    // LHSS=2 — hardcore bosons / fermions
+    Hc32(HardcoreGrpInner<u32>),
+    Hc64(HardcoreGrpInner<u64>),
+    Hc128(HardcoreGrpInner<B128>),
+    Hc256(HardcoreGrpInner<B256>),
+    Hc512(HardcoreGrpInner<B512>),
+    Hc1024(HardcoreGrpInner<B1024>),
+    Hc2048(HardcoreGrpInner<B2048>),
+    Hc4096(HardcoreGrpInner<B4096>),
+    Hc8192(HardcoreGrpInner<B8192>),
+    // LHSS≥3 — dit bosons / higher spin
+    Dit32(DitGrpInner<u32>),
+    Dit64(DitGrpInner<u64>),
+    Dit128(DitGrpInner<B128>),
+    Dit256(DitGrpInner<B256>),
+    Dit512(DitGrpInner<B512>),
+    Dit1024(DitGrpInner<B1024>),
+    Dit2048(DitGrpInner<B2048>),
+    Dit4096(DitGrpInner<B4096>),
+    Dit8192(DitGrpInner<B8192>),
 }
 
-macro_rules! impl_from_sym_grp_inner {
+macro_rules! impl_from_hc {
     ($B:ty, $variant:ident) => {
-        impl From<SymGrpInner<$B>> for SymmetryGrpInner {
+        impl From<HardcoreGrpInner<$B>> for SymmetryGrpInner {
             #[inline]
-            fn from(g: SymGrpInner<$B>) -> Self {
+            fn from(g: HardcoreGrpInner<$B>) -> Self {
                 SymmetryGrpInner::$variant(g)
             }
         }
     };
 }
 
-impl_from_sym_grp_inner!(u32, Sym32);
-impl_from_sym_grp_inner!(u64, Sym64);
-impl_from_sym_grp_inner!(B128, Sym128);
-impl_from_sym_grp_inner!(B256, Sym256);
-impl_from_sym_grp_inner!(B512, Sym512);
-impl_from_sym_grp_inner!(B1024, Sym1024);
-impl_from_sym_grp_inner!(B2048, Sym2048);
-impl_from_sym_grp_inner!(B4096, Sym4096);
-impl_from_sym_grp_inner!(B8192, Sym8192);
+macro_rules! impl_from_dit {
+    ($B:ty, $variant:ident) => {
+        impl From<DitGrpInner<$B>> for SymmetryGrpInner {
+            #[inline]
+            fn from(g: DitGrpInner<$B>) -> Self {
+                SymmetryGrpInner::$variant(g)
+            }
+        }
+    };
+}
+
+impl_from_hc!(u32, Hc32);
+impl_from_hc!(u64, Hc64);
+impl_from_hc!(B128, Hc128);
+impl_from_hc!(B256, Hc256);
+impl_from_hc!(B512, Hc512);
+impl_from_hc!(B1024, Hc1024);
+impl_from_hc!(B2048, Hc2048);
+impl_from_hc!(B4096, Hc4096);
+impl_from_hc!(B8192, Hc8192);
+
+impl_from_dit!(u32, Dit32);
+impl_from_dit!(u64, Dit64);
+impl_from_dit!(B128, Dit128);
+impl_from_dit!(B256, Dit256);
+impl_from_dit!(B512, Dit512);
+impl_from_dit!(B1024, Dit1024);
+impl_from_dit!(B2048, Dit2048);
+impl_from_dit!(B4096, Dit4096);
+impl_from_dit!(B8192, Dit8192);
 
 impl SymmetryGrpInner {
     pub fn n_sites(&self) -> usize {
         match self {
-            SymmetryGrpInner::Sym32(g) => g.n_sites(),
-            SymmetryGrpInner::Sym64(g) => g.n_sites(),
-            SymmetryGrpInner::Sym128(g) => g.n_sites(),
-            SymmetryGrpInner::Sym256(g) => g.n_sites(),
-            SymmetryGrpInner::Sym512(g) => g.n_sites(),
-            SymmetryGrpInner::Sym1024(g) => g.n_sites(),
-            SymmetryGrpInner::Sym2048(g) => g.n_sites(),
-            SymmetryGrpInner::Sym4096(g) => g.n_sites(),
-            SymmetryGrpInner::Sym8192(g) => g.n_sites(),
+            SymmetryGrpInner::Hc32(g) => g.n_sites(),
+            SymmetryGrpInner::Hc64(g) => g.n_sites(),
+            SymmetryGrpInner::Hc128(g) => g.n_sites(),
+            SymmetryGrpInner::Hc256(g) => g.n_sites(),
+            SymmetryGrpInner::Hc512(g) => g.n_sites(),
+            SymmetryGrpInner::Hc1024(g) => g.n_sites(),
+            SymmetryGrpInner::Hc2048(g) => g.n_sites(),
+            SymmetryGrpInner::Hc4096(g) => g.n_sites(),
+            SymmetryGrpInner::Hc8192(g) => g.n_sites(),
+            SymmetryGrpInner::Dit32(g) => g.n_sites(),
+            SymmetryGrpInner::Dit64(g) => g.n_sites(),
+            SymmetryGrpInner::Dit128(g) => g.n_sites(),
+            SymmetryGrpInner::Dit256(g) => g.n_sites(),
+            SymmetryGrpInner::Dit512(g) => g.n_sites(),
+            SymmetryGrpInner::Dit1024(g) => g.n_sites(),
+            SymmetryGrpInner::Dit2048(g) => g.n_sites(),
+            SymmetryGrpInner::Dit4096(g) => g.n_sites(),
+            SymmetryGrpInner::Dit8192(g) => g.n_sites(),
         }
     }
 
     pub(crate) fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
         match self {
-            SymmetryGrpInner::Sym32(g) => g.push_lattice(grp_char, perm),
-            SymmetryGrpInner::Sym64(g) => g.push_lattice(grp_char, perm),
-            SymmetryGrpInner::Sym128(g) => g.push_lattice(grp_char, perm),
-            SymmetryGrpInner::Sym256(g) => g.push_lattice(grp_char, perm),
-            SymmetryGrpInner::Sym512(g) => g.push_lattice(grp_char, perm),
-            SymmetryGrpInner::Sym1024(g) => g.push_lattice(grp_char, perm),
-            SymmetryGrpInner::Sym2048(g) => g.push_lattice(grp_char, perm),
-            SymmetryGrpInner::Sym4096(g) => g.push_lattice(grp_char, perm),
-            SymmetryGrpInner::Sym8192(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Hc32(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Hc64(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Hc128(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Hc256(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Hc512(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Hc1024(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Hc2048(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Hc4096(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Hc8192(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Dit32(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Dit64(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Dit128(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Dit256(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Dit512(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Dit1024(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Dit2048(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Dit4096(g) => g.push_lattice(grp_char, perm),
+            SymmetryGrpInner::Dit8192(g) => g.push_lattice(grp_char, perm),
         }
     }
 
+    /// Add a spin-inversion / bit-flip element.
+    ///
+    /// Only valid for `Hc*` (LHSS=2) variants.  Panics if called on a `Dit*` variant.
+    pub(crate) fn push_inverse(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
+        match self {
+            SymmetryGrpInner::Hc32(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Hc64(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Hc128(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Hc256(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Hc512(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Hc1024(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Hc2048(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Hc4096(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Hc8192(g) => g.push_inverse(grp_char, locs),
+            _ => panic!("push_inverse called on a LHSS≥3 (Dit*) symmetry group"),
+        }
+    }
+
+    /// Add a local value-permutation element (LHSS ≥ 3).
+    ///
+    /// Only valid for `Dit*` variants.  Panics if called on a `Hc*` variant.
     pub(crate) fn push_local_perm(
         &mut self,
         grp_char: Complex<f64>,
@@ -267,44 +347,34 @@ impl SymmetryGrpInner {
         locs: Vec<usize>,
     ) {
         match self {
-            SymmetryGrpInner::Sym32(g) => g.push_local_perm(grp_char, perm, locs),
-            SymmetryGrpInner::Sym64(g) => g.push_local_perm(grp_char, perm, locs),
-            SymmetryGrpInner::Sym128(g) => g.push_local_perm(grp_char, perm, locs),
-            SymmetryGrpInner::Sym256(g) => g.push_local_perm(grp_char, perm, locs),
-            SymmetryGrpInner::Sym512(g) => g.push_local_perm(grp_char, perm, locs),
-            SymmetryGrpInner::Sym1024(g) => g.push_local_perm(grp_char, perm, locs),
-            SymmetryGrpInner::Sym2048(g) => g.push_local_perm(grp_char, perm, locs),
-            SymmetryGrpInner::Sym4096(g) => g.push_local_perm(grp_char, perm, locs),
-            SymmetryGrpInner::Sym8192(g) => g.push_local_perm(grp_char, perm, locs),
+            SymmetryGrpInner::Dit32(g) => g.push_local_perm(grp_char, perm, locs),
+            SymmetryGrpInner::Dit64(g) => g.push_local_perm(grp_char, perm, locs),
+            SymmetryGrpInner::Dit128(g) => g.push_local_perm(grp_char, perm, locs),
+            SymmetryGrpInner::Dit256(g) => g.push_local_perm(grp_char, perm, locs),
+            SymmetryGrpInner::Dit512(g) => g.push_local_perm(grp_char, perm, locs),
+            SymmetryGrpInner::Dit1024(g) => g.push_local_perm(grp_char, perm, locs),
+            SymmetryGrpInner::Dit2048(g) => g.push_local_perm(grp_char, perm, locs),
+            SymmetryGrpInner::Dit4096(g) => g.push_local_perm(grp_char, perm, locs),
+            SymmetryGrpInner::Dit8192(g) => g.push_local_perm(grp_char, perm, locs),
+            _ => panic!("push_local_perm called on a LHSS=2 (Hc*) symmetry group"),
         }
     }
 
+    /// Add a spin-inversion element (v → lhss − v − 1) for LHSS ≥ 3.
+    ///
+    /// Only valid for `Dit*` variants.  Panics if called on a `Hc*` variant.
     pub(crate) fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
         match self {
-            SymmetryGrpInner::Sym32(g) => g.push_spin_inv(grp_char, locs),
-            SymmetryGrpInner::Sym64(g) => g.push_spin_inv(grp_char, locs),
-            SymmetryGrpInner::Sym128(g) => g.push_spin_inv(grp_char, locs),
-            SymmetryGrpInner::Sym256(g) => g.push_spin_inv(grp_char, locs),
-            SymmetryGrpInner::Sym512(g) => g.push_spin_inv(grp_char, locs),
-            SymmetryGrpInner::Sym1024(g) => g.push_spin_inv(grp_char, locs),
-            SymmetryGrpInner::Sym2048(g) => g.push_spin_inv(grp_char, locs),
-            SymmetryGrpInner::Sym4096(g) => g.push_spin_inv(grp_char, locs),
-            SymmetryGrpInner::Sym8192(g) => g.push_spin_inv(grp_char, locs),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn push_inverse(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
-        match self {
-            SymmetryGrpInner::Sym32(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym64(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym128(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym256(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym512(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym1024(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym2048(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym4096(g) => g.push_inverse(grp_char, locs),
-            SymmetryGrpInner::Sym8192(g) => g.push_inverse(grp_char, locs),
+            SymmetryGrpInner::Dit32(g) => g.push_spin_inv(grp_char, locs),
+            SymmetryGrpInner::Dit64(g) => g.push_spin_inv(grp_char, locs),
+            SymmetryGrpInner::Dit128(g) => g.push_spin_inv(grp_char, locs),
+            SymmetryGrpInner::Dit256(g) => g.push_spin_inv(grp_char, locs),
+            SymmetryGrpInner::Dit512(g) => g.push_spin_inv(grp_char, locs),
+            SymmetryGrpInner::Dit1024(g) => g.push_spin_inv(grp_char, locs),
+            SymmetryGrpInner::Dit2048(g) => g.push_spin_inv(grp_char, locs),
+            SymmetryGrpInner::Dit4096(g) => g.push_spin_inv(grp_char, locs),
+            SymmetryGrpInner::Dit8192(g) => g.push_spin_inv(grp_char, locs),
+            _ => panic!("push_spin_inv called on a LHSS=2 (Hc*) symmetry group"),
         }
     }
 }
@@ -313,47 +383,57 @@ impl SymmetryGrpInner {
 // with_sym_grp! macro
 // ---------------------------------------------------------------------------
 
-/// Match on a [`SymmetryGrpInner`] reference, injecting a type alias `$B` and
-/// binding `$grp` to the inner `SymGrpInner<B>` reference.
+/// Match on a [`SymmetryGrpInner`] reference for `Hc*` (LHSS=2) variants,
+/// injecting a type alias `$B` and binding `$grp` to the inner
+/// `HardcoreGrpInner<B>` reference.
+///
+/// # Panics
+///
+/// Panics (via `unreachable!`) if called with a `Dit*` (LHSS≥3) variant.
+/// Only pass groups obtained via `as_hardcore()` (which returns `None` for
+/// LHSS≥3 groups).
 #[macro_export]
 macro_rules! with_sym_grp {
     ($inner:expr, $B:ident, $grp:ident, $body:block) => {
         match $inner {
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Sym32($grp) => {
+            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc32($grp) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Sym64($grp) => {
+            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc64($grp) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Sym128($grp) => {
+            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc128($grp) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Sym256($grp) => {
+            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc256($grp) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Sym512($grp) => {
+            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc512($grp) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Sym1024($grp) => {
+            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc1024($grp) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Sym2048($grp) => {
+            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc2048($grp) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Sym4096($grp) => {
+            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc4096($grp) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Sym8192($grp) => {
+            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc8192($grp) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
+            }
+            _ => {
+                unreachable!("with_sym_grp! requires a LHSS=2 (hardcore/fermionic) symmetry group")
             }
         }
     };

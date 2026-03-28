@@ -12,7 +12,7 @@ pub(crate) mod orbit;
 pub mod spin;
 pub(crate) mod traits;
 
-pub use dispatch::{SymGrpInner, SymmetryGrpInner};
+pub use dispatch::{DitGrpInner, HardcoreGrpInner, SymGrpInner, SymmetryGrpInner};
 pub use dit::DitSymGrp;
 pub use fermion_grp::FermionicSymGrp;
 pub use spin::SpinSymGrp;
