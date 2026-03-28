@@ -21,7 +21,7 @@ use crate::basis::{
     seed::{seed_from_bytes, state_to_str},
     space::{FullSpace, Subspace},
     sym::SymmetricSubspace,
-    symmetry::dispatch::{DitGrpInner, HardcoreGrpInner},
+    sym_grp::{DitGrpInner, HardcoreGrpInner},
 };
 
 type B128 = ruint::Uint<128, 2>;

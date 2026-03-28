@@ -5,7 +5,7 @@
 /// - [`check_refstate`] — find the representative and orbit norm (scalar).
 /// - [`check_refstate_batch`] — batch variant of `check_refstate` structured
 ///   for auto-vectorisation across a slice of states.
-use super::traits::{LatEl, LocalOpItem};
+use super::lattice::{LatEl, LocalOpItem};
 use crate::bitbasis::BitInt;
 use num_complex::Complex;
 use smallvec::SmallVec;
@@ -228,7 +228,7 @@ pub(crate) fn check_refstate_batch<B: BitInt, E: LatEl<B>, L: LocalOpItem<B>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::symmetry::LatticeElement;
+    use crate::basis::lattice::LatticeElement;
     use crate::bitbasis::{PermDitLocations, PermDitMask};
     use num_complex::Complex;
 

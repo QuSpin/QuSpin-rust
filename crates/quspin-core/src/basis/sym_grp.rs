@@ -1,5 +1,5 @@
-use super::BenesLatticeElement;
-use crate::basis::traits::SymGrp;
+use super::lattice::BenesLatticeElement;
+use super::traits::SymGrp;
 use crate::bitbasis::{
     BenesPermDitLocations, BitInt, BitStateOp, DynamicPermDitValues, PermDitMask,
 };
@@ -106,11 +106,11 @@ impl<B: BitInt, L> SymGrpBase<B, L> {
 
 impl<B: BitInt, L: BitStateOp<B>> SymGrpBase<B, L> {
     pub fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
-        super::get_refstate(&self.lattice, &self.local, state)
+        super::orbit::get_refstate(&self.lattice, &self.local, state)
     }
 
     pub fn check_refstate(&self, state: B) -> (B, f64) {
-        super::check_refstate(&self.lattice, &self.local, state)
+        super::orbit::check_refstate(&self.lattice, &self.local, state)
     }
 
     /// Batch variant: maps every element of `states` to its orbit
@@ -396,39 +396,39 @@ impl SymmetryGrpInner {
 macro_rules! with_sym_grp {
     ($inner:expr, $B:ident, $grp:ident, $body:block) => {
         match $inner {
-            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc32($grp) => {
+            $crate::basis::sym_grp::SymmetryGrpInner::Hc32($grp) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc64($grp) => {
+            $crate::basis::sym_grp::SymmetryGrpInner::Hc64($grp) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc128($grp) => {
+            $crate::basis::sym_grp::SymmetryGrpInner::Hc128($grp) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc256($grp) => {
+            $crate::basis::sym_grp::SymmetryGrpInner::Hc256($grp) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc512($grp) => {
+            $crate::basis::sym_grp::SymmetryGrpInner::Hc512($grp) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc1024($grp) => {
+            $crate::basis::sym_grp::SymmetryGrpInner::Hc1024($grp) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc2048($grp) => {
+            $crate::basis::sym_grp::SymmetryGrpInner::Hc2048($grp) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc4096($grp) => {
+            $crate::basis::sym_grp::SymmetryGrpInner::Hc4096($grp) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc8192($grp) => {
+            $crate::basis::sym_grp::SymmetryGrpInner::Hc8192($grp) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }

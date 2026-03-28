@@ -3,7 +3,7 @@
 /// Extends the hardcore (LHSS=2) basis with Jordan-Wigner permutation signs.
 /// Each lattice element includes the fermionic sign of the permutation acting
 /// on the pre-image state.
-use super::dispatch::{HardcoreGrpInner, SymmetryGrpInner};
+use super::sym_grp::{HardcoreGrpInner, SymmetryGrpInner};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 

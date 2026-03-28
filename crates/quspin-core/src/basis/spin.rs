@@ -1,7 +1,7 @@
 /// Spin-symmetry group types.
 ///
-/// The public type is [`SpinSymGrp`]. B-type dispatch lives in [`super::dispatch`].
-use super::dispatch::{DitGrpInner, HardcoreGrpInner, SymmetryGrpInner};
+/// The public type is [`SpinSymGrp`]. B-type dispatch lives in [`super::sym_grp`].
+use super::sym_grp::{DitGrpInner, HardcoreGrpInner, SymmetryGrpInner};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 

@@ -21,7 +21,7 @@ pub trait BasisSpace<B: BitInt> {
 
 /// Interface for symmetry groups over a fixed `BitInt` state type.
 ///
-/// Implemented by [`SymGrpInner<B>`](crate::basis::symmetry::SymGrpInner)
+/// Implemented by [`SymGrpInner<B>`](crate::basis::sym_grp::SymGrpInner)
 /// for all basis types (hardcore LHSS=2, higher-spin dit, fermionic).
 pub trait SymGrp {
     type State: BitInt;
