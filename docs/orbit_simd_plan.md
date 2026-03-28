@@ -31,51 +31,25 @@ pursuing directly; it becomes free once the batch path is in place.
 
 ---
 
-## Step 1 — Eliminate the per-state heap allocation
+## Step 1 — Eliminate the per-state heap allocation ✅ DONE
 
-`iter_images` currently returns a `Vec<(B, Complex<f64>)>`.  The orbit size
-is fixed for a given group (it does not depend on the state), so this
-allocation can be removed.
+`iter_images` previously returned a `Vec<(B, Complex<f64>)>`.  This has been
+replaced with `SmallVec<[(B, Complex<f64>); 64]>`, eliminating heap allocation
+for orbits up to 64 images (covers 32-site translation × 1 local op).
 
-**Target signature:**
-
-```rust
-// Orbit size = lattice.len() * (1 + local.len()), computed once at group
-// construction and stored on the group.
-fn iter_images<B, L, const N: usize>(
-    lattice: &[LatticeElement],
-    local: &[L],
-    state: B,
-    out: &mut [MaybeUninit<(B, Complex<f64>)>; N],
-)
-```
-
-Or more pragmatically, use `smallvec::SmallVec<[(B, Complex<f64>); 16]>` as a
-short-term fix.  A capacity of 16 covers the common cases (4-site translation
-× 1 flip = 8; 8-site translation × 1 flip = 16) without any heap allocation.
-
-**Files to change:**
-- `orbit.rs` — replace `Vec` with `SmallVec`
-- `spin.rs` / `dit.rs` — no interface change needed; callers use
-  `get_refstate` / `check_refstate` which are unaffected
+**Implemented in:** `orbit.rs`
 
 ---
 
-## Step 2 — Add batch variants of the orbit functions
+## Step 2 — Add batch variants of the orbit functions ✅ DONE
 
-Introduce batch-processing counterparts alongside the existing scalar ones:
+Batch-processing counterparts have been added alongside the existing scalar
+functions.  The batch variants' inner loops are structured so that the compiler
+can auto-vectorise across `states`.
+
+### `check_refstate_batch`
 
 ```rust
-/// Scalar (existing).
-pub(crate) fn check_refstate<B, L>(
-    lattice: &[LatticeElement],
-    local: &[L],
-    state: B,
-) -> (B, f64);
-
-/// Batch: process `states.len()` states in one call.
-/// Writes `(representative, norm)` for each input state into `out`.
-/// The slices must have equal length.
 pub(crate) fn check_refstate_batch<B, L>(
     lattice: &[LatticeElement],
     local: &[L],
@@ -84,32 +58,55 @@ pub(crate) fn check_refstate_batch<B, L>(
 );
 ```
 
-The batch variant's inner loop is structured so that the compiler can
-auto-vectorise across `states`:
+Key implementation details:
+- Norm accumulated as `u32` (matches state register width) and cast to `f64`
+  at the end — avoids the lane-width mismatch that halves SIMD throughput when
+  using `f64` directly.
+- `(s == *state) as u32` — explicit branchless form rather than relying on
+  branch-to-cmov lowering.
+- Representative updated with `o.0.max(s)` — guaranteed branchless
+  (`vpmaxud`/`vpmaxuq` in SIMD).
+- A separate `norms: Vec<u32>` buffer keeps the norm accumulation loop
+  homogeneous with the state type, enabling clean auto-vectorisation of both
+  the max-update and equality-count passes.
+
+### `get_refstate_batch`
 
 ```rust
-// Pseudocode — one lattice element applied to a whole batch of states.
-for (state, result) in states.iter().zip(out.iter_mut()) {
-    let s = lat.apply(*state);   // same operation on every element
-    if s > result.0 { result.0 = s; }
-    if s == *state  { result.1 += 1.0; }
-}
+pub(crate) fn get_refstate_batch<B, L>(
+    lattice: &[LatticeElement],
+    local: &[L],
+    states: &[B],
+    out: &mut [(B, Complex<f64>)],
+);
 ```
 
-Because each iteration is independent and the operation is uniform, LLVM will
-emit SIMD code for `u32`/`u64` batches when compiled with `-C target-cpu=native`
-or with explicit target features.
+Tracks `(best: B, best_coeff: Complex<f64>)` per state.  The coefficient
+select (`if cond { lat.grp_char } else { o.1 }`) involves `Complex<f64>` so
+the inner loop does not auto-vectorise as cleanly as `check_refstate_batch`;
+the primary benefit is **loop amortisation** — orbit elements are iterated
+once per batch rather than once per state.
 
-**Callers** — the symmetric subspace builder in `sym.rs` iterates over all
-candidate states; replace the per-state call with a batch call over chunks:
+### Branchless updates
 
+All representative updates use the select pattern:
 ```rust
-const BATCH: usize = 256;
-for chunk in candidates.chunks(BATCH) {
-    check_refstate_batch(&lattice, &local, chunk, &mut scratch[..chunk.len()]);
-    // process scratch
-}
+let cond = s > best;
+best = best.max(s);              // cmov / vpmaxud
+best_coeff = if cond { c } else { best_coeff };  // fcsel / blendvpd
 ```
+
+### Callers updated
+
+- `sym.rs` (`SymmetricSubspace::build`): BFS candidates are collected per step
+  and `check_refstate_batch` is called once per BFS step.
+- `qmatrix/build.rs` (`build_from_symmetric`): `ham.apply` outputs are
+  collected into a `row_buf` per row, then `get_refstate_batch` is called once
+  per row.  Both buffers are allocated once outside the row loop and reused.
+
+**Trait surface:** `SymGrp` exposes `get_refstate_batch` and
+`check_refstate_batch` with scalar default implementations; `HardcoreSymmetryGrp`
+overrides both with the amortised free functions.
 
 ---
 
@@ -134,13 +131,13 @@ This structure maps perfectly onto SIMD because:
 - The number of stages is `O(log² N)` for N sites, so the total work per state
   is small.
 
-When the Benes backend lands, the batch `check_refstate_batch` will get the
-vectorisation for free because `lat.apply` will itself be a short, regular
-sequence of SIMD-friendly operations.
+When the Benes backend lands, `check_refstate_batch` will get the vectorisation
+for free because `lat.apply_state` will itself be a short, regular sequence of
+SIMD-friendly operations.
 
 **No interface change is needed at the `orbit.rs` level** — the batch function
-calls `lat.apply` in a loop; swapping the backend of `LatticeElement::apply`
-is sufficient.
+calls `lat.apply_state` in a loop; swapping the backend of `LatticeElement` is
+sufficient.
 
 ---
 
@@ -164,15 +161,12 @@ variant is leaving performance on the table.
 
 ## Summary of changes and their order
 
-| Step | File(s) | Change | Prerequisite |
-|------|---------|--------|--------------|
-| 1 | `orbit.rs` | Replace `Vec` with `SmallVec` in `iter_images` | None |
-| 2 | `orbit.rs`, `sym.rs` | Add `*_batch` variants; update basis builder | Step 1 |
-| 3 | `bitbasis/transform.rs`, `LatticeElement` | Benes permutation backend | Step 2 |
-| 4 | `orbit.rs` | Explicit SIMD intrinsics if needed | Step 3 + profiling |
-
-Step 1 is a safe, self-contained improvement that can land any time.
-Steps 2–4 should wait until the Benes network is designed.
+| Step | File(s) | Change | Status |
+|------|---------|--------|--------|
+| 1 | `orbit.rs` | Replace `Vec` with `SmallVec<[_; 64]>` in `iter_images` | ✅ Done |
+| 2 | `orbit.rs`, `traits.rs`, `spin.rs`, `sym.rs`, `build.rs` | Batch variants + branchless updates + callers | ✅ Done |
+| 3 | `bitbasis/transform.rs`, `LatticeElement` | Benes permutation backend | Pending |
+| 4 | `orbit.rs` | Explicit SIMD intrinsics if needed | Pending (post-profiling) |
 
 ---
 
