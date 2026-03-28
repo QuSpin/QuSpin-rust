@@ -20,9 +20,9 @@ use crate::basis::{
     BasisSpace,
     seed::{seed_from_bytes, state_to_str},
     space::{FullSpace, Subspace},
-    sym::SymmetricSubspace,
-    sym_grp::{DitGrpInner, HardcoreGrpInner},
+    sym_basis::SymBasis,
 };
+use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
 
 type B128 = ruint::Uint<128, 2>;
 type B256 = ruint::Uint<256, 4>;
@@ -61,26 +61,26 @@ pub enum BasisInner {
     Sub8192(Subspace<B8192>),
 
     // LHSS=2 symmetry-reduced subspaces (hardcore bosons / spin-½ / fermions).
-    Sym32(SymmetricSubspace<HardcoreGrpInner<u32>>),
-    Sym64(SymmetricSubspace<HardcoreGrpInner<u64>>),
-    Sym128(SymmetricSubspace<HardcoreGrpInner<B128>>),
-    Sym256(SymmetricSubspace<HardcoreGrpInner<B256>>),
-    Sym512(SymmetricSubspace<HardcoreGrpInner<B512>>),
-    Sym1024(SymmetricSubspace<HardcoreGrpInner<B1024>>),
-    Sym2048(SymmetricSubspace<HardcoreGrpInner<B2048>>),
-    Sym4096(SymmetricSubspace<HardcoreGrpInner<B4096>>),
-    Sym8192(SymmetricSubspace<HardcoreGrpInner<B8192>>),
+    Sym32(SymBasis<u32, PermDitMask<u32>, u8>),
+    Sym64(SymBasis<u64, PermDitMask<u64>, u16>),
+    Sym128(SymBasis<B128, PermDitMask<B128>, u32>),
+    Sym256(SymBasis<B256, PermDitMask<B256>, u32>),
+    Sym512(SymBasis<B512, PermDitMask<B512>, u32>),
+    Sym1024(SymBasis<B1024, PermDitMask<B1024>, u32>),
+    Sym2048(SymBasis<B2048, PermDitMask<B2048>, u32>),
+    Sym4096(SymBasis<B4096, PermDitMask<B4096>, u32>),
+    Sym8192(SymBasis<B8192, PermDitMask<B8192>, u32>),
 
     // LHSS≥3 symmetry-reduced subspaces (bosons / higher spin).
-    DitSym32(SymmetricSubspace<DitGrpInner<u32>>),
-    DitSym64(SymmetricSubspace<DitGrpInner<u64>>),
-    DitSym128(SymmetricSubspace<DitGrpInner<B128>>),
-    DitSym256(SymmetricSubspace<DitGrpInner<B256>>),
-    DitSym512(SymmetricSubspace<DitGrpInner<B512>>),
-    DitSym1024(SymmetricSubspace<DitGrpInner<B1024>>),
-    DitSym2048(SymmetricSubspace<DitGrpInner<B2048>>),
-    DitSym4096(SymmetricSubspace<DitGrpInner<B4096>>),
-    DitSym8192(SymmetricSubspace<DitGrpInner<B8192>>),
+    DitSym32(SymBasis<u32, DynamicPermDitValues, u8>),
+    DitSym64(SymBasis<u64, DynamicPermDitValues, u16>),
+    DitSym128(SymBasis<B128, DynamicPermDitValues, u32>),
+    DitSym256(SymBasis<B256, DynamicPermDitValues, u32>),
+    DitSym512(SymBasis<B512, DynamicPermDitValues, u32>),
+    DitSym1024(SymBasis<B1024, DynamicPermDitValues, u32>),
+    DitSym2048(SymBasis<B2048, DynamicPermDitValues, u32>),
+    DitSym4096(SymBasis<B4096, DynamicPermDitValues, u32>),
+    DitSym8192(SymBasis<B8192, DynamicPermDitValues, u32>),
 }
 
 impl BasisInner {
@@ -345,37 +345,37 @@ impl std::fmt::Display for BasisInner {
 // ---------------------------------------------------------------------------
 
 macro_rules! impl_from_basis_spaces {
-    ($B:ty, $sub_variant:ident, $sym_variant:ident, $dit_sym_variant:ident) => {
+    ($B:ty, $N:ty, $sub_variant:ident, $sym_variant:ident, $dit_sym_variant:ident) => {
         impl From<Subspace<$B>> for BasisInner {
             #[inline]
             fn from(b: Subspace<$B>) -> Self {
                 BasisInner::$sub_variant(b)
             }
         }
-        impl From<SymmetricSubspace<HardcoreGrpInner<$B>>> for BasisInner {
+        impl From<SymBasis<$B, PermDitMask<$B>, $N>> for BasisInner {
             #[inline]
-            fn from(b: SymmetricSubspace<HardcoreGrpInner<$B>>) -> Self {
+            fn from(b: SymBasis<$B, PermDitMask<$B>, $N>) -> Self {
                 BasisInner::$sym_variant(b)
             }
         }
-        impl From<SymmetricSubspace<DitGrpInner<$B>>> for BasisInner {
+        impl From<SymBasis<$B, DynamicPermDitValues, $N>> for BasisInner {
             #[inline]
-            fn from(b: SymmetricSubspace<DitGrpInner<$B>>) -> Self {
+            fn from(b: SymBasis<$B, DynamicPermDitValues, $N>) -> Self {
                 BasisInner::$dit_sym_variant(b)
             }
         }
     };
 }
 
-impl_from_basis_spaces!(u32, Sub32, Sym32, DitSym32);
-impl_from_basis_spaces!(u64, Sub64, Sym64, DitSym64);
-impl_from_basis_spaces!(B128, Sub128, Sym128, DitSym128);
-impl_from_basis_spaces!(B256, Sub256, Sym256, DitSym256);
-impl_from_basis_spaces!(B512, Sub512, Sym512, DitSym512);
-impl_from_basis_spaces!(B1024, Sub1024, Sym1024, DitSym1024);
-impl_from_basis_spaces!(B2048, Sub2048, Sym2048, DitSym2048);
-impl_from_basis_spaces!(B4096, Sub4096, Sym4096, DitSym4096);
-impl_from_basis_spaces!(B8192, Sub8192, Sym8192, DitSym8192);
+impl_from_basis_spaces!(u32, u8, Sub32, Sym32, DitSym32);
+impl_from_basis_spaces!(u64, u16, Sub64, Sym64, DitSym64);
+impl_from_basis_spaces!(B128, u32, Sub128, Sym128, DitSym128);
+impl_from_basis_spaces!(B256, u32, Sub256, Sym256, DitSym256);
+impl_from_basis_spaces!(B512, u32, Sub512, Sym512, DitSym512);
+impl_from_basis_spaces!(B1024, u32, Sub1024, Sym1024, DitSym1024);
+impl_from_basis_spaces!(B2048, u32, Sub2048, Sym2048, DitSym2048);
+impl_from_basis_spaces!(B4096, u32, Sub4096, Sym4096, DitSym4096);
+impl_from_basis_spaces!(B8192, u32, Sub8192, Sym8192, DitSym8192);
 
 // ---------------------------------------------------------------------------
 // Dispatch macros

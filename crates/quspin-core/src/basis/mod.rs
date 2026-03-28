@@ -7,6 +7,7 @@ pub mod seed;
 pub mod space;
 pub mod spin;
 pub mod sym;
+pub mod sym_basis;
 pub mod sym_grp;
 pub mod traits;
 
@@ -18,5 +19,6 @@ pub use seed::{
 };
 pub use space::{FullSpace, Subspace};
 pub use spin::SpinSymGrp;
-pub use sym::{NormInt, SymmetricSubspace, SymmetricSubspaceInner};
+pub use sym::{SymmetricSubspace, SymmetricSubspaceInner};
+pub use sym_basis::{NormInt, SymBasis};
 pub use traits::{BasisSpace, SymGrp};

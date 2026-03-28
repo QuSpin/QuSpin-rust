@@ -7,7 +7,6 @@ use quspin_core::basis::dispatch::BasisInner;
 use quspin_core::basis::{
     seed_from_bytes, seed_from_str,
     space::{FullSpace, Subspace},
-    sym::SymmetricSubspace,
 };
 use quspin_core::hamiltonian::fermion::dispatch::FermionHamiltonianInner;
 use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
@@ -146,8 +145,9 @@ impl PyHardcoreBasis {
                 "symmetric basis requires a spin-symmetry group with LHSS=2",
             )
         })?;
-        let inner = quspin_core::with_sym_grp!(hc, B, sym_grp, {
-            let mut basis = SymmetricSubspace::new(sym_grp.clone());
+        let inner = quspin_core::with_sym_grp!(hc, B, N, sym_grp, {
+            let mut basis =
+                quspin_core::basis::sym_basis::SymBasis::<B, _, N>::from_grp(sym_grp.clone());
             for s in &seed_list {
                 let seed = seed_from_bytes::<B>(s);
                 match &ham.inner {
@@ -206,8 +206,9 @@ impl PyHardcoreBasis {
                 "symmetric fermionic basis requires a fermionic symmetry group",
             )
         })?;
-        let inner = quspin_core::with_sym_grp!(hc, B, sym_grp, {
-            let mut basis = SymmetricSubspace::new(sym_grp.clone());
+        let inner = quspin_core::with_sym_grp!(hc, B, N, sym_grp, {
+            let mut basis =
+                quspin_core::basis::sym_basis::SymBasis::<B, _, N>::from_grp(sym_grp.clone());
             for s in &seed_list {
                 let seed = seed_from_bytes::<B>(s);
                 match &ham.inner {

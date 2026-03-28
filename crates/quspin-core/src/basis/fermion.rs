@@ -99,7 +99,7 @@ mod tests {
         grp.add_lattice(Complex::new(1.0, 0.0), vec![0, 1, 2, 3]);
 
         let hc = grp.as_hardcore().unwrap();
-        with_sym_grp!(hc, B, g, {
+        with_sym_grp!(hc, B, _N, g, {
             let state = B::from_u64(0b0001);
             let (ref_s, _coeff) = g.get_refstate(state);
             // With only identity, representative = state itself.

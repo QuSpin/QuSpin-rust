@@ -1,6 +1,9 @@
 use super::{CIndex, Entry, Index, QMatrix};
-use crate::basis::{BasisSpace, NormInt, SymmetricSubspace, traits::SymGrp};
-use crate::bitbasis::BitInt;
+use crate::basis::{
+    BasisSpace,
+    sym_basis::{NormInt, SymBasis},
+};
+use crate::bitbasis::{BitInt, BitStateOp};
 use crate::hamiltonian::Hamiltonian;
 use crate::primitive::Primitive;
 use num_complex::Complex;
@@ -75,20 +78,21 @@ where
 // Build from symmetric basis
 // ---------------------------------------------------------------------------
 
-/// Construct a `QMatrix` from a `Hamiltonian` and a `SymmetricSubspace`.
+/// Construct a `QMatrix` from a `Hamiltonian` and a `SymBasis`.
 ///
 /// For each row, the Hamiltonian is applied to the representative state.
 /// Each resulting state is mapped to its representative via `check_refstate`,
 /// and the matrix element is scaled by the group character and norm ratio.
 ///
 /// Mirrors `qmatrix::calculate_row` for `symmetric_subspace`.
-pub fn build_from_symmetric<H, G, N, V, I, C>(
+pub fn build_from_symmetric<H, B, L, N, V, I, C>(
     ham: &H,
-    basis: &SymmetricSubspace<G, N>,
+    basis: &SymBasis<B, L, N>,
 ) -> QMatrix<V, I, C>
 where
     H: Hamiltonian<C>,
-    G: SymGrp,
+    B: BitInt,
+    L: BitStateOp<B>,
     N: NormInt,
     V: Primitive,
     I: Index,
@@ -105,8 +109,8 @@ where
     // (capacity 64 covers typical nearest-neighbour Hamiltonians).
     const ROW_CAP: usize = 64;
     let mut row_buf: SmallVec<[(C, Complex<f64>); ROW_CAP]> = SmallVec::new();
-    let mut new_states: SmallVec<[G::State; ROW_CAP]> = SmallVec::new();
-    let mut ref_out: SmallVec<[(G::State, Complex<f64>); ROW_CAP]> = SmallVec::new();
+    let mut new_states: SmallVec<[B; ROW_CAP]> = SmallVec::new();
+    let mut ref_out: SmallVec<[(B, Complex<f64>); ROW_CAP]> = SmallVec::new();
 
     for row_idx in 0..dim {
         let (state, norm) = basis.entry(row_idx);

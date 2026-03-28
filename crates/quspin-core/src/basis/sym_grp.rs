@@ -43,11 +43,11 @@ pub(crate) type B8192 = ruint::Uint<8192, 128>;
 /// No runtime `match` on the local-op type occurs in the hot path.
 #[derive(Clone)]
 pub struct SymGrpBase<B: BitInt, L> {
-    lhss: usize,
-    fermionic: bool,
-    n_sites: usize,
-    lattice: Vec<BenesLatticeElement<B>>,
-    local: Vec<(Complex<f64>, L)>,
+    pub(crate) lhss: usize,
+    pub(crate) fermionic: bool,
+    pub(crate) n_sites: usize,
+    pub(crate) lattice: Vec<BenesLatticeElement<B>>,
+    pub(crate) local: Vec<(Complex<f64>, L)>,
 }
 
 /// Inner group type for LHSS=2 (hardcore bosons / spinless fermions).
@@ -384,8 +384,14 @@ impl SymmetryGrpInner {
 // ---------------------------------------------------------------------------
 
 /// Match on a [`SymmetryGrpInner`] reference for `Hc*` (LHSS=2) variants,
-/// injecting a type alias `$B` and binding `$grp` to the inner
-/// `HardcoreGrpInner<B>` reference.
+/// injecting a type alias `$B` (the basis integer type) and `$N` (the norm
+/// storage type), and binding `$grp` to the inner `HardcoreGrpInner<B>`
+/// reference.
+///
+/// The B→N pairing is:
+/// - Hc32  → B=u32,  N=u8
+/// - Hc64  → B=u64,  N=u16
+/// - Hc128..Hc8192 → N=u32
 ///
 /// # Panics
 ///
@@ -394,42 +400,51 @@ impl SymmetryGrpInner {
 /// LHSS≥3 groups).
 #[macro_export]
 macro_rules! with_sym_grp {
-    ($inner:expr, $B:ident, $grp:ident, $body:block) => {
+    ($inner:expr, $B:ident, $N:ident, $grp:ident, $body:block) => {
         match $inner {
             $crate::basis::sym_grp::SymmetryGrpInner::Hc32($grp) => {
                 type $B = u32;
+                type $N = u8;
                 $body
             }
             $crate::basis::sym_grp::SymmetryGrpInner::Hc64($grp) => {
                 type $B = u64;
+                type $N = u16;
                 $body
             }
             $crate::basis::sym_grp::SymmetryGrpInner::Hc128($grp) => {
                 type $B = ::ruint::Uint<128, 2>;
+                type $N = u32;
                 $body
             }
             $crate::basis::sym_grp::SymmetryGrpInner::Hc256($grp) => {
                 type $B = ::ruint::Uint<256, 4>;
+                type $N = u32;
                 $body
             }
             $crate::basis::sym_grp::SymmetryGrpInner::Hc512($grp) => {
                 type $B = ::ruint::Uint<512, 8>;
+                type $N = u32;
                 $body
             }
             $crate::basis::sym_grp::SymmetryGrpInner::Hc1024($grp) => {
                 type $B = ::ruint::Uint<1024, 16>;
+                type $N = u32;
                 $body
             }
             $crate::basis::sym_grp::SymmetryGrpInner::Hc2048($grp) => {
                 type $B = ::ruint::Uint<2048, 32>;
+                type $N = u32;
                 $body
             }
             $crate::basis::sym_grp::SymmetryGrpInner::Hc4096($grp) => {
                 type $B = ::ruint::Uint<4096, 64>;
+                type $N = u32;
                 $body
             }
             $crate::basis::sym_grp::SymmetryGrpInner::Hc8192($grp) => {
                 type $B = ::ruint::Uint<8192, 128>;
+                type $N = u32;
                 $body
             }
             _ => {

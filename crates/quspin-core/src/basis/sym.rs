@@ -1,64 +1,9 @@
-use super::{BasisSpace, traits::SymGrp};
+use super::{BasisSpace, sym_basis::NormInt, traits::SymGrp};
 use num_complex::Complex;
 use std::collections::HashMap;
 
 /// See `space::AMP_CANCEL_TOL` for the rationale.
 const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
-
-// ---------------------------------------------------------------------------
-// NormInt
-// ---------------------------------------------------------------------------
-
-/// Storage type for orbit norms inside [`SymmetricSubspace`].
-///
-/// The orbit norm is a small non-negative integer bounded by the symmetry
-/// group order.  Using a narrower integer than `f64` reduces memory by up to
-/// 8×; the `f64` value is only materialised at the [`entry`](SymmetricSubspace::entry)
-/// API boundary.
-///
-/// Choose based on `n_sites`:
-/// - `n_sites <= 32` → `u8`  (max group order 256 fits in u8)
-/// - `n_sites <= 64` → `u16`
-/// - `n_sites >  64` → `u32`
-///
-/// [`SymmetricSubspaceInner`] performs this dispatch automatically.
-pub trait NormInt: Copy + Send + Sync + 'static {
-    fn from_norm(norm: f64) -> Self;
-    fn to_f64(self) -> f64;
-}
-
-impl NormInt for u8 {
-    #[inline]
-    fn from_norm(norm: f64) -> Self {
-        norm as u8
-    }
-    #[inline]
-    fn to_f64(self) -> f64 {
-        f64::from(self)
-    }
-}
-
-impl NormInt for u16 {
-    #[inline]
-    fn from_norm(norm: f64) -> Self {
-        norm as u16
-    }
-    #[inline]
-    fn to_f64(self) -> f64 {
-        f64::from(self)
-    }
-}
-
-impl NormInt for u32 {
-    #[inline]
-    fn from_norm(norm: f64) -> Self {
-        norm as u32
-    }
-    #[inline]
-    fn to_f64(self) -> f64 {
-        f64::from(self)
-    }
-}
 
 // ---------------------------------------------------------------------------
 // SymmetricSubspace
