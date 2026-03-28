@@ -7,14 +7,14 @@
 /// - [`DitSymGrp`]: lattice + local value-permutation operations (LHSS ≥ 3).
 pub mod dispatch;
 pub mod dit;
-pub mod fermion_grp;
+pub mod fermion;
 pub(crate) mod orbit;
 pub mod spin;
 pub(crate) mod traits;
 
 pub use dispatch::{DitGrpInner, HardcoreGrpInner, SymGrpInner, SymmetryGrpInner};
 pub use dit::DitSymGrp;
-pub use fermion_grp::FermionicSymGrp;
+pub use fermion::FermionicSymGrp;
 pub use spin::SpinSymGrp;
 // BenesLatticeElement is declared below in this file — no re-export alias needed.
 
