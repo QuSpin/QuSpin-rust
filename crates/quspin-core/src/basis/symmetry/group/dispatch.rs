@@ -1,6 +1,8 @@
 use super::BenesLatticeElement;
 use crate::basis::traits::SymGrp;
-use crate::bitbasis::{BenesPermDitLocations, BitInt, DynamicPermDitValues};
+use crate::bitbasis::{
+    BenesPermDitLocations, BitInt, BitStateOp, DynamicPermDitValues, PermDitMask,
+};
 /// B-type dispatch for the unified symmetry group path.
 ///
 /// - [`SymGrpInner<B>`]: single concrete generic type backing all group
@@ -26,6 +28,32 @@ pub(crate) type B4096 = ruint::Uint<4096, 64>;
 pub(crate) type B8192 = ruint::Uint<8192, 128>;
 
 // ---------------------------------------------------------------------------
+// LocalOp<B> — unified local operation (XOR mask or value permutation)
+// ---------------------------------------------------------------------------
+
+/// A local symmetry operation stored inside [`SymGrpInner`].
+///
+/// - `Mask`: XOR bit-flip via [`PermDitMask<B>`] — used for LHSS = 2
+///   spin-inversion / bit-flip ops.  Zero-overhead: a single XOR instruction.
+/// - `Perm`: arbitrary value permutation via [`DynamicPermDitValues`] — used
+///   for LHSS ≥ 3.
+#[derive(Clone)]
+pub(crate) enum LocalOp<B: BitInt> {
+    Mask(PermDitMask<B>),
+    Perm(DynamicPermDitValues),
+}
+
+impl<B: BitInt> BitStateOp<B> for LocalOp<B> {
+    #[inline]
+    fn apply(&self, state: B) -> B {
+        match self {
+            LocalOp::Mask(m) => m.apply(state),
+            LocalOp::Perm(p) => p.apply(state),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SymGrpInner<B> — unified inner group type
 // ---------------------------------------------------------------------------
 
@@ -42,7 +70,7 @@ pub struct SymGrpInner<B: BitInt> {
     fermionic: bool,
     n_sites: usize,
     lattice: Vec<BenesLatticeElement<B>>,
-    local: Vec<(Complex<f64>, DynamicPermDitValues)>,
+    local: Vec<(Complex<f64>, LocalOp<B>)>,
 }
 
 impl<B: BitInt> SymGrpInner<B> {
@@ -77,29 +105,39 @@ impl<B: BitInt> SymGrpInner<B> {
             .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
     }
 
-    /// Add a local value-permutation element.
+    /// Add a local value-permutation element (LHSS ≥ 3).
     ///
     /// `perm[v] = w` maps local occupation `v` to `w` at each site in `locs`.
     pub fn push_local_perm(&mut self, grp_char: Complex<f64>, perm: Vec<u8>, locs: Vec<usize>) {
-        self.local
-            .push((grp_char, DynamicPermDitValues::new(self.lhss, perm, locs)));
+        self.local.push((
+            grp_char,
+            LocalOp::Perm(DynamicPermDitValues::new(self.lhss, perm, locs)),
+        ));
     }
 
     /// Add a spin-inversion element: maps `v → lhss − v − 1` at each site in `locs`.
     ///
-    /// For LHSS = 2 this is the same as a bit-flip.
+    /// For LHSS ≥ 3 uses `DynamicPermDitValues`. For LHSS = 2 use
+    /// [`push_inverse`](Self::push_inverse) for the faster XOR path.
     pub fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
         let perm: Vec<u8> = (0..self.lhss).rev().map(|v| v as u8).collect();
         self.push_local_perm(grp_char, perm, locs);
     }
 
-    /// Add a spin-inversion element at all sites in `locs`.
+    /// Add a spin-inversion / bit-flip element for LHSS = 2.
     ///
-    /// For LHSS = 2 this matches the old `push_inverse` bit-XOR semantics but
-    /// is implemented via `DynamicPermDitValues` for uniformity.
-    #[allow(dead_code)]
+    /// Builds an XOR mask from `locs` and stores it as a [`LocalOp::Mask`],
+    /// which applies via a single XOR instruction rather than a loop over sites.
     pub fn push_inverse(&mut self, grp_char: Complex<f64>, locs: &[usize]) {
-        self.push_spin_inv(grp_char, locs.to_vec());
+        let mask = locs.iter().fold(B::from_u64(0), |acc, &site| {
+            if site < B::BITS as usize {
+                acc | (B::from_u64(1) << site)
+            } else {
+                acc
+            }
+        });
+        self.local
+            .push((grp_char, LocalOp::Mask(PermDitMask::new(mask))));
     }
 
     pub fn get_refstate(&self, state: B) -> (B, Complex<f64>) {

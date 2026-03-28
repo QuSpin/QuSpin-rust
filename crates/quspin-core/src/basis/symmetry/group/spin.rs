@@ -73,7 +73,11 @@ impl SpinSymGrp {
     /// For LHSS = 2: maps `v → 1 − v` (bit-flip) at the specified sites.
     /// For LHSS > 2: maps `v → lhss − v − 1` at the specified sites.
     pub fn add_inverse(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
-        self.inner.push_spin_inv(grp_char, locs);
+        if self.lhss == 2 {
+            self.inner.push_inverse(grp_char, &locs);
+        } else {
+            self.inner.push_spin_inv(grp_char, locs);
+        }
     }
 
     /// Access the inner dispatch type.
