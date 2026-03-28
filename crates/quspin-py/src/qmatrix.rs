@@ -28,8 +28,9 @@ use crate::basis::dit::PyDitBasis;
 use crate::basis::hardcore::PyHardcoreBasis;
 use crate::dtype::{FromPyDescr, ValueDType};
 use crate::error::Error;
-use crate::hamiltonian::{PyBosonHamiltonian, PyHardcoreHamiltonian};
+use crate::hamiltonian::{PyBosonHamiltonian, PyFermionHamiltonian, PyHardcoreHamiltonian};
 use quspin_core::hamiltonian::boson::dispatch::BosonHamiltonianInner;
+use quspin_core::hamiltonian::fermion::dispatch::FermionHamiltonianInner;
 use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
 use quspin_core::with_value_dtype;
 
@@ -233,6 +234,74 @@ impl PyQMatrix {
                 }
             })
         });
+
+        Ok(PyQMatrix { inner: mat_inner })
+    }
+
+    /// Build a sparse matrix from a `PyFermionHamiltonian` and a hardcore basis.
+    ///
+    /// The fermion Hamiltonian reuses the hardcore (LHSS=2) basis.  Jordan-Wigner
+    /// signs are accumulated inside `FermionOpEntry::apply`.
+    ///
+    /// Args:
+    ///     ham (PyFermionHamiltonian): The fermionic Hamiltonian.
+    ///     basis (PyHardcoreBasis): The Hilbert space basis (full, subspace,
+    ///         or symmetric).
+    ///     dtype (numpy.dtype): NumPy dtype for matrix element storage.
+    ///
+    /// Returns:
+    ///     PyQMatrix: Sparse matrix representation of the Hamiltonian.
+    ///
+    /// Raises:
+    ///     ValueError: If ``ham.max_site >= basis.n_sites``, or if ``dtype``
+    ///         is not supported.
+    #[staticmethod]
+    pub fn build_fermion_hamiltonian(
+        py: Python<'_>,
+        ham: &PyFermionHamiltonian,
+        basis: &PyHardcoreBasis,
+        dtype: &Bound<'_, numpy::PyArrayDescr>,
+    ) -> PyResult<Self> {
+        if ham.inner.max_site() >= basis.inner.n_sites() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Hamiltonian max_site={} is out of range for basis with n_sites={}",
+                ham.inner.max_site(),
+                basis.inner.n_sites()
+            )));
+        }
+        let v_dtype = <ValueDType as FromPyDescr>::from_descr(py, dtype).map_err(Error::from)?;
+
+        let mat_inner = if basis.inner.is_symmetric() {
+            with_value_dtype!(v_dtype, V, {
+                with_sym_basis!(&basis.inner, B, sym_basis, {
+                    match &ham.inner {
+                        FermionHamiltonianInner::Ham8(h) => {
+                            build_from_symmetric::<_, _, _, V, i64, u8>(h, sym_basis)
+                                .into_qmatrix_inner()
+                        }
+                        FermionHamiltonianInner::Ham16(h) => {
+                            build_from_symmetric::<_, _, _, V, i64, u16>(h, sym_basis)
+                                .into_qmatrix_inner()
+                        }
+                    }
+                })
+            })
+        } else {
+            with_value_dtype!(v_dtype, V, {
+                with_plain_basis!(&basis.inner, B, plain_basis, {
+                    match &ham.inner {
+                        FermionHamiltonianInner::Ham8(h) => {
+                            build_from_basis::<_, B, V, i64, u8, _>(h, plain_basis)
+                                .into_qmatrix_inner()
+                        }
+                        FermionHamiltonianInner::Ham16(h) => {
+                            build_from_basis::<_, B, V, i64, u16, _>(h, plain_basis)
+                                .into_qmatrix_inner()
+                        }
+                    }
+                })
+            })
+        };
 
         Ok(PyQMatrix { inner: mat_inner })
     }

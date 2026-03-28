@@ -15,6 +15,7 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<hamiltonian::PyBondTerm>()?;
     m.add_class::<hamiltonian::PyBondHamiltonian>()?;
     m.add_class::<hamiltonian::PyBosonHamiltonian>()?;
+    m.add_class::<hamiltonian::PyFermionHamiltonian>()?;
     m.add_class::<basis::PyHardcoreBasis>()?;
     m.add_class::<basis::PyDitBasis>()?;
     m.add_class::<qmatrix::PyQMatrix>()?;

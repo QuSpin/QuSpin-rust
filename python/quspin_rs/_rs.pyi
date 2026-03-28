@@ -426,6 +426,75 @@ class PyBosonHamiltonian:
 
 
 # ---------------------------------------------------------------------------
+# PyFermionHamiltonian
+# ---------------------------------------------------------------------------
+
+
+class PyFermionHamiltonian:
+    """A fermionic Hamiltonian defined by creation/annihilation operator strings.
+
+    Jordan-Wigner signs are accumulated automatically during matrix construction.
+    Reuses the hardcore (LHSS=2) basis; orbital labelling convention:
+    site ``2*i`` = spin-down orbital ``i``, site ``2*i+1`` = spin-up orbital ``i``.
+
+    Supported operator characters:
+
+    - ``'+'``: creation operator c†
+    - ``'-'``: annihilation operator c
+    - ``'n'``: number operator n̂
+
+    Example:
+        >>> t = 1.0
+        >>> H = PyFermionHamiltonian([
+        ...     [("+-", [(t, 0, 1), (t, 1, 0)])],  # cindex 0: hopping
+        ... ])
+        >>> H.max_site
+        1
+        >>> H.num_cindices
+        1
+    """
+
+    def __init__(
+        self,
+        terms: list[list[tuple[str, list[tuple[Any, ...]]]]],
+    ) -> None:
+        """Construct a fermionic Hamiltonian from a nested list of operator terms.
+
+        Args:
+            terms (list[list[tuple[str, list[tuple]]]]): Outer list indexed by
+                ``cindex``. Each element is a list of ``(op_str, coupling_list)``
+                pairs where:
+
+                - ``op_str`` (str): Operator string — one character per site
+                  acted on (``'+'`` for c†, ``'-'`` for c, ``'n'`` for n̂).
+                - ``coupling_list`` (list[tuple]): Each element is
+                  ``(coeff, site_0, site_1, ...)`` with exactly one site index
+                  per character in ``op_str``. ``coeff`` may be ``complex``,
+                  ``float``, or ``int``.
+
+        Raises:
+            ValueError: If ``op_str`` contains an unknown operator character,
+                if the number of site indices does not match ``len(op_str)``,
+                or if the input structure is malformed.
+        """
+        ...
+
+    @property
+    def max_site(self) -> int:
+        """Maximum site index across all operator strings."""
+        ...
+
+    @property
+    def num_cindices(self) -> int:
+        """Number of distinct coefficient indices (outer list length)."""
+        ...
+
+    def __repr__(self) -> str:
+        """Return ``PyFermionHamiltonian(max_site=..., num_cindices=...)``."""
+        ...
+
+
+# ---------------------------------------------------------------------------
 # PyHardcoreBasis
 # ---------------------------------------------------------------------------
 
@@ -843,6 +912,34 @@ class PyQMatrix:
         Raises:
             ValueError: If ``ham.max_site >= basis.n_sites``,
                 ``ham.lhss != basis.lhss``, or ``dtype`` is not supported.
+        """
+        ...
+
+    @staticmethod
+    def build_fermion_hamiltonian(
+        ham: PyFermionHamiltonian,
+        basis: PyHardcoreBasis,
+        dtype: np.dtype[Any],
+    ) -> PyQMatrix:
+        """Build a sparse matrix from a PyFermionHamiltonian and a hardcore basis.
+
+        Jordan-Wigner signs are applied automatically during matrix construction.
+
+        Args:
+            ham (PyFermionHamiltonian): The fermionic Hamiltonian.
+            basis (PyHardcoreBasis): The Hilbert space basis (full, subspace,
+                or symmetric). Uses the hardcore (LHSS=2) basis.
+            dtype (numpy.dtype): NumPy dtype for matrix element storage.
+                Supported values: ``np.dtype("int8")``, ``np.dtype("int16")``,
+                ``np.dtype("float32")``, ``np.dtype("float64")``,
+                ``np.dtype("complex64")``, ``np.dtype("complex128")``.
+
+        Returns:
+            PyQMatrix: Sparse matrix representation of the Hamiltonian.
+
+        Raises:
+            ValueError: If ``ham.max_site >= basis.n_sites``, or if ``dtype``
+                is not supported.
         """
         ...
 
