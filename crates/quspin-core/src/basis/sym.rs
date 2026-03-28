@@ -340,7 +340,7 @@ impl<G: SymGrp> BasisSpace<G::State> for SymmetricSubspaceInner<G> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::symmetry::group::SymGrpInner;
+    use crate::basis::symmetry::SymGrpInner;
     use num_complex::Complex;
 
     /// X operator on all sites of an N-site chain.

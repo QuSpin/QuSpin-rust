@@ -396,39 +396,39 @@ impl SymmetryGrpInner {
 macro_rules! with_sym_grp {
     ($inner:expr, $B:ident, $grp:ident, $body:block) => {
         match $inner {
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc32($grp) => {
+            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc32($grp) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc64($grp) => {
+            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc64($grp) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc128($grp) => {
+            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc128($grp) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc256($grp) => {
+            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc256($grp) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc512($grp) => {
+            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc512($grp) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc1024($grp) => {
+            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc1024($grp) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc2048($grp) => {
+            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc2048($grp) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc4096($grp) => {
+            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc4096($grp) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::symmetry::group::dispatch::SymmetryGrpInner::Hc8192($grp) => {
+            $crate::basis::symmetry::dispatch::SymmetryGrpInner::Hc8192($grp) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }

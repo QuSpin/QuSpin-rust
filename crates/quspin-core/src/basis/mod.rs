@@ -1,3 +1,4 @@
+pub mod dispatch;
 pub mod hardcore;
 pub mod seed;
 pub mod space;

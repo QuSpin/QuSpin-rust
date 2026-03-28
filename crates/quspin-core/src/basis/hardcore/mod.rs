@@ -1,4 +1,2 @@
 // Hardcore-boson basis sub-module.
-pub mod dispatch;
-
-pub use dispatch::BasisInner;
+pub use crate::basis::dispatch::BasisInner;

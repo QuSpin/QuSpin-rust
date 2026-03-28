@@ -10,7 +10,7 @@ use crate::error::Error;
 use crate::hamiltonian::boson::PyBosonHamiltonian;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
-use quspin_core::basis::hardcore::dispatch::BasisInner;
+use quspin_core::basis::dispatch::BasisInner;
 use quspin_core::basis::{
     BasisSpace, dit_seed_from_bytes, dit_seed_from_str, dit_state_to_str,
     space::{FullSpace, Subspace},

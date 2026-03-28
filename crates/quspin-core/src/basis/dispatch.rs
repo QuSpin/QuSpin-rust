@@ -21,7 +21,7 @@ use crate::basis::{
     seed::{seed_from_bytes, state_to_str},
     space::{FullSpace, Subspace},
     sym::SymmetricSubspace,
-    symmetry::group::dispatch::{DitGrpInner, HardcoreGrpInner},
+    symmetry::dispatch::{DitGrpInner, HardcoreGrpInner},
 };
 
 type B128 = ruint::Uint<128, 2>;
@@ -389,119 +389,119 @@ impl_from_basis_spaces!(B8192, Sub8192, Sym8192, DitSym8192);
 macro_rules! with_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::hardcore::dispatch::BasisInner::Full32($basis) => {
+            $crate::basis::dispatch::BasisInner::Full32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Full64($basis) => {
+            $crate::basis::dispatch::BasisInner::Full64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub32($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub64($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub128($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub256($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub512($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub1024($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub2048($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub4096($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub8192($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym32($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym64($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym128($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym256($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym512($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym1024($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym2048($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym4096($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym8192($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym32($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym64($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym128($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym256($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym512($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym1024($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym2048($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym4096($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym8192($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -514,47 +514,47 @@ macro_rules! with_basis {
 macro_rules! with_plain_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::hardcore::dispatch::BasisInner::Full32($basis) => {
+            $crate::basis::dispatch::BasisInner::Full32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Full64($basis) => {
+            $crate::basis::dispatch::BasisInner::Full64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub32($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub64($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub128($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub256($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub512($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub1024($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub2048($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub4096($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sub8192($basis) => {
+            $crate::basis::dispatch::BasisInner::Sub8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -570,39 +570,39 @@ macro_rules! with_plain_basis {
 macro_rules! with_sym_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::hardcore::dispatch::BasisInner::Sym32($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym64($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym128($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym256($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym512($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym1024($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym2048($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym4096($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::Sym8192($basis) => {
+            $crate::basis::dispatch::BasisInner::Sym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -618,39 +618,39 @@ macro_rules! with_sym_basis {
 macro_rules! with_dit_sym_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym32($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym64($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym128($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym256($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym512($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym1024($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym2048($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym4096($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::BasisInner::DitSym8192($basis) => {
+            $crate::basis::dispatch::BasisInner::DitSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }

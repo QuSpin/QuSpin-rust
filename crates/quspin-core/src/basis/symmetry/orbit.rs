@@ -228,7 +228,7 @@ pub(crate) fn check_refstate_batch<B: BitInt, E: LatEl<B>, L: LocalOpItem<B>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::symmetry::group::LatticeElement;
+    use crate::basis::symmetry::LatticeElement;
     use crate::bitbasis::{PermDitLocations, PermDitMask};
     use num_complex::Complex;
 
