@@ -66,6 +66,74 @@ pub(crate) fn get_refstate<B: BitInt, L: LocalOpItem<B>>(
     (best, best_coeff)
 }
 
+/// Batch variant of [`get_refstate`], structured for loop amortisation.
+///
+/// For each element of `states`, finds the orbit representative (largest
+/// state) and the group-character coefficient accumulated to reach it,
+/// writing `(representative, grp_char)` into the corresponding element of
+/// `out`.  The loop order places orbit elements in the outer loop and states
+/// in the inner loop, amortising the orbit traversal across the batch.
+///
+/// The coefficient select (`if cond { lat.grp_char } else { o.1 }`) involves
+/// `Complex<f64>` so the inner loop does not auto-vectorise as cleanly as
+/// [`check_refstate_batch`]; the benefit here is loop amortisation rather
+/// than SIMD.
+///
+/// # Panics
+///
+/// Panics if `states.len() != out.len()`.
+pub(crate) fn get_refstate_batch<B: BitInt, L: LocalOpItem<B>>(
+    lattice: &[LatticeElement],
+    local: &[L],
+    states: &[B],
+    out: &mut [(B, Complex<f64>)],
+) {
+    let n = states.len();
+    assert_eq!(n, out.len());
+
+    // Initialise: each state is its own representative with identity character.
+    for (state, o) in states.iter().zip(out.iter_mut()) {
+        o.0 = *state;
+        o.1 = Complex::new(1.0, 0.0);
+    }
+
+    // Lattice-only images.
+    for lat in lattice {
+        for (state, o) in states.iter().zip(out.iter_mut()) {
+            let s = lat.apply_state(*state);
+            let cond = s > o.0;
+            o.0 = o.0.max(s);
+            o.1 = if cond { lat.grp_char } else { o.1 };
+        }
+    }
+
+    // Local-then-lattice images.
+    if !local.is_empty() {
+        let mut loc_states = vec![B::from_u64(0); n];
+        let mut loc_chars = vec![Complex::new(0.0_f64, 0.0_f64); n];
+        for item in local {
+            for ((state, loc), lc) in states
+                .iter()
+                .zip(loc_states.iter_mut())
+                .zip(loc_chars.iter_mut())
+            {
+                let (ls, lchar) = item.apply_local(*state);
+                *loc = ls;
+                *lc = lchar;
+            }
+            for lat in lattice {
+                for ((loc, lc), o) in loc_states.iter().zip(loc_chars.iter()).zip(out.iter_mut()) {
+                    let s = lat.apply_state(*loc);
+                    let c = lc * lat.grp_char;
+                    let cond = s > o.0;
+                    o.0 = o.0.max(s);
+                    o.1 = if cond { c } else { o.1 };
+                }
+            }
+        }
+    }
+}
+
 /// Return the orbit representative and the orbit norm.
 ///
 /// The norm is the number of orbit images that equal `state` (used to

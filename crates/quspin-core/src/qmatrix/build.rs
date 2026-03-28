@@ -3,6 +3,7 @@ use crate::basis::{BasisSpace, SymmetricSubspace, traits::SymGrp};
 use crate::bitbasis::BitInt;
 use crate::hamiltonian::Hamiltonian;
 use crate::primitive::Primitive;
+use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
 // Build from non-symmetric basis (FullSpace or Subspace)
@@ -97,35 +98,49 @@ where
 
     indptr.push(I::from_usize(0));
 
+    let mut row_buf: Vec<(C, Complex<f64>, G::State)> = Vec::new();
+    let mut ref_out: Vec<(G::State, Complex<f64>)> = Vec::new();
+
     for row_idx in 0..dim {
         let (state, norm) = basis.entry(row_idx);
         let row_start = data.len();
 
+        // Collect all operator outputs for this row.
+        row_buf.clear();
         ham.apply(state, |cindex, amp, new_state| {
-            // Map the output state to its representative.
-            let (ref_state, grp_char) = basis.get_refstate(new_state);
-
-            let Some(col_idx) = basis.index(ref_state) else {
-                return;
-            };
-
-            let (_, new_norm) = basis.entry(col_idx);
-
-            // Scale: amp * grp_char * sqrt(new_norm / norm)
-            let scale = grp_char * (new_norm / norm).sqrt();
-            let full_amp = amp * scale;
-            let col = I::from_usize(col_idx);
-            let value = V::from_complex(full_amp);
-
-            let existing = data[row_start..]
-                .iter_mut()
-                .find(|e| e.col == col && e.cindex == cindex);
-            if let Some(e) = existing {
-                e.value = V::from_complex(e.value.to_complex() + full_amp);
-            } else {
-                data.push(Entry::new(value, col, cindex));
-            }
+            row_buf.push((cindex, amp, new_state));
         });
+
+        if !row_buf.is_empty() {
+            // Batch-map every new_state to its orbit representative and
+            // group character in a single amortised pass.
+            let new_states: Vec<G::State> = row_buf.iter().map(|(_, _, s)| *s).collect();
+            ref_out.resize(new_states.len(), (new_states[0], Complex::new(1.0, 0.0)));
+            basis.get_refstate_batch(&new_states, &mut ref_out);
+
+            for ((cindex, amp, _), (ref_state, grp_char)) in row_buf.iter().zip(ref_out.iter()) {
+                let Some(col_idx) = basis.index(*ref_state) else {
+                    continue;
+                };
+
+                let (_, new_norm) = basis.entry(col_idx);
+
+                // Scale: amp * grp_char * sqrt(new_norm / norm)
+                let scale = grp_char * (new_norm / norm).sqrt();
+                let full_amp = amp * scale;
+                let col = I::from_usize(col_idx);
+                let value = V::from_complex(full_amp);
+
+                let existing = data[row_start..]
+                    .iter_mut()
+                    .find(|e| e.col == col && e.cindex == *cindex);
+                if let Some(e) = existing {
+                    e.value = V::from_complex(e.value.to_complex() + full_amp);
+                } else {
+                    data.push(Entry::new(value, col, *cindex));
+                }
+            }
+        }
 
         data[row_start..]
             .sort_unstable_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));

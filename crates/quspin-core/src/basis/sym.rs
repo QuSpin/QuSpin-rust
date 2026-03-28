@@ -122,6 +122,11 @@ impl<G: SymGrp> SymmetricSubspace<G> {
         self.grp.get_refstate(state)
     }
 
+    /// Batch variant of [`get_refstate`].
+    pub fn get_refstate_batch(&self, states: &[G::State], out: &mut [(G::State, Complex<f64>)]) {
+        self.grp.get_refstate_batch(states, out);
+    }
+
     /// Check whether `state` is a representative and return its norm.
     pub fn check_refstate(&self, state: G::State) -> (G::State, f64) {
         self.grp.check_refstate(state)

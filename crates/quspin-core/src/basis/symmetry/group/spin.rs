@@ -94,6 +94,13 @@ impl<B: BitInt> HardcoreSymmetryGrp<B> {
         super::check_refstate(&self.lattice, &self.local, state)
     }
 
+    /// Batch variant: maps every element of `states` to its orbit
+    /// representative and accumulated group character in a single pass with
+    /// the orbit loop amortised across the batch.
+    pub fn get_refstate_batch(&self, states: &[B], out: &mut [(B, Complex<f64>)]) {
+        super::orbit::get_refstate_batch(&self.lattice, &self.local, states, out);
+    }
+
     /// Batch variant: computes `check_refstate` for every element of `states`
     /// in a single pass with loop order optimised for auto-vectorisation.
     pub fn check_refstate_batch(&self, states: &[B], out: &mut [(B, f64)]) {
@@ -114,6 +121,10 @@ impl<B: BitInt> SymGrp for HardcoreSymmetryGrp<B> {
 
     fn get_refstate(&self, state: B) -> (B, num_complex::Complex<f64>) {
         HardcoreSymmetryGrp::get_refstate(self, state)
+    }
+
+    fn get_refstate_batch(&self, states: &[B], out: &mut [(B, Complex<f64>)]) {
+        HardcoreSymmetryGrp::get_refstate_batch(self, states, out);
     }
 
     fn check_refstate(&self, state: B) -> (B, f64) {
