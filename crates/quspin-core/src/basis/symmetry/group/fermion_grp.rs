@@ -1,10 +1,9 @@
-use super::dispatch::HardcoreSymmetryGrp;
 /// Fermionic symmetry group type.
 ///
 /// Extends the hardcore (LHSS=2) basis with Jordan-Wigner permutation signs.
 /// Each lattice element includes the fermionic sign of the permutation acting
 /// on the pre-image state.
-use super::dispatch::SymmetryGrpInner;
+use super::dispatch::{SymGrpInner, SymmetryGrpInner};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
@@ -36,7 +35,7 @@ impl FermionicSymGrp {
             return Err(QuSpinError::ValueError(format!(
                 "n_sites={n_sites} exceeds the maximum supported value of 8192"
             ))),
-            { SymmetryGrpInner::from(HardcoreSymmetryGrp::<B>::new_empty(n_sites)) }
+            { SymmetryGrpInner::from(SymGrpInner::<B>::new_empty(2, n_sites, true)) }
         );
         Ok(FermionicSymGrp { n_sites, inner })
     }
@@ -53,14 +52,19 @@ impl FermionicSymGrp {
     /// The Jordan-Wigner sign is automatically included in the group character
     /// when computing orbit representatives.
     pub fn add_lattice(&mut self, grp_char: Complex<f64>, perm: Vec<usize>) {
-        self.inner.push_lattice(grp_char, &perm, true); // fermionic=true
+        self.inner.push_lattice(grp_char, &perm);
     }
 
     /// Access the inner hardcore dispatch type.
     ///
-    /// Used by `quspin-py` to construct `SymmetricSubspace<HardcoreSymmetryGrp<B>>`.
+    /// Used by `quspin-py` to construct `SymmetricSubspace<SymGrpInner<B>>`.
     pub fn as_hardcore(&self) -> Option<&SymmetryGrpInner> {
         Some(&self.inner)
+    }
+
+    /// Access the inner dispatch type directly.
+    pub fn inner(&self) -> &SymmetryGrpInner {
+        &self.inner
     }
 }
 

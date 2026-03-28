@@ -1,7 +1,7 @@
 /// Dit symmetry group types.
 ///
-/// The public type is [`DitSymGrp`]. Inner types live in [`super::inner`].
-use super::dispatch::{DitSymGrpInner, DitSymGrpInnerEnum};
+/// The public type is [`DitSymGrp`]. Inner types live in [`super::dispatch`].
+use super::dispatch::{SymGrpInner, SymmetryGrpInner};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
@@ -20,7 +20,7 @@ use num_complex::Complex;
 pub struct DitSymGrp {
     lhss: usize,
     n_sites: usize,
-    inner: DitSymGrpInnerEnum,
+    inner: SymmetryGrpInner,
 }
 
 impl DitSymGrp {
@@ -45,7 +45,7 @@ impl DitSymGrp {
             return Err(QuSpinError::ValueError(format!(
                 "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, exceeding the 8192-bit maximum"
             ))),
-            { DitSymGrpInnerEnum::from(DitSymGrpInner::<B>::new_empty(lhss, n_sites)) }
+            { SymmetryGrpInner::from(SymGrpInner::<B>::new_empty(lhss, n_sites, false)) }
         );
         Ok(DitSymGrp {
             lhss,
@@ -76,12 +76,12 @@ impl DitSymGrp {
     /// `perm[v] = w` maps local occupation `v` to `w` at each site in `locs`.
     /// The length of `perm` must equal `self.lhss`.
     pub fn add_local_perm(&mut self, grp_char: Complex<f64>, perm: Vec<u8>, locs: Vec<usize>) {
-        self.inner.push_dit_perm(grp_char, perm, locs);
+        self.inner.push_local_perm(grp_char, perm, locs);
     }
 
     /// Access the inner dispatch type.
     #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn as_dit(&self) -> &DitSymGrpInnerEnum {
+    pub(crate) fn as_dit(&self) -> &SymmetryGrpInner {
         &self.inner
     }
 }
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn dit_sym_lhss_dyn() {
-        // LHSS=6 falls back to DitValueGrpDyn path.
+        // LHSS=6: bits_per_dit=3, n_bits=6 → Sym32
         let mut grp = DitSymGrp::new(6, 2).unwrap();
         grp.add_lattice(Complex::new(1.0, 0.0), vec![0, 1]);
         grp.add_local_perm(Complex::new(1.0, 0.0), vec![5, 4, 3, 2, 1, 0], vec![0, 1]);

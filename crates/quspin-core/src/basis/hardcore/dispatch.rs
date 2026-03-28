@@ -21,7 +21,7 @@ use crate::basis::{
     seed::{seed_from_bytes, state_to_str},
     space::{FullSpace, Subspace},
     sym::SymmetricSubspace,
-    symmetry::group::HardcoreSymmetryGrp,
+    symmetry::group::SymGrpInner,
 };
 
 type B128 = ruint::Uint<128, 2>;
@@ -60,15 +60,15 @@ pub enum HardcoreBasisInner {
     Sub8192(Subspace<B8192>),
 
     // Symmetry-reduced subspaces.
-    Sym32(SymmetricSubspace<HardcoreSymmetryGrp<u32>>),
-    Sym64(SymmetricSubspace<HardcoreSymmetryGrp<u64>>),
-    Sym128(SymmetricSubspace<HardcoreSymmetryGrp<B128>>),
-    Sym256(SymmetricSubspace<HardcoreSymmetryGrp<B256>>),
-    Sym512(SymmetricSubspace<HardcoreSymmetryGrp<B512>>),
-    Sym1024(SymmetricSubspace<HardcoreSymmetryGrp<B1024>>),
-    Sym2048(SymmetricSubspace<HardcoreSymmetryGrp<B2048>>),
-    Sym4096(SymmetricSubspace<HardcoreSymmetryGrp<B4096>>),
-    Sym8192(SymmetricSubspace<HardcoreSymmetryGrp<B8192>>),
+    Sym32(SymmetricSubspace<SymGrpInner<u32>>),
+    Sym64(SymmetricSubspace<SymGrpInner<u64>>),
+    Sym128(SymmetricSubspace<SymGrpInner<B128>>),
+    Sym256(SymmetricSubspace<SymGrpInner<B256>>),
+    Sym512(SymmetricSubspace<SymGrpInner<B512>>),
+    Sym1024(SymmetricSubspace<SymGrpInner<B1024>>),
+    Sym2048(SymmetricSubspace<SymGrpInner<B2048>>),
+    Sym4096(SymmetricSubspace<SymGrpInner<B4096>>),
+    Sym8192(SymmetricSubspace<SymGrpInner<B8192>>),
 }
 
 impl HardcoreBasisInner {
@@ -286,9 +286,9 @@ macro_rules! impl_from_basis_spaces {
                 HardcoreBasisInner::$sub_variant(b)
             }
         }
-        impl From<SymmetricSubspace<HardcoreSymmetryGrp<$B>>> for HardcoreBasisInner {
+        impl From<SymmetricSubspace<SymGrpInner<$B>>> for HardcoreBasisInner {
             #[inline]
-            fn from(b: SymmetricSubspace<HardcoreSymmetryGrp<$B>>) -> Self {
+            fn from(b: SymmetricSubspace<SymGrpInner<$B>>) -> Self {
                 HardcoreBasisInner::$sym_variant(b)
             }
         }

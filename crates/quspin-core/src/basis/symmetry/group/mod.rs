@@ -12,14 +12,14 @@ pub(crate) mod orbit;
 pub mod spin;
 pub(crate) mod traits;
 
-pub use dispatch::SymmetryGrpInner;
+pub use dispatch::{SymGrpInner, SymmetryGrpInner};
 pub use dit::DitSymGrp;
 pub use fermion_grp::FermionicSymGrp;
-pub use spin::{HardcoreGrpElement, HardcoreSymmetryGrp, SpinSymGrp};
+pub use spin::SpinSymGrp;
 // BenesLatticeElement is declared below in this file — no re-export alias needed.
 
 pub(crate) use orbit::{check_refstate, get_refstate};
-pub(crate) use traits::{LatEl, LocalOpItem};
+pub(crate) use traits::LatEl;
 
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, PermDitLocations};
 use num_complex::Complex;
