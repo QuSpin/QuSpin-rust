@@ -15,7 +15,8 @@ use smallvec::SmallVec;
 /// Covers the common cases without heap allocation:
 /// - 4-site translation × 1 local op  =  8 images
 /// - 8-site translation × 1 local op  = 16 images
-const ORBIT_INLINE_CAP: usize = 16;
+/// - 32-site translation × 1 local op = 64 images
+const ORBIT_INLINE_CAP: usize = 64;
 
 // ---------------------------------------------------------------------------
 // Scalar helpers
