@@ -15,13 +15,13 @@
 /// | `8192`         | `ruint::Uint<8192, 128>`   | 8192      |
 ///
 /// `FullSpace` is only instantiated for `u32` and `u64`; larger full spaces
-/// are not physically meaningful for hardcore bosons.
+/// are not physically meaningful.
 use crate::basis::{
     BasisSpace,
     seed::{seed_from_bytes, state_to_str},
     space::{FullSpace, Subspace},
     sym::SymmetricSubspace,
-    symmetry::group::dispatch::HardcoreGrpInner,
+    symmetry::group::dispatch::{DitGrpInner, HardcoreGrpInner},
 };
 
 type B128 = ruint::Uint<128, 2>;
@@ -36,13 +36,14 @@ type B8192 = ruint::Uint<8192, 128>;
 // BasisInner
 // ---------------------------------------------------------------------------
 
-/// Type-erased wrapper for the three basis-space variants over all supported
+/// Type-erased wrapper for all basis-space variants over all supported
 /// integer widths.
 ///
-/// 20 variants total:
+/// 29 variants total:
 /// - 2 `Full` variants (u32, u64)
 /// - 9 `Sub` variants (u32, u64, and 128–8192 bit ruint integers)
-/// - 9 `Sym` variants (u32, u64, and 128–8192 bit ruint integers)
+/// - 9 `Sym` variants — LHSS=2 symmetric (hardcore bosons / spin-½ / fermions)
+/// - 9 `DitSym` variants — LHSS≥3 symmetric (bosons / higher spin)
 pub enum BasisInner {
     // Full Hilbert spaces (small n_sites only).
     Full32(FullSpace<u32>),
@@ -59,7 +60,7 @@ pub enum BasisInner {
     Sub4096(Subspace<B4096>),
     Sub8192(Subspace<B8192>),
 
-    // Symmetry-reduced subspaces.
+    // LHSS=2 symmetry-reduced subspaces (hardcore bosons / spin-½ / fermions).
     Sym32(SymmetricSubspace<HardcoreGrpInner<u32>>),
     Sym64(SymmetricSubspace<HardcoreGrpInner<u64>>),
     Sym128(SymmetricSubspace<HardcoreGrpInner<B128>>),
@@ -69,6 +70,17 @@ pub enum BasisInner {
     Sym2048(SymmetricSubspace<HardcoreGrpInner<B2048>>),
     Sym4096(SymmetricSubspace<HardcoreGrpInner<B4096>>),
     Sym8192(SymmetricSubspace<HardcoreGrpInner<B8192>>),
+
+    // LHSS≥3 symmetry-reduced subspaces (bosons / higher spin).
+    DitSym32(SymmetricSubspace<DitGrpInner<u32>>),
+    DitSym64(SymmetricSubspace<DitGrpInner<u64>>),
+    DitSym128(SymmetricSubspace<DitGrpInner<B128>>),
+    DitSym256(SymmetricSubspace<DitGrpInner<B256>>),
+    DitSym512(SymmetricSubspace<DitGrpInner<B512>>),
+    DitSym1024(SymmetricSubspace<DitGrpInner<B1024>>),
+    DitSym2048(SymmetricSubspace<DitGrpInner<B2048>>),
+    DitSym4096(SymmetricSubspace<DitGrpInner<B4096>>),
+    DitSym8192(SymmetricSubspace<DitGrpInner<B8192>>),
 }
 
 impl BasisInner {
@@ -95,6 +107,15 @@ impl BasisInner {
             BasisInner::Sym2048(b) => b.n_sites(),
             BasisInner::Sym4096(b) => b.n_sites(),
             BasisInner::Sym8192(b) => b.n_sites(),
+            BasisInner::DitSym32(b) => b.n_sites(),
+            BasisInner::DitSym64(b) => b.n_sites(),
+            BasisInner::DitSym128(b) => b.n_sites(),
+            BasisInner::DitSym256(b) => b.n_sites(),
+            BasisInner::DitSym512(b) => b.n_sites(),
+            BasisInner::DitSym1024(b) => b.n_sites(),
+            BasisInner::DitSym2048(b) => b.n_sites(),
+            BasisInner::DitSym4096(b) => b.n_sites(),
+            BasisInner::DitSym8192(b) => b.n_sites(),
         }
     }
 
@@ -121,10 +142,19 @@ impl BasisInner {
             BasisInner::Sym2048(b) => b.size(),
             BasisInner::Sym4096(b) => b.size(),
             BasisInner::Sym8192(b) => b.size(),
+            BasisInner::DitSym32(b) => b.size(),
+            BasisInner::DitSym64(b) => b.size(),
+            BasisInner::DitSym128(b) => b.size(),
+            BasisInner::DitSym256(b) => b.size(),
+            BasisInner::DitSym512(b) => b.size(),
+            BasisInner::DitSym1024(b) => b.size(),
+            BasisInner::DitSym2048(b) => b.size(),
+            BasisInner::DitSym4096(b) => b.size(),
+            BasisInner::DitSym8192(b) => b.size(),
         }
     }
 
-    /// Return the `i`-th basis state as a `'0'`/`'1'` string (site 0 = index 0).
+    /// Return the `i`-th basis state as a bit-string (site 0 = index 0).
     pub fn state_at_str(&self, i: usize) -> String {
         match self {
             BasisInner::Full32(b) => state_to_str(b.state_at(i), b.n_sites()),
@@ -147,6 +177,15 @@ impl BasisInner {
             BasisInner::Sym2048(b) => state_to_str(b.state_at(i), b.n_sites()),
             BasisInner::Sym4096(b) => state_to_str(b.state_at(i), b.n_sites()),
             BasisInner::Sym8192(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::DitSym32(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::DitSym64(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::DitSym128(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::DitSym256(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::DitSym512(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::DitSym1024(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::DitSym2048(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::DitSym4096(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::DitSym8192(b) => state_to_str(b.state_at(i), b.n_sites()),
         }
     }
 
@@ -175,6 +214,15 @@ impl BasisInner {
             BasisInner::Sym2048(b) => b.index(seed_from_bytes(bytes)),
             BasisInner::Sym4096(b) => b.index(seed_from_bytes(bytes)),
             BasisInner::Sym8192(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::DitSym32(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::DitSym64(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::DitSym128(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::DitSym256(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::DitSym512(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::DitSym1024(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::DitSym2048(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::DitSym4096(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::DitSym8192(b) => b.index(seed_from_bytes(bytes)),
         }
     }
 
@@ -199,11 +247,20 @@ impl BasisInner {
             | BasisInner::Sym1024(_)
             | BasisInner::Sym2048(_)
             | BasisInner::Sym4096(_)
-            | BasisInner::Sym8192(_) => "symmetric",
+            | BasisInner::Sym8192(_)
+            | BasisInner::DitSym32(_)
+            | BasisInner::DitSym64(_)
+            | BasisInner::DitSym128(_)
+            | BasisInner::DitSym256(_)
+            | BasisInner::DitSym512(_)
+            | BasisInner::DitSym1024(_)
+            | BasisInner::DitSym2048(_)
+            | BasisInner::DitSym4096(_)
+            | BasisInner::DitSym8192(_) => "symmetric",
         }
     }
 
-    /// Returns `true` for `Sym*` variants (symmetry-reduced subspaces).
+    /// Returns `true` for `Sym*` and `DitSym*` variants (symmetry-reduced subspaces).
     pub fn is_symmetric(&self) -> bool {
         matches!(
             self,
@@ -216,6 +273,15 @@ impl BasisInner {
                 | BasisInner::Sym2048(_)
                 | BasisInner::Sym4096(_)
                 | BasisInner::Sym8192(_)
+                | BasisInner::DitSym32(_)
+                | BasisInner::DitSym64(_)
+                | BasisInner::DitSym128(_)
+                | BasisInner::DitSym256(_)
+                | BasisInner::DitSym512(_)
+                | BasisInner::DitSym1024(_)
+                | BasisInner::DitSym2048(_)
+                | BasisInner::DitSym4096(_)
+                | BasisInner::DitSym8192(_)
         )
     }
 }
@@ -279,7 +345,7 @@ impl std::fmt::Display for BasisInner {
 // ---------------------------------------------------------------------------
 
 macro_rules! impl_from_basis_spaces {
-    ($B:ty, $sub_variant:ident, $sym_variant:ident) => {
+    ($B:ty, $sub_variant:ident, $sym_variant:ident, $dit_sym_variant:ident) => {
         impl From<Subspace<$B>> for BasisInner {
             #[inline]
             fn from(b: Subspace<$B>) -> Self {
@@ -292,27 +358,33 @@ macro_rules! impl_from_basis_spaces {
                 BasisInner::$sym_variant(b)
             }
         }
+        impl From<SymmetricSubspace<DitGrpInner<$B>>> for BasisInner {
+            #[inline]
+            fn from(b: SymmetricSubspace<DitGrpInner<$B>>) -> Self {
+                BasisInner::$dit_sym_variant(b)
+            }
+        }
     };
 }
 
-impl_from_basis_spaces!(u32, Sub32, Sym32);
-impl_from_basis_spaces!(u64, Sub64, Sym64);
-impl_from_basis_spaces!(B128, Sub128, Sym128);
-impl_from_basis_spaces!(B256, Sub256, Sym256);
-impl_from_basis_spaces!(B512, Sub512, Sym512);
-impl_from_basis_spaces!(B1024, Sub1024, Sym1024);
-impl_from_basis_spaces!(B2048, Sub2048, Sym2048);
-impl_from_basis_spaces!(B4096, Sub4096, Sym4096);
-impl_from_basis_spaces!(B8192, Sub8192, Sym8192);
+impl_from_basis_spaces!(u32, Sub32, Sym32, DitSym32);
+impl_from_basis_spaces!(u64, Sub64, Sym64, DitSym64);
+impl_from_basis_spaces!(B128, Sub128, Sym128, DitSym128);
+impl_from_basis_spaces!(B256, Sub256, Sym256, DitSym256);
+impl_from_basis_spaces!(B512, Sub512, Sym512, DitSym512);
+impl_from_basis_spaces!(B1024, Sub1024, Sym1024, DitSym1024);
+impl_from_basis_spaces!(B2048, Sub2048, Sym2048, DitSym2048);
+impl_from_basis_spaces!(B4096, Sub4096, Sym4096, DitSym4096);
+impl_from_basis_spaces!(B8192, Sub8192, Sym8192, DitSym8192);
 
 // ---------------------------------------------------------------------------
 // Dispatch macros
 // ---------------------------------------------------------------------------
 
-/// Match on a `BasisInner` reference, injecting a type alias `$B` for
+/// Match on a [`BasisInner`] reference, injecting a type alias `$B` for
 /// the concrete `BitInt` type and binding `$basis` to the inner basis reference.
 ///
-/// Covers all 20 variants (Full*, Sub*, Sym*).
+/// Covers all 29 variants (Full*, Sub*, Sym*, DitSym*).
 #[macro_export]
 macro_rules! with_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
@@ -397,6 +469,42 @@ macro_rules! with_basis {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym128($basis) => {
+                type $B = ::ruint::Uint<128, 2>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym256($basis) => {
+                type $B = ::ruint::Uint<256, 4>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym512($basis) => {
+                type $B = ::ruint::Uint<512, 8>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym1024($basis) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym2048($basis) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym4096($basis) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym8192($basis) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
         }
     };
 }
@@ -455,7 +563,9 @@ macro_rules! with_plain_basis {
     };
 }
 
-/// Like `with_basis!` but restricted to Sym* (symmetric) variants.
+/// Like `with_basis!` but restricted to `Sym*` (LHSS=2 symmetric) variants.
+///
+/// Panics if called on a `DitSym*` variant.
 #[macro_export]
 macro_rules! with_sym_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
@@ -496,7 +606,55 @@ macro_rules! with_sym_basis {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            _ => unreachable!("with_sym_basis! called on a non-symmetric variant"),
+            _ => unreachable!("with_sym_basis! called on a non-Sym variant"),
+        }
+    };
+}
+
+/// Like `with_basis!` but restricted to `DitSym*` (LHSS≥3 symmetric) variants.
+///
+/// Panics if called on a `Sym*` or non-symmetric variant.
+#[macro_export]
+macro_rules! with_dit_sym_basis {
+    ($inner:expr, $B:ident, $basis:ident, $body:block) => {
+        match $inner {
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym128($basis) => {
+                type $B = ::ruint::Uint<128, 2>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym256($basis) => {
+                type $B = ::ruint::Uint<256, 4>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym512($basis) => {
+                type $B = ::ruint::Uint<512, 8>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym1024($basis) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym2048($basis) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym4096($basis) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                $body
+            }
+            $crate::basis::hardcore::dispatch::BasisInner::DitSym8192($basis) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
+            _ => unreachable!("with_dit_sym_basis! called on a non-DitSym variant"),
         }
     };
 }
