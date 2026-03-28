@@ -1,8 +1,7 @@
 use super::BenesLatticeElement;
 use crate::basis::traits::SymGrp;
 use crate::bitbasis::{
-    BenesPermDitLocations, BitInt, BitStateOp, DynamicHigherSpinInv, DynamicPermDitValues,
-    HigherSpinInv, PermDitMask, PermDitValues,
+    BenesPermDitLocations, BitInt, BitStateOp, DynamicPermDitValues, PermDitMask, PermDitValues,
 };
 /// B-type dispatch for the LHSS = 2 (hardcore) symmetry group path.
 ///
@@ -289,289 +288,6 @@ impl<B: BitInt> SymGrp for HardcoreSymmetryGrp<B> {
 }
 
 // ---------------------------------------------------------------------------
-// DitSpinGrpInner — compile-time-LHSS spin-inversion (LHSS 3–5)
-// ---------------------------------------------------------------------------
-
-// Dit spin infrastructure is forward-looking (no dit basis yet). Allow
-// dead_code until DitSymmetricSubspace is implemented.
-#[allow(dead_code)] // dit basis not yet implemented
-#[derive(Clone)]
-pub(crate) struct DitSpinGrpInner<B: BitInt, const LHSS: usize> {
-    n_sites: usize,
-    lattice: Vec<BenesLatticeElement<B>>,
-    local: Vec<(Complex<f64>, HigherSpinInv<LHSS>)>,
-}
-
-#[allow(dead_code)] // dit basis not yet implemented
-impl<B: BitInt, const LHSS: usize> DitSpinGrpInner<B, LHSS> {
-    pub(crate) fn new_empty(n_sites: usize) -> Self {
-        DitSpinGrpInner {
-            n_sites,
-            lattice: Vec::new(),
-            local: Vec::new(),
-        }
-    }
-
-    pub(crate) fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
-        let op = BenesPermDitLocations::<B>::new(LHSS, perm, false);
-        self.lattice
-            .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
-    }
-
-    pub(crate) fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
-        self.local
-            .push((grp_char, HigherSpinInv::<LHSS>::new(locs)));
-    }
-
-    pub(crate) fn n_sites(&self) -> usize {
-        self.n_sites
-    }
-
-    #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
-        super::get_refstate(&self.lattice, &self.local, state)
-    }
-
-    #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn check_refstate(&self, state: B) -> (B, f64) {
-        super::check_refstate(&self.lattice, &self.local, state)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// DitSpinGrpDyn — runtime-LHSS spin-inversion fallback (LHSS ≥ 6)
-// ---------------------------------------------------------------------------
-
-#[allow(dead_code)] // dit basis not yet implemented
-#[derive(Clone)]
-pub(crate) struct DitSpinGrpDyn<B: BitInt> {
-    n_sites: usize,
-    lhss: usize,
-    lattice: Vec<BenesLatticeElement<B>>,
-    local: Vec<(Complex<f64>, DynamicHigherSpinInv)>,
-}
-
-#[allow(dead_code)] // dit basis not yet implemented
-impl<B: BitInt> DitSpinGrpDyn<B> {
-    pub(crate) fn new_empty(lhss: usize, n_sites: usize) -> Self {
-        DitSpinGrpDyn {
-            n_sites,
-            lhss,
-            lattice: Vec::new(),
-            local: Vec::new(),
-        }
-    }
-
-    pub(crate) fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
-        let op = BenesPermDitLocations::<B>::new(self.lhss, perm, false);
-        self.lattice
-            .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
-    }
-
-    pub(crate) fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
-        self.local
-            .push((grp_char, DynamicHigherSpinInv::new(self.lhss, locs)));
-    }
-
-    pub(crate) fn n_sites(&self) -> usize {
-        self.n_sites
-    }
-
-    pub(crate) fn lhss(&self) -> usize {
-        self.lhss
-    }
-
-    #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
-        super::get_refstate(&self.lattice, &self.local, state)
-    }
-
-    #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn check_refstate(&self, state: B) -> (B, f64) {
-        super::check_refstate(&self.lattice, &self.local, state)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// DitSpinSymGrpInner — LHSS dispatch enum for spin-inversion (LHSS > 2), generic over B
-// ---------------------------------------------------------------------------
-
-#[allow(dead_code)] // dit basis not yet implemented
-#[derive(Clone)]
-pub(crate) enum DitSpinSymGrpInner<B: BitInt> {
-    Lhss3(DitSpinGrpInner<B, 3>),
-    Lhss4(DitSpinGrpInner<B, 4>),
-    Lhss5(DitSpinGrpInner<B, 5>),
-    LhssDyn(DitSpinGrpDyn<B>),
-}
-
-#[allow(dead_code)] // dit basis not yet implemented
-impl<B: BitInt> DitSpinSymGrpInner<B> {
-    pub(crate) fn new_empty(lhss: usize, n_sites: usize) -> Self {
-        match lhss {
-            3 => DitSpinSymGrpInner::Lhss3(DitSpinGrpInner::<B, 3>::new_empty(n_sites)),
-            4 => DitSpinSymGrpInner::Lhss4(DitSpinGrpInner::<B, 4>::new_empty(n_sites)),
-            5 => DitSpinSymGrpInner::Lhss5(DitSpinGrpInner::<B, 5>::new_empty(n_sites)),
-            _ => DitSpinSymGrpInner::LhssDyn(DitSpinGrpDyn::<B>::new_empty(lhss, n_sites)),
-        }
-    }
-
-    pub(crate) fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
-        match self {
-            DitSpinSymGrpInner::Lhss3(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInner::Lhss4(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInner::Lhss5(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInner::LhssDyn(g) => g.push_lattice(grp_char, perm),
-        }
-    }
-
-    pub(crate) fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
-        match self {
-            DitSpinSymGrpInner::Lhss3(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInner::Lhss4(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInner::Lhss5(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInner::LhssDyn(g) => g.push_spin_inv(grp_char, locs),
-        }
-    }
-
-    pub(crate) fn n_sites(&self) -> usize {
-        match self {
-            DitSpinSymGrpInner::Lhss3(g) => g.n_sites(),
-            DitSpinSymGrpInner::Lhss4(g) => g.n_sites(),
-            DitSpinSymGrpInner::Lhss5(g) => g.n_sites(),
-            DitSpinSymGrpInner::LhssDyn(g) => g.n_sites(),
-        }
-    }
-
-    pub(crate) fn lhss(&self) -> usize {
-        match self {
-            DitSpinSymGrpInner::Lhss3(_) => 3,
-            DitSpinSymGrpInner::Lhss4(_) => 4,
-            DitSpinSymGrpInner::Lhss5(_) => 5,
-            DitSpinSymGrpInner::LhssDyn(g) => g.lhss(),
-        }
-    }
-
-    #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
-        match self {
-            DitSpinSymGrpInner::Lhss3(g) => g.get_refstate(state),
-            DitSpinSymGrpInner::Lhss4(g) => g.get_refstate(state),
-            DitSpinSymGrpInner::Lhss5(g) => g.get_refstate(state),
-            DitSpinSymGrpInner::LhssDyn(g) => g.get_refstate(state),
-        }
-    }
-
-    #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn check_refstate(&self, state: B) -> (B, f64) {
-        match self {
-            DitSpinSymGrpInner::Lhss3(g) => g.check_refstate(state),
-            DitSpinSymGrpInner::Lhss4(g) => g.check_refstate(state),
-            DitSpinSymGrpInner::Lhss5(g) => g.check_refstate(state),
-            DitSpinSymGrpInner::LhssDyn(g) => g.check_refstate(state),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// DitSpinSymGrpInnerEnum — B-erased enum over DitSpinSymGrpInner<B> variants
-// ---------------------------------------------------------------------------
-
-#[allow(dead_code)] // dit basis not yet implemented
-#[derive(Clone)]
-pub(crate) enum DitSpinSymGrpInnerEnum {
-    B32(DitSpinSymGrpInner<u32>),
-    B64(DitSpinSymGrpInner<u64>),
-    B128(DitSpinSymGrpInner<B128>),
-    B256(DitSpinSymGrpInner<B256>),
-    B512(DitSpinSymGrpInner<B512>),
-    B1024(DitSpinSymGrpInner<B1024>),
-    B2048(DitSpinSymGrpInner<B2048>),
-    B4096(DitSpinSymGrpInner<B4096>),
-    B8192(DitSpinSymGrpInner<B8192>),
-}
-
-macro_rules! impl_from_dit_spin_sym_grp_inner {
-    ($B:ty, $variant:ident) => {
-        impl From<DitSpinSymGrpInner<$B>> for DitSpinSymGrpInnerEnum {
-            #[inline]
-            fn from(g: DitSpinSymGrpInner<$B>) -> Self {
-                DitSpinSymGrpInnerEnum::$variant(g)
-            }
-        }
-    };
-}
-
-impl_from_dit_spin_sym_grp_inner!(u32, B32);
-impl_from_dit_spin_sym_grp_inner!(u64, B64);
-impl_from_dit_spin_sym_grp_inner!(B128, B128);
-impl_from_dit_spin_sym_grp_inner!(B256, B256);
-impl_from_dit_spin_sym_grp_inner!(B512, B512);
-impl_from_dit_spin_sym_grp_inner!(B1024, B1024);
-impl_from_dit_spin_sym_grp_inner!(B2048, B2048);
-impl_from_dit_spin_sym_grp_inner!(B4096, B4096);
-impl_from_dit_spin_sym_grp_inner!(B8192, B8192);
-
-#[allow(dead_code)] // dit basis not yet implemented
-impl DitSpinSymGrpInnerEnum {
-    pub(crate) fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
-        match self {
-            DitSpinSymGrpInnerEnum::B32(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInnerEnum::B64(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInnerEnum::B128(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInnerEnum::B256(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInnerEnum::B512(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInnerEnum::B1024(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInnerEnum::B2048(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInnerEnum::B4096(g) => g.push_lattice(grp_char, perm),
-            DitSpinSymGrpInnerEnum::B8192(g) => g.push_lattice(grp_char, perm),
-        }
-    }
-
-    pub(crate) fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
-        match self {
-            DitSpinSymGrpInnerEnum::B32(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInnerEnum::B64(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInnerEnum::B128(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInnerEnum::B256(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInnerEnum::B512(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInnerEnum::B1024(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInnerEnum::B2048(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInnerEnum::B4096(g) => g.push_spin_inv(grp_char, locs),
-            DitSpinSymGrpInnerEnum::B8192(g) => g.push_spin_inv(grp_char, locs),
-        }
-    }
-
-    pub(crate) fn n_sites(&self) -> usize {
-        match self {
-            DitSpinSymGrpInnerEnum::B32(g) => g.n_sites(),
-            DitSpinSymGrpInnerEnum::B64(g) => g.n_sites(),
-            DitSpinSymGrpInnerEnum::B128(g) => g.n_sites(),
-            DitSpinSymGrpInnerEnum::B256(g) => g.n_sites(),
-            DitSpinSymGrpInnerEnum::B512(g) => g.n_sites(),
-            DitSpinSymGrpInnerEnum::B1024(g) => g.n_sites(),
-            DitSpinSymGrpInnerEnum::B2048(g) => g.n_sites(),
-            DitSpinSymGrpInnerEnum::B4096(g) => g.n_sites(),
-            DitSpinSymGrpInnerEnum::B8192(g) => g.n_sites(),
-        }
-    }
-
-    pub(crate) fn lhss(&self) -> usize {
-        match self {
-            DitSpinSymGrpInnerEnum::B32(g) => g.lhss(),
-            DitSpinSymGrpInnerEnum::B64(g) => g.lhss(),
-            DitSpinSymGrpInnerEnum::B128(g) => g.lhss(),
-            DitSpinSymGrpInnerEnum::B256(g) => g.lhss(),
-            DitSpinSymGrpInnerEnum::B512(g) => g.lhss(),
-            DitSpinSymGrpInnerEnum::B1024(g) => g.lhss(),
-            DitSpinSymGrpInnerEnum::B2048(g) => g.lhss(),
-            DitSpinSymGrpInnerEnum::B4096(g) => g.lhss(),
-            DitSpinSymGrpInnerEnum::B8192(g) => g.lhss(),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // DitValueGrpInner — compile-time-LHSS value-permutation (LHSS 3–5)
 // ---------------------------------------------------------------------------
 
@@ -610,6 +326,11 @@ impl<B: BitInt, const LHSS: usize> DitValueGrpInner<B, LHSS> {
         let arr: [u8; LHSS] = perm.try_into().expect("perm length must match LHSS");
         self.local
             .push((grp_char, PermDitValues::<LHSS>::new(arr, locs)));
+    }
+
+    pub(crate) fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+        let perm: Vec<u8> = (0..LHSS).rev().map(|v| v as u8).collect();
+        self.push_dit_perm(grp_char, perm, locs);
     }
 
     pub(crate) fn n_sites(&self) -> usize {
@@ -665,6 +386,11 @@ impl<B: BitInt> DitValueGrpDyn<B> {
     ) {
         self.local
             .push((grp_char, DynamicPermDitValues::new(self.lhss, perm, locs)));
+    }
+
+    pub(crate) fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+        let perm: Vec<u8> = (0..self.lhss).rev().map(|v| v as u8).collect();
+        self.push_dit_perm(grp_char, perm, locs);
     }
 
     pub(crate) fn n_sites(&self) -> usize {
@@ -730,6 +456,15 @@ impl<B: BitInt> DitSymGrpInner<B> {
             DitSymGrpInner::Lhss4(g) => g.push_dit_perm(grp_char, perm, locs),
             DitSymGrpInner::Lhss5(g) => g.push_dit_perm(grp_char, perm, locs),
             DitSymGrpInner::LhssDyn(g) => g.push_dit_perm(grp_char, perm, locs),
+        }
+    }
+
+    pub(crate) fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+        match self {
+            DitSymGrpInner::Lhss3(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInner::Lhss4(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInner::Lhss5(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInner::LhssDyn(g) => g.push_spin_inv(grp_char, locs),
         }
     }
 
@@ -843,6 +578,20 @@ impl DitSymGrpInnerEnum {
             DitSymGrpInnerEnum::B2048(g) => g.push_dit_perm(grp_char, perm, locs),
             DitSymGrpInnerEnum::B4096(g) => g.push_dit_perm(grp_char, perm, locs),
             DitSymGrpInnerEnum::B8192(g) => g.push_dit_perm(grp_char, perm, locs),
+        }
+    }
+
+    pub(crate) fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
+        match self {
+            DitSymGrpInnerEnum::B32(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInnerEnum::B64(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInnerEnum::B128(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInnerEnum::B256(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInnerEnum::B512(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInnerEnum::B1024(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInnerEnum::B2048(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInnerEnum::B4096(g) => g.push_spin_inv(grp_char, locs),
+            DitSymGrpInnerEnum::B8192(g) => g.push_spin_inv(grp_char, locs),
         }
     }
 

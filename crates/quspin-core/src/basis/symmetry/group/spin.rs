@@ -1,9 +1,8 @@
 /// Spin-symmetry group types.
 ///
-/// The public type is [`SpinSymGrp`]. Inner types live in [`super::inner`].
-/// B-type dispatch for LHSS = 2 lives in [`super::dispatch`].
+/// The public type is [`SpinSymGrp`]. B-type dispatch lives in [`super::dispatch`].
 use super::dispatch::SymmetryGrpInner;
-use super::dispatch::{DitSpinSymGrpInner, DitSpinSymGrpInnerEnum};
+use super::dispatch::{DitSymGrpInner, DitSymGrpInnerEnum};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
@@ -36,7 +35,7 @@ enum SpinSymGrpInner {
     /// LHSS = 2: concrete `B` resolved from `n_sites` at construction.
     Hardcore(SymmetryGrpInner),
     /// LHSS > 2: spin-inversion ops; `B` resolved at construction.
-    Dit(DitSpinSymGrpInnerEnum),
+    Dit(DitSymGrpInnerEnum),
 }
 
 impl SpinSymGrp {
@@ -67,7 +66,7 @@ impl SpinSymGrp {
                 return Err(QuSpinError::ValueError(format!(
                     "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, exceeding the 8192-bit maximum"
                 ))),
-                { DitSpinSymGrpInnerEnum::from(DitSpinSymGrpInner::<B>::new_empty(lhss, n_sites)) }
+                { DitSymGrpInnerEnum::from(DitSymGrpInner::<B>::new_empty(lhss, n_sites)) }
             );
             SpinSymGrpInner::Dit(dit)
         };
@@ -124,7 +123,7 @@ impl SpinSymGrp {
     ///
     /// Returns `None` for LHSS=2 groups.
     #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn as_dit(&self) -> Option<&DitSpinSymGrpInnerEnum> {
+    pub(crate) fn as_dit(&self) -> Option<&DitSymGrpInnerEnum> {
         match &self.inner {
             SpinSymGrpInner::Dit(dit) => Some(dit),
             SpinSymGrpInner::Hardcore(_) => None,
@@ -138,7 +137,7 @@ impl SpinSymGrp {
 
 #[cfg(test)]
 mod tests {
-    use super::super::dispatch::DitSpinSymGrpInnerEnum;
+    use super::super::dispatch::DitSymGrpInnerEnum;
     use super::*;
 
     #[test]
@@ -192,7 +191,7 @@ mod tests {
         let manip = DynamicDitManip::new(3);
         let state: u32 = manip.set_dit(manip.set_dit(0u32, 1, 0), 0, 1);
         match dit {
-            DitSpinSymGrpInnerEnum::B32(inner) => {
+            DitSymGrpInnerEnum::B32(inner) => {
                 let (ref_s, _) = inner.get_refstate(state);
                 assert!(ref_s >= state);
             }
