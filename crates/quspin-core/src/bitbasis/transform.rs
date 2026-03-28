@@ -1,6 +1,7 @@
 use super::benes::{BenesNetwork, benes_fwd, gen_benes};
 use super::int::BitInt;
 use super::manip::{DitManip, DynamicDitManip};
+use smallvec::SmallVec;
 
 // ---------------------------------------------------------------------------
 // BitStateOp — the shared trait
@@ -249,7 +250,8 @@ pub struct BenesPermDitLocations<B: BitInt> {
     benes: BenesNetwork<B>,
     /// `sign_masks[j]` has bit `i` set iff `i < j` AND `perm[i] > perm[j]`.
     /// Empty if `fermionic = false` or `lhss != 2`.
-    sign_masks: Vec<B>,
+    /// Inline capacity covers u32 (≤32 sites) and u64 (≤64 sites) without heap allocation.
+    sign_masks: SmallVec<[B; 64]>,
     n_sites: usize,
 }
 
@@ -294,7 +296,7 @@ impl<B: BitInt> BenesPermDitLocations<B> {
         let sign_masks = if fermionic && lhss == 2 {
             compute_sign_masks::<B>(perm)
         } else {
-            Vec::new()
+            SmallVec::new()
         };
 
         BenesPermDitLocations {
@@ -332,9 +334,9 @@ impl<B: BitInt> BenesPermDitLocations<B> {
 /// Precompute Jordan-Wigner sign masks from a site permutation.
 ///
 /// `masks[j]` has bit `i` set iff `i < j` AND `perm[i] > perm[j]`.
-fn compute_sign_masks<B: BitInt>(perm: &[usize]) -> Vec<B> {
+fn compute_sign_masks<B: BitInt>(perm: &[usize]) -> SmallVec<[B; 64]> {
     let n = perm.len();
-    let mut masks = vec![B::from_u64(0); n];
+    let mut masks: SmallVec<[B; 64]> = smallvec::smallvec![B::from_u64(0); n];
     for j in 0..n {
         for i in 0..j {
             if perm[i] > perm[j] {
