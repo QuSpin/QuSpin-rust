@@ -1,16 +1,16 @@
 /// Spin-symmetry group types.
 ///
-/// The public type is [`SpinSymGrp`]. Inner types live in [`super::spin_inner`].
+/// The public type is [`SpinSymGrp`]. Inner types live in [`super::inner`].
 /// B-type dispatch for LHSS = 2 lives in [`super::dispatch`].
 use super::dispatch::SymmetryGrpInner;
-use super::spin_inner::{DitSpinSymGrpInner, DitSpinSymGrpInnerEnum};
+use super::inner::{DitSpinSymGrpInner, DitSpinSymGrpInnerEnum};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
 // Re-export inner types so that `pub use spin::{HardcoreGrpElement, HardcoreSymmetryGrp, SpinSymGrp}`
 // in mod.rs continues to work unchanged.
-pub use super::spin_inner::HardcoreGrpElement;
-pub use super::spin_inner::HardcoreSymmetryGrp;
+pub use super::inner::HardcoreGrpElement;
+pub use super::inner::HardcoreSymmetryGrp;
 
 // ---------------------------------------------------------------------------
 // SpinSymGrp — public type
@@ -138,7 +138,7 @@ impl SpinSymGrp {
 
 #[cfg(test)]
 mod tests {
-    use super::super::spin_inner::DitSpinSymGrpInnerEnum;
+    use super::super::inner::DitSpinSymGrpInnerEnum;
     use super::*;
 
     #[test]

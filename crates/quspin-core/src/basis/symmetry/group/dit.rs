@@ -1,7 +1,7 @@
 /// Dit symmetry group types.
 ///
-/// The public type is [`DitSymGrp`]. Inner types live in [`super::dit_inner`].
-use super::dit_inner::{DitSymGrpInner, DitSymGrpInnerEnum};
+/// The public type is [`DitSymGrp`]. Inner types live in [`super::inner`].
+use super::inner::{DitSymGrpInner, DitSymGrpInnerEnum};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 

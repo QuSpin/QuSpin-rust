@@ -5,7 +5,7 @@
 /// - [`with_sym_grp!`]: match macro that injects the concrete `B` type alias
 ///   and a binding to the inner group, used by call-sites that need to be
 ///   generic over `B`.
-use super::spin_inner::HardcoreSymmetryGrp;
+use super::inner::HardcoreSymmetryGrp;
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
