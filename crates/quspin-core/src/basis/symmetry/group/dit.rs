@@ -1,12 +1,13 @@
 /// Dit symmetry group types.
 ///
 /// Covers LHSS > 2 only:
-/// - LHSS 3–5: [`DitValueGrpInner<LHSS>`] — compile-time-LHSS value-perm hot-path.
-/// - LHSS ≥ 6: [`DitValueGrpDyn`] — runtime-LHSS value-perm fallback.
+/// - LHSS 3–5: [`DitValueGrpInner<B, LHSS>`] — compile-time-LHSS value-perm hot-path.
+/// - LHSS ≥ 6: [`DitValueGrpDyn<B>`] — runtime-LHSS value-perm fallback.
 ///
 /// The public type is [`DitSymGrp`].
-use super::LatticeElement;
-use crate::bitbasis::{BitInt, DynamicPermDitValues, PermDitValues};
+use super::BenesLatticeElement;
+use super::dispatch::{B128, B256, B512, B1024, B2048, B4096, B8192};
+use crate::bitbasis::{BenesPermDitLocations, BitInt, DynamicPermDitValues, PermDitValues};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
@@ -18,14 +19,14 @@ use num_complex::Complex;
 // dead_code until DitSymmetricSubspace is implemented.
 #[allow(dead_code)] // dit basis not yet implemented
 #[derive(Clone)]
-pub(crate) struct DitValueGrpInner<const LHSS: usize> {
+pub(crate) struct DitValueGrpInner<B: BitInt, const LHSS: usize> {
     n_sites: usize,
-    lattice: Vec<LatticeElement>,
+    lattice: Vec<BenesLatticeElement<B>>,
     local: Vec<(Complex<f64>, PermDitValues<LHSS>)>,
 }
 
 #[allow(dead_code)] // dit basis not yet implemented
-impl<const LHSS: usize> DitValueGrpInner<LHSS> {
+impl<B: BitInt, const LHSS: usize> DitValueGrpInner<B, LHSS> {
     fn new_empty(n_sites: usize) -> Self {
         DitValueGrpInner {
             n_sites,
@@ -34,8 +35,10 @@ impl<const LHSS: usize> DitValueGrpInner<LHSS> {
         }
     }
 
-    fn push_lattice(&mut self, el: LatticeElement) {
-        self.lattice.push(el);
+    fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
+        let op = BenesPermDitLocations::<B>::new(LHSS, perm, false);
+        self.lattice
+            .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
     }
 
     fn push_dit_perm(&mut self, grp_char: Complex<f64>, perm: Vec<u8>, locs: Vec<usize>) {
@@ -48,11 +51,13 @@ impl<const LHSS: usize> DitValueGrpInner<LHSS> {
         self.n_sites
     }
 
-    fn get_refstate<B: BitInt>(&self, state: B) -> (B, Complex<f64>) {
+    #[allow(dead_code)] // dit basis not yet implemented
+    fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
         super::get_refstate(&self.lattice, &self.local, state)
     }
 
-    fn check_refstate<B: BitInt>(&self, state: B) -> (B, f64) {
+    #[allow(dead_code)] // dit basis not yet implemented
+    fn check_refstate(&self, state: B) -> (B, f64) {
         super::check_refstate(&self.lattice, &self.local, state)
     }
 }
@@ -63,15 +68,15 @@ impl<const LHSS: usize> DitValueGrpInner<LHSS> {
 
 #[allow(dead_code)] // dit basis not yet implemented
 #[derive(Clone)]
-pub(crate) struct DitValueGrpDyn {
+pub(crate) struct DitValueGrpDyn<B: BitInt> {
     n_sites: usize,
     lhss: usize,
-    lattice: Vec<LatticeElement>,
+    lattice: Vec<BenesLatticeElement<B>>,
     local: Vec<(Complex<f64>, DynamicPermDitValues)>,
 }
 
 #[allow(dead_code)] // dit basis not yet implemented
-impl DitValueGrpDyn {
+impl<B: BitInt> DitValueGrpDyn<B> {
     fn new_empty(lhss: usize, n_sites: usize) -> Self {
         DitValueGrpDyn {
             n_sites,
@@ -81,8 +86,10 @@ impl DitValueGrpDyn {
         }
     }
 
-    fn push_lattice(&mut self, el: LatticeElement) {
-        self.lattice.push(el);
+    fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
+        let op = BenesPermDitLocations::<B>::new(self.lhss, perm, false);
+        self.lattice
+            .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
     }
 
     fn push_dit_perm(&mut self, grp_char: Complex<f64>, perm: Vec<u8>, locs: Vec<usize>) {
@@ -98,43 +105,47 @@ impl DitValueGrpDyn {
         self.lhss
     }
 
-    fn get_refstate<B: BitInt>(&self, state: B) -> (B, Complex<f64>) {
+    #[allow(dead_code)] // dit basis not yet implemented
+    fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
         super::get_refstate(&self.lattice, &self.local, state)
     }
 
-    fn check_refstate<B: BitInt>(&self, state: B) -> (B, f64) {
+    #[allow(dead_code)] // dit basis not yet implemented
+    fn check_refstate(&self, state: B) -> (B, f64) {
         super::check_refstate(&self.lattice, &self.local, state)
     }
 }
 
 // ---------------------------------------------------------------------------
-// DitSymGrpInner — LHSS dispatch enum for value-permutation (LHSS > 2)
+// DitSymGrpInner — LHSS dispatch enum for value-permutation (LHSS > 2), generic over B
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)] // dit basis not yet implemented
 #[derive(Clone)]
-pub(crate) enum DitSymGrpInner {
-    Lhss3(DitValueGrpInner<3>),
-    Lhss4(DitValueGrpInner<4>),
-    Lhss5(DitValueGrpInner<5>),
-    LhssDyn(DitValueGrpDyn),
+pub(crate) enum DitSymGrpInner<B: BitInt> {
+    Lhss3(DitValueGrpInner<B, 3>),
+    Lhss4(DitValueGrpInner<B, 4>),
+    Lhss5(DitValueGrpInner<B, 5>),
+    LhssDyn(DitValueGrpDyn<B>),
 }
 
-impl DitSymGrpInner {
-    fn new_empty(lhss: usize, n_sites: usize) -> Self {
+#[allow(dead_code)] // dit basis not yet implemented
+impl<B: BitInt> DitSymGrpInner<B> {
+    pub(crate) fn new_empty(lhss: usize, n_sites: usize) -> Self {
         match lhss {
-            3 => DitSymGrpInner::Lhss3(DitValueGrpInner::<3>::new_empty(n_sites)),
-            4 => DitSymGrpInner::Lhss4(DitValueGrpInner::<4>::new_empty(n_sites)),
-            5 => DitSymGrpInner::Lhss5(DitValueGrpInner::<5>::new_empty(n_sites)),
-            _ => DitSymGrpInner::LhssDyn(DitValueGrpDyn::new_empty(lhss, n_sites)),
+            3 => DitSymGrpInner::Lhss3(DitValueGrpInner::<B, 3>::new_empty(n_sites)),
+            4 => DitSymGrpInner::Lhss4(DitValueGrpInner::<B, 4>::new_empty(n_sites)),
+            5 => DitSymGrpInner::Lhss5(DitValueGrpInner::<B, 5>::new_empty(n_sites)),
+            _ => DitSymGrpInner::LhssDyn(DitValueGrpDyn::<B>::new_empty(lhss, n_sites)),
         }
     }
 
-    pub(crate) fn push_lattice(&mut self, el: LatticeElement) {
+    pub(crate) fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
         match self {
-            DitSymGrpInner::Lhss3(g) => g.push_lattice(el),
-            DitSymGrpInner::Lhss4(g) => g.push_lattice(el),
-            DitSymGrpInner::Lhss5(g) => g.push_lattice(el),
-            DitSymGrpInner::LhssDyn(g) => g.push_lattice(el),
+            DitSymGrpInner::Lhss3(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInner::Lhss4(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInner::Lhss5(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInner::LhssDyn(g) => g.push_lattice(grp_char, perm),
         }
     }
 
@@ -152,7 +163,6 @@ impl DitSymGrpInner {
         }
     }
 
-    #[allow(dead_code)] // dit basis not yet implemented
     pub(crate) fn n_sites(&self) -> usize {
         match self {
             DitSymGrpInner::Lhss3(g) => g.n_sites(),
@@ -162,7 +172,6 @@ impl DitSymGrpInner {
         }
     }
 
-    #[allow(dead_code)] // dit basis not yet implemented
     pub(crate) fn lhss(&self) -> usize {
         match self {
             DitSymGrpInner::Lhss3(_) => 3,
@@ -173,7 +182,7 @@ impl DitSymGrpInner {
     }
 
     #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn get_refstate<B: BitInt>(&self, state: B) -> (B, Complex<f64>) {
+    pub(crate) fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
         match self {
             DitSymGrpInner::Lhss3(g) => g.get_refstate(state),
             DitSymGrpInner::Lhss4(g) => g.get_refstate(state),
@@ -183,12 +192,115 @@ impl DitSymGrpInner {
     }
 
     #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn check_refstate<B: BitInt>(&self, state: B) -> (B, f64) {
+    pub(crate) fn check_refstate(&self, state: B) -> (B, f64) {
         match self {
             DitSymGrpInner::Lhss3(g) => g.check_refstate(state),
             DitSymGrpInner::Lhss4(g) => g.check_refstate(state),
             DitSymGrpInner::Lhss5(g) => g.check_refstate(state),
             DitSymGrpInner::LhssDyn(g) => g.check_refstate(state),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DitSymGrpInnerEnum — B-erased enum over DitSymGrpInner<B> variants
+// ---------------------------------------------------------------------------
+
+#[allow(dead_code)] // dit basis not yet implemented
+#[derive(Clone)]
+pub(crate) enum DitSymGrpInnerEnum {
+    B32(DitSymGrpInner<u32>),
+    B64(DitSymGrpInner<u64>),
+    B128(DitSymGrpInner<B128>),
+    B256(DitSymGrpInner<B256>),
+    B512(DitSymGrpInner<B512>),
+    B1024(DitSymGrpInner<B1024>),
+    B2048(DitSymGrpInner<B2048>),
+    B4096(DitSymGrpInner<B4096>),
+    B8192(DitSymGrpInner<B8192>),
+}
+
+macro_rules! impl_from_dit_sym_grp_inner {
+    ($B:ty, $variant:ident) => {
+        impl From<DitSymGrpInner<$B>> for DitSymGrpInnerEnum {
+            #[inline]
+            fn from(g: DitSymGrpInner<$B>) -> Self {
+                DitSymGrpInnerEnum::$variant(g)
+            }
+        }
+    };
+}
+
+impl_from_dit_sym_grp_inner!(u32, B32);
+impl_from_dit_sym_grp_inner!(u64, B64);
+impl_from_dit_sym_grp_inner!(B128, B128);
+impl_from_dit_sym_grp_inner!(B256, B256);
+impl_from_dit_sym_grp_inner!(B512, B512);
+impl_from_dit_sym_grp_inner!(B1024, B1024);
+impl_from_dit_sym_grp_inner!(B2048, B2048);
+impl_from_dit_sym_grp_inner!(B4096, B4096);
+impl_from_dit_sym_grp_inner!(B8192, B8192);
+
+#[allow(dead_code)] // dit basis not yet implemented
+impl DitSymGrpInnerEnum {
+    pub(crate) fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
+        match self {
+            DitSymGrpInnerEnum::B32(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInnerEnum::B64(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInnerEnum::B128(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInnerEnum::B256(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInnerEnum::B512(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInnerEnum::B1024(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInnerEnum::B2048(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInnerEnum::B4096(g) => g.push_lattice(grp_char, perm),
+            DitSymGrpInnerEnum::B8192(g) => g.push_lattice(grp_char, perm),
+        }
+    }
+
+    pub(crate) fn push_dit_perm(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: Vec<u8>,
+        locs: Vec<usize>,
+    ) {
+        match self {
+            DitSymGrpInnerEnum::B32(g) => g.push_dit_perm(grp_char, perm, locs),
+            DitSymGrpInnerEnum::B64(g) => g.push_dit_perm(grp_char, perm, locs),
+            DitSymGrpInnerEnum::B128(g) => g.push_dit_perm(grp_char, perm, locs),
+            DitSymGrpInnerEnum::B256(g) => g.push_dit_perm(grp_char, perm, locs),
+            DitSymGrpInnerEnum::B512(g) => g.push_dit_perm(grp_char, perm, locs),
+            DitSymGrpInnerEnum::B1024(g) => g.push_dit_perm(grp_char, perm, locs),
+            DitSymGrpInnerEnum::B2048(g) => g.push_dit_perm(grp_char, perm, locs),
+            DitSymGrpInnerEnum::B4096(g) => g.push_dit_perm(grp_char, perm, locs),
+            DitSymGrpInnerEnum::B8192(g) => g.push_dit_perm(grp_char, perm, locs),
+        }
+    }
+
+    pub(crate) fn n_sites(&self) -> usize {
+        match self {
+            DitSymGrpInnerEnum::B32(g) => g.n_sites(),
+            DitSymGrpInnerEnum::B64(g) => g.n_sites(),
+            DitSymGrpInnerEnum::B128(g) => g.n_sites(),
+            DitSymGrpInnerEnum::B256(g) => g.n_sites(),
+            DitSymGrpInnerEnum::B512(g) => g.n_sites(),
+            DitSymGrpInnerEnum::B1024(g) => g.n_sites(),
+            DitSymGrpInnerEnum::B2048(g) => g.n_sites(),
+            DitSymGrpInnerEnum::B4096(g) => g.n_sites(),
+            DitSymGrpInnerEnum::B8192(g) => g.n_sites(),
+        }
+    }
+
+    pub(crate) fn lhss(&self) -> usize {
+        match self {
+            DitSymGrpInnerEnum::B32(g) => g.lhss(),
+            DitSymGrpInnerEnum::B64(g) => g.lhss(),
+            DitSymGrpInnerEnum::B128(g) => g.lhss(),
+            DitSymGrpInnerEnum::B256(g) => g.lhss(),
+            DitSymGrpInnerEnum::B512(g) => g.lhss(),
+            DitSymGrpInnerEnum::B1024(g) => g.lhss(),
+            DitSymGrpInnerEnum::B2048(g) => g.lhss(),
+            DitSymGrpInnerEnum::B4096(g) => g.lhss(),
+            DitSymGrpInnerEnum::B8192(g) => g.lhss(),
         }
     }
 }
@@ -208,7 +320,7 @@ impl DitSymGrpInner {
 pub struct DitSymGrp {
     lhss: usize,
     n_sites: usize,
-    inner: DitSymGrpInner,
+    inner: DitSymGrpInnerEnum,
 }
 
 impl DitSymGrp {
@@ -221,10 +333,24 @@ impl DitSymGrp {
                 "DitSymGrp requires lhss >= 3; use SpinSymGrp for lhss={lhss}"
             )));
         }
+        let bits_per_dit = if lhss <= 1 {
+            1
+        } else {
+            (usize::BITS - (lhss - 1).leading_zeros()) as usize
+        };
+        let n_bits = n_sites * bits_per_dit;
+        let inner = crate::select_b_for_n_sites!(
+            n_bits,
+            B,
+            return Err(QuSpinError::ValueError(format!(
+                "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, exceeding the 8192-bit maximum"
+            ))),
+            { DitSymGrpInnerEnum::from(DitSymGrpInner::<B>::new_empty(lhss, n_sites)) }
+        );
         Ok(DitSymGrp {
             lhss,
             n_sites,
-            inner: DitSymGrpInner::new_empty(lhss, n_sites),
+            inner,
         })
     }
 
@@ -242,13 +368,7 @@ impl DitSymGrp {
     ///
     /// `perm[src] = dst` maps source site `src` to destination `dst`.
     pub fn add_lattice(&mut self, grp_char: Complex<f64>, perm: Vec<usize>) {
-        use crate::bitbasis::PermDitLocations;
-        let el = LatticeElement::new(
-            grp_char,
-            PermDitLocations::new(self.lhss, &perm),
-            self.n_sites,
-        );
-        self.inner.push_lattice(el);
+        self.inner.push_lattice(grp_char, &perm);
     }
 
     /// Add an on-site value-permutation symmetry element.
@@ -261,7 +381,7 @@ impl DitSymGrp {
 
     /// Access the inner dispatch type.
     #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn as_dit(&self) -> &DitSymGrpInner {
+    pub(crate) fn as_dit(&self) -> &DitSymGrpInnerEnum {
         &self.inner
     }
 }
