@@ -7,9 +7,11 @@
 /// - [`DitSymGrp`]: lattice + local value-permutation operations (LHSS ≥ 3).
 pub mod dispatch;
 pub mod dit;
+pub(crate) mod dit_inner;
 pub mod fermion_grp;
 pub(crate) mod orbit;
 pub mod spin;
+pub(crate) mod spin_inner;
 pub(crate) mod traits;
 
 pub use dispatch::SymmetryGrpInner;

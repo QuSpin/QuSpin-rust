@@ -4,7 +4,7 @@
 /// Each lattice element includes the fermionic sign of the permutation acting
 /// on the pre-image state.
 use super::dispatch::SymmetryGrpInner;
-use super::spin::HardcoreSymmetryGrp;
+use super::spin_inner::HardcoreSymmetryGrp;
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
