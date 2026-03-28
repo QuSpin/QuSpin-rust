@@ -3,7 +3,7 @@ use crate::error::Error;
 use crate::hamiltonian::{PyFermionHamiltonian, PyHardcoreHamiltonian};
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
-use quspin_core::basis::hardcore::dispatch::HardcoreBasisInner;
+use quspin_core::basis::hardcore::dispatch::BasisInner;
 use quspin_core::basis::{
     seed_from_bytes, seed_from_str,
     space::{FullSpace, Subspace},
@@ -20,7 +20,7 @@ use super::symmetry::{PyFermionicSymGrp, PySpinSymGrp};
 
 #[pyclass(name = "PyHardcoreBasis")]
 pub struct PyHardcoreBasis {
-    pub inner: HardcoreBasisInner,
+    pub inner: BasisInner,
 }
 
 #[pymethods]
@@ -51,9 +51,9 @@ impl PyHardcoreBasis {
         }
         let dim = 1usize << n_sites;
         let inner = if n_sites <= 32 {
-            HardcoreBasisInner::Full32(FullSpace::new(n_sites, dim))
+            BasisInner::Full32(FullSpace::new(n_sites, dim))
         } else {
-            HardcoreBasisInner::Full64(FullSpace::new(n_sites, dim))
+            BasisInner::Full64(FullSpace::new(n_sites, dim))
         };
         Ok(PyHardcoreBasis { inner })
     }
@@ -102,7 +102,7 @@ impl PyHardcoreBasis {
                         }
                     }
                 }
-                HardcoreBasisInner::from(basis)
+                BasisInner::from(basis)
             }
         );
         Ok(PyHardcoreBasis { inner })
@@ -159,7 +159,7 @@ impl PyHardcoreBasis {
                     }
                 }
             }
-            HardcoreBasisInner::from(basis)
+            BasisInner::from(basis)
         });
 
         Ok(PyHardcoreBasis { inner })
@@ -219,7 +219,7 @@ impl PyHardcoreBasis {
                     }
                 }
             }
-            HardcoreBasisInner::from(basis)
+            BasisInner::from(basis)
         });
 
         Ok(PyHardcoreBasis { inner })

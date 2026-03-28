@@ -1,4 +1,4 @@
 // Hardcore-boson basis sub-module.
 pub mod dispatch;
 
-pub use dispatch::HardcoreBasisInner;
+pub use dispatch::BasisInner;

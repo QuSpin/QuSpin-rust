@@ -1,4 +1,4 @@
-/// Type-erased `HardcoreBasisInner` and its dispatch macros.
+/// Type-erased `BasisInner` and its dispatch macros.
 ///
 /// ## Supported basis sizes
 ///
@@ -33,7 +33,7 @@ type B4096 = ruint::Uint<4096, 64>;
 type B8192 = ruint::Uint<8192, 128>;
 
 // ---------------------------------------------------------------------------
-// HardcoreBasisInner
+// BasisInner
 // ---------------------------------------------------------------------------
 
 /// Type-erased wrapper for the three basis-space variants over all supported
@@ -43,7 +43,7 @@ type B8192 = ruint::Uint<8192, 128>;
 /// - 2 `Full` variants (u32, u64)
 /// - 9 `Sub` variants (u32, u64, and 128–8192 bit ruint integers)
 /// - 9 `Sym` variants (u32, u64, and 128–8192 bit ruint integers)
-pub enum HardcoreBasisInner {
+pub enum BasisInner {
     // Full Hilbert spaces (small n_sites only).
     Full32(FullSpace<u32>),
     Full64(FullSpace<u64>),
@@ -71,82 +71,82 @@ pub enum HardcoreBasisInner {
     Sym8192(SymmetricSubspace<HardcoreGrpInner<B8192>>),
 }
 
-impl HardcoreBasisInner {
+impl BasisInner {
     /// Number of lattice sites.
     pub fn n_sites(&self) -> usize {
         match self {
-            HardcoreBasisInner::Full32(b) => b.n_sites(),
-            HardcoreBasisInner::Full64(b) => b.n_sites(),
-            HardcoreBasisInner::Sub32(b) => b.n_sites(),
-            HardcoreBasisInner::Sub64(b) => b.n_sites(),
-            HardcoreBasisInner::Sub128(b) => b.n_sites(),
-            HardcoreBasisInner::Sub256(b) => b.n_sites(),
-            HardcoreBasisInner::Sub512(b) => b.n_sites(),
-            HardcoreBasisInner::Sub1024(b) => b.n_sites(),
-            HardcoreBasisInner::Sub2048(b) => b.n_sites(),
-            HardcoreBasisInner::Sub4096(b) => b.n_sites(),
-            HardcoreBasisInner::Sub8192(b) => b.n_sites(),
-            HardcoreBasisInner::Sym32(b) => b.n_sites(),
-            HardcoreBasisInner::Sym64(b) => b.n_sites(),
-            HardcoreBasisInner::Sym128(b) => b.n_sites(),
-            HardcoreBasisInner::Sym256(b) => b.n_sites(),
-            HardcoreBasisInner::Sym512(b) => b.n_sites(),
-            HardcoreBasisInner::Sym1024(b) => b.n_sites(),
-            HardcoreBasisInner::Sym2048(b) => b.n_sites(),
-            HardcoreBasisInner::Sym4096(b) => b.n_sites(),
-            HardcoreBasisInner::Sym8192(b) => b.n_sites(),
+            BasisInner::Full32(b) => b.n_sites(),
+            BasisInner::Full64(b) => b.n_sites(),
+            BasisInner::Sub32(b) => b.n_sites(),
+            BasisInner::Sub64(b) => b.n_sites(),
+            BasisInner::Sub128(b) => b.n_sites(),
+            BasisInner::Sub256(b) => b.n_sites(),
+            BasisInner::Sub512(b) => b.n_sites(),
+            BasisInner::Sub1024(b) => b.n_sites(),
+            BasisInner::Sub2048(b) => b.n_sites(),
+            BasisInner::Sub4096(b) => b.n_sites(),
+            BasisInner::Sub8192(b) => b.n_sites(),
+            BasisInner::Sym32(b) => b.n_sites(),
+            BasisInner::Sym64(b) => b.n_sites(),
+            BasisInner::Sym128(b) => b.n_sites(),
+            BasisInner::Sym256(b) => b.n_sites(),
+            BasisInner::Sym512(b) => b.n_sites(),
+            BasisInner::Sym1024(b) => b.n_sites(),
+            BasisInner::Sym2048(b) => b.n_sites(),
+            BasisInner::Sym4096(b) => b.n_sites(),
+            BasisInner::Sym8192(b) => b.n_sites(),
         }
     }
 
     /// Number of basis states.
     pub fn size(&self) -> usize {
         match self {
-            HardcoreBasisInner::Full32(b) => b.size(),
-            HardcoreBasisInner::Full64(b) => b.size(),
-            HardcoreBasisInner::Sub32(b) => b.size(),
-            HardcoreBasisInner::Sub64(b) => b.size(),
-            HardcoreBasisInner::Sub128(b) => b.size(),
-            HardcoreBasisInner::Sub256(b) => b.size(),
-            HardcoreBasisInner::Sub512(b) => b.size(),
-            HardcoreBasisInner::Sub1024(b) => b.size(),
-            HardcoreBasisInner::Sub2048(b) => b.size(),
-            HardcoreBasisInner::Sub4096(b) => b.size(),
-            HardcoreBasisInner::Sub8192(b) => b.size(),
-            HardcoreBasisInner::Sym32(b) => b.size(),
-            HardcoreBasisInner::Sym64(b) => b.size(),
-            HardcoreBasisInner::Sym128(b) => b.size(),
-            HardcoreBasisInner::Sym256(b) => b.size(),
-            HardcoreBasisInner::Sym512(b) => b.size(),
-            HardcoreBasisInner::Sym1024(b) => b.size(),
-            HardcoreBasisInner::Sym2048(b) => b.size(),
-            HardcoreBasisInner::Sym4096(b) => b.size(),
-            HardcoreBasisInner::Sym8192(b) => b.size(),
+            BasisInner::Full32(b) => b.size(),
+            BasisInner::Full64(b) => b.size(),
+            BasisInner::Sub32(b) => b.size(),
+            BasisInner::Sub64(b) => b.size(),
+            BasisInner::Sub128(b) => b.size(),
+            BasisInner::Sub256(b) => b.size(),
+            BasisInner::Sub512(b) => b.size(),
+            BasisInner::Sub1024(b) => b.size(),
+            BasisInner::Sub2048(b) => b.size(),
+            BasisInner::Sub4096(b) => b.size(),
+            BasisInner::Sub8192(b) => b.size(),
+            BasisInner::Sym32(b) => b.size(),
+            BasisInner::Sym64(b) => b.size(),
+            BasisInner::Sym128(b) => b.size(),
+            BasisInner::Sym256(b) => b.size(),
+            BasisInner::Sym512(b) => b.size(),
+            BasisInner::Sym1024(b) => b.size(),
+            BasisInner::Sym2048(b) => b.size(),
+            BasisInner::Sym4096(b) => b.size(),
+            BasisInner::Sym8192(b) => b.size(),
         }
     }
 
     /// Return the `i`-th basis state as a `'0'`/`'1'` string (site 0 = index 0).
     pub fn state_at_str(&self, i: usize) -> String {
         match self {
-            HardcoreBasisInner::Full32(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Full64(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sub32(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sub64(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sub128(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sub256(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sub512(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sub1024(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sub2048(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sub4096(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sub8192(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sym32(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sym64(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sym128(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sym256(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sym512(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sym1024(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sym2048(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sym4096(b) => state_to_str(b.state_at(i), b.n_sites()),
-            HardcoreBasisInner::Sym8192(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Full32(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Full64(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sub32(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sub64(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sub128(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sub256(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sub512(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sub1024(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sub2048(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sub4096(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sub8192(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sym32(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sym64(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sym128(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sym256(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sym512(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sym1024(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sym2048(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sym4096(b) => state_to_str(b.state_at(i), b.n_sites()),
+            BasisInner::Sym8192(b) => state_to_str(b.state_at(i), b.n_sites()),
         }
     }
 
@@ -155,51 +155,51 @@ impl HardcoreBasisInner {
     /// Returns `None` if the state is not in the basis.
     pub fn index_of_bytes(&self, bytes: &[u8]) -> Option<usize> {
         match self {
-            HardcoreBasisInner::Full32(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Full64(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sub32(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sub64(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sub128(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sub256(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sub512(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sub1024(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sub2048(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sub4096(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sub8192(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sym32(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sym64(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sym128(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sym256(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sym512(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sym1024(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sym2048(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sym4096(b) => b.index(seed_from_bytes(bytes)),
-            HardcoreBasisInner::Sym8192(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Full32(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Full64(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sub32(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sub64(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sub128(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sub256(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sub512(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sub1024(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sub2048(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sub4096(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sub8192(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sym32(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sym64(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sym128(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sym256(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sym512(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sym1024(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sym2048(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sym4096(b) => b.index(seed_from_bytes(bytes)),
+            BasisInner::Sym8192(b) => b.index(seed_from_bytes(bytes)),
         }
     }
 
     /// One of `"full"`, `"subspace"`, or `"symmetric"`.
     pub fn kind(&self) -> &'static str {
         match self {
-            HardcoreBasisInner::Full32(_) | HardcoreBasisInner::Full64(_) => "full",
-            HardcoreBasisInner::Sub32(_)
-            | HardcoreBasisInner::Sub64(_)
-            | HardcoreBasisInner::Sub128(_)
-            | HardcoreBasisInner::Sub256(_)
-            | HardcoreBasisInner::Sub512(_)
-            | HardcoreBasisInner::Sub1024(_)
-            | HardcoreBasisInner::Sub2048(_)
-            | HardcoreBasisInner::Sub4096(_)
-            | HardcoreBasisInner::Sub8192(_) => "subspace",
-            HardcoreBasisInner::Sym32(_)
-            | HardcoreBasisInner::Sym64(_)
-            | HardcoreBasisInner::Sym128(_)
-            | HardcoreBasisInner::Sym256(_)
-            | HardcoreBasisInner::Sym512(_)
-            | HardcoreBasisInner::Sym1024(_)
-            | HardcoreBasisInner::Sym2048(_)
-            | HardcoreBasisInner::Sym4096(_)
-            | HardcoreBasisInner::Sym8192(_) => "symmetric",
+            BasisInner::Full32(_) | BasisInner::Full64(_) => "full",
+            BasisInner::Sub32(_)
+            | BasisInner::Sub64(_)
+            | BasisInner::Sub128(_)
+            | BasisInner::Sub256(_)
+            | BasisInner::Sub512(_)
+            | BasisInner::Sub1024(_)
+            | BasisInner::Sub2048(_)
+            | BasisInner::Sub4096(_)
+            | BasisInner::Sub8192(_) => "subspace",
+            BasisInner::Sym32(_)
+            | BasisInner::Sym64(_)
+            | BasisInner::Sym128(_)
+            | BasisInner::Sym256(_)
+            | BasisInner::Sym512(_)
+            | BasisInner::Sym1024(_)
+            | BasisInner::Sym2048(_)
+            | BasisInner::Sym4096(_)
+            | BasisInner::Sym8192(_) => "symmetric",
         }
     }
 
@@ -207,15 +207,15 @@ impl HardcoreBasisInner {
     pub fn is_symmetric(&self) -> bool {
         matches!(
             self,
-            HardcoreBasisInner::Sym32(_)
-                | HardcoreBasisInner::Sym64(_)
-                | HardcoreBasisInner::Sym128(_)
-                | HardcoreBasisInner::Sym256(_)
-                | HardcoreBasisInner::Sym512(_)
-                | HardcoreBasisInner::Sym1024(_)
-                | HardcoreBasisInner::Sym2048(_)
-                | HardcoreBasisInner::Sym4096(_)
-                | HardcoreBasisInner::Sym8192(_)
+            BasisInner::Sym32(_)
+                | BasisInner::Sym64(_)
+                | BasisInner::Sym128(_)
+                | BasisInner::Sym256(_)
+                | BasisInner::Sym512(_)
+                | BasisInner::Sym1024(_)
+                | BasisInner::Sym2048(_)
+                | BasisInner::Sym4096(_)
+                | BasisInner::Sym8192(_)
         )
     }
 }
@@ -227,7 +227,7 @@ impl HardcoreBasisInner {
 const DISPLAY_HEAD: usize = 25;
 const DISPLAY_TAIL: usize = 25;
 
-impl std::fmt::Display for HardcoreBasisInner {
+impl std::fmt::Display for BasisInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let size = self.size();
         let sym_display = if self.is_symmetric() {
@@ -280,16 +280,16 @@ impl std::fmt::Display for HardcoreBasisInner {
 
 macro_rules! impl_from_basis_spaces {
     ($B:ty, $sub_variant:ident, $sym_variant:ident) => {
-        impl From<Subspace<$B>> for HardcoreBasisInner {
+        impl From<Subspace<$B>> for BasisInner {
             #[inline]
             fn from(b: Subspace<$B>) -> Self {
-                HardcoreBasisInner::$sub_variant(b)
+                BasisInner::$sub_variant(b)
             }
         }
-        impl From<SymmetricSubspace<HardcoreGrpInner<$B>>> for HardcoreBasisInner {
+        impl From<SymmetricSubspace<HardcoreGrpInner<$B>>> for BasisInner {
             #[inline]
             fn from(b: SymmetricSubspace<HardcoreGrpInner<$B>>) -> Self {
-                HardcoreBasisInner::$sym_variant(b)
+                BasisInner::$sym_variant(b)
             }
         }
     };
@@ -309,7 +309,7 @@ impl_from_basis_spaces!(B8192, Sub8192, Sym8192);
 // Dispatch macros
 // ---------------------------------------------------------------------------
 
-/// Match on a `HardcoreBasisInner` reference, injecting a type alias `$B` for
+/// Match on a `BasisInner` reference, injecting a type alias `$B` for
 /// the concrete `BitInt` type and binding `$basis` to the inner basis reference.
 ///
 /// Covers all 20 variants (Full*, Sub*, Sym*).
@@ -317,83 +317,83 @@ impl_from_basis_spaces!(B8192, Sub8192, Sym8192);
 macro_rules! with_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Full32($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Full32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Full64($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Full64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub32($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub64($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub128($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub256($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub512($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub1024($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub2048($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub4096($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub8192($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym32($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym64($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym128($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym256($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym512($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym1024($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym2048($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym4096($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym8192($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -406,47 +406,47 @@ macro_rules! with_basis {
 macro_rules! with_plain_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Full32($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Full32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Full64($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Full64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub32($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub64($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub128($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub256($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub512($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub1024($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub2048($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub4096($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sub8192($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sub8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -460,39 +460,39 @@ macro_rules! with_plain_basis {
 macro_rules! with_sym_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym32($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym64($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym128($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym256($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym512($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym1024($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym2048($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym4096($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
-            $crate::basis::hardcore::dispatch::HardcoreBasisInner::Sym8192($basis) => {
+            $crate::basis::hardcore::dispatch::BasisInner::Sym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -570,7 +570,7 @@ mod tests {
 
     #[test]
     fn display_full_space() {
-        let inner = HardcoreBasisInner::Full32(FullSpace::new(2, 4));
+        let inner = BasisInner::Full32(FullSpace::new(2, 4));
         let s = inner.to_string();
         assert!(s.starts_with("full(n_sites=2, size=4, symmetries=[]):"));
         assert!(s.contains("|11>"));
@@ -583,7 +583,7 @@ mod tests {
         sub.build(0b01u32, |s| {
             vec![(num_complex::Complex::new(1.0, 0.0), s ^ 0b11, 0u8)]
         });
-        let inner = HardcoreBasisInner::Sub32(sub);
+        let inner = BasisInner::Sub32(sub);
         let s = inner.to_string();
         assert!(s.starts_with("subspace(n_sites=2, size="));
         assert!(s.contains("symmetries=[]"));
@@ -592,7 +592,7 @@ mod tests {
     #[test]
     fn display_index_alignment() {
         // 16 states → indices 0-15, width 2; row 9 and 10 should be right-aligned
-        let inner = HardcoreBasisInner::Full32(FullSpace::new(4, 16));
+        let inner = BasisInner::Full32(FullSpace::new(4, 16));
         let s = inner.to_string();
         assert!(s.contains("  9."));
         assert!(s.contains(" 10."));
@@ -601,7 +601,7 @@ mod tests {
     #[test]
     fn display_truncation() {
         // 64 states > 50 → should truncate with "..."
-        let inner = HardcoreBasisInner::Full32(FullSpace::new(6, 64));
+        let inner = BasisInner::Full32(FullSpace::new(6, 64));
         let s = inner.to_string();
         assert!(s.contains("..."), "expected truncation marker");
         // First 25 rows present (index 0 and 24)

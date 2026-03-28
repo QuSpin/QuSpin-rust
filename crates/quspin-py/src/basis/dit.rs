@@ -1,6 +1,6 @@
 /// Python-facing `PyDitBasis` pyclass.
 ///
-/// Wraps a `HardcoreBasisInner` and an `lhss: usize` for bosonic (LHSS ≥ 2)
+/// Wraps a `BasisInner` and an `lhss: usize` for bosonic (LHSS ≥ 2)
 /// basis construction.  State integers are packed using `DynamicDitManip`:
 /// each site occupies `BITS_TABLE[lhss]` bits.
 ///
@@ -10,7 +10,7 @@ use crate::error::Error;
 use crate::hamiltonian::boson::PyBosonHamiltonian;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
-use quspin_core::basis::hardcore::dispatch::HardcoreBasisInner;
+use quspin_core::basis::hardcore::dispatch::BasisInner;
 use quspin_core::basis::{
     BasisSpace, dit_seed_from_bytes, dit_seed_from_str, dit_state_to_str,
     space::{FullSpace, Subspace},
@@ -24,7 +24,7 @@ use quspin_core::hamiltonian::boson::dispatch::BosonHamiltonianInner;
 
 #[pyclass(name = "PyDitBasis")]
 pub struct PyDitBasis {
-    pub inner: HardcoreBasisInner,
+    pub inner: BasisInner,
     pub lhss: usize,
     pub manip: DynamicDitManip,
 }
@@ -70,9 +70,9 @@ impl PyDitBasis {
         })? as usize;
 
         let inner = if total_bits <= 32 {
-            HardcoreBasisInner::Full32(FullSpace::new(n_sites, dim))
+            BasisInner::Full32(FullSpace::new(n_sites, dim))
         } else {
-            HardcoreBasisInner::Full64(FullSpace::new(n_sites, dim))
+            BasisInner::Full64(FullSpace::new(n_sites, dim))
         };
         Ok(PyDitBasis { inner, lhss, manip })
     }
@@ -118,7 +118,7 @@ impl PyDitBasis {
                         }
                     }
                 }
-                HardcoreBasisInner::from(basis)
+                BasisInner::from(basis)
             }
         );
         Ok(PyDitBasis { inner, lhss, manip })
