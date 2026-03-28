@@ -80,8 +80,7 @@ impl DitSymGrp {
     }
 
     /// Access the inner dispatch type.
-    #[allow(dead_code)] // dit basis not yet implemented
-    pub(crate) fn as_dit(&self) -> &SymmetryGrpInner {
+    pub fn as_dit(&self) -> &SymmetryGrpInner {
         &self.inner
     }
 }

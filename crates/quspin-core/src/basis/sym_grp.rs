@@ -453,3 +453,76 @@ macro_rules! with_sym_grp {
         }
     };
 }
+
+// ---------------------------------------------------------------------------
+// with_dit_sym_grp! macro
+// ---------------------------------------------------------------------------
+
+/// Match on a [`SymmetryGrpInner`] reference for `Dit*` (LHSS≥3) variants,
+/// injecting a type alias `$B` (the basis integer type) and `$N` (the norm
+/// storage type), and binding `$grp` to the inner `DitGrpInner<B>` reference.
+///
+/// The B→N pairing is:
+/// - Dit32  → B=u32,  N=u8
+/// - Dit64  → B=u64,  N=u16
+/// - Dit128..Dit8192 → N=u32
+///
+/// # Panics
+///
+/// Panics (via `unreachable!`) if called with a `Hc*` (LHSS=2) variant.
+/// Only pass groups obtained via `as_dit()`.
+#[macro_export]
+macro_rules! with_dit_sym_grp {
+    ($inner:expr, $B:ident, $N:ident, $grp:ident, $body:block) => {
+        match $inner {
+            $crate::basis::sym_grp::SymmetryGrpInner::Dit32($grp) => {
+                type $B = u32;
+                type $N = u8;
+                $body
+            }
+            $crate::basis::sym_grp::SymmetryGrpInner::Dit64($grp) => {
+                type $B = u64;
+                type $N = u16;
+                $body
+            }
+            $crate::basis::sym_grp::SymmetryGrpInner::Dit128($grp) => {
+                type $B = ::ruint::Uint<128, 2>;
+                type $N = u32;
+                $body
+            }
+            $crate::basis::sym_grp::SymmetryGrpInner::Dit256($grp) => {
+                type $B = ::ruint::Uint<256, 4>;
+                type $N = u32;
+                $body
+            }
+            $crate::basis::sym_grp::SymmetryGrpInner::Dit512($grp) => {
+                type $B = ::ruint::Uint<512, 8>;
+                type $N = u32;
+                $body
+            }
+            $crate::basis::sym_grp::SymmetryGrpInner::Dit1024($grp) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                type $N = u32;
+                $body
+            }
+            $crate::basis::sym_grp::SymmetryGrpInner::Dit2048($grp) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                type $N = u32;
+                $body
+            }
+            $crate::basis::sym_grp::SymmetryGrpInner::Dit4096($grp) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                type $N = u32;
+                $body
+            }
+            $crate::basis::sym_grp::SymmetryGrpInner::Dit8192($grp) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                type $N = u32;
+                $body
+            }
+            _ => {
+                unreachable!("with_dit_sym_grp! requires a LHSS≥3 (dit) symmetry group")
+            }
+        }
+    };
+}

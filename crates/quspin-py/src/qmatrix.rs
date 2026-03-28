@@ -22,7 +22,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use quspin_core::qmatrix::build::{build_from_basis, build_from_symmetric};
 use quspin_core::qmatrix::dispatch::{IntoQMatrixInner, QMatrixInner};
-use quspin_core::{with_plain_basis, with_sym_basis};
+use quspin_core::{with_dit_sym_basis, with_plain_basis, with_sym_basis};
 
 use crate::basis::dit::PyDitBasis;
 use crate::basis::hardcore::PyHardcoreBasis;
@@ -187,9 +187,12 @@ impl PyQMatrix {
 
     /// Build a sparse matrix from a `PyBosonHamiltonian` and a dit basis.
     ///
+    /// Handles full, subspace, and symmetry-reduced dit bases.
+    ///
     /// Args:
     ///     ham (PyBosonHamiltonian): The bosonic Hamiltonian.
-    ///     basis (PyDitBasis): The dit Hilbert space basis (full or subspace).
+    ///     basis (PyDitBasis): The dit Hilbert space basis (full, subspace,
+    ///         or symmetric).
     ///     dtype (numpy.dtype): NumPy dtype for matrix element storage.
     ///
     /// Returns:
@@ -221,19 +224,37 @@ impl PyQMatrix {
         }
         let v_dtype = <ValueDType as FromPyDescr>::from_descr(py, dtype).map_err(Error::from)?;
 
-        let mat_inner = with_value_dtype!(v_dtype, V, {
-            with_plain_basis!(&basis.inner, B, plain_basis, {
-                match &ham.inner {
-                    BosonHamiltonianInner::Ham8(h) => {
-                        build_from_basis::<_, B, V, i64, u8, _>(h, plain_basis).into_qmatrix_inner()
+        let mat_inner = if basis.inner.is_symmetric() {
+            with_value_dtype!(v_dtype, V, {
+                with_dit_sym_basis!(&basis.inner, B, sym_basis, {
+                    match &ham.inner {
+                        BosonHamiltonianInner::Ham8(h) => {
+                            build_from_symmetric::<_, _, _, _, V, i64, u8>(h, sym_basis)
+                                .into_qmatrix_inner()
+                        }
+                        BosonHamiltonianInner::Ham16(h) => {
+                            build_from_symmetric::<_, _, _, _, V, i64, u16>(h, sym_basis)
+                                .into_qmatrix_inner()
+                        }
                     }
-                    BosonHamiltonianInner::Ham16(h) => {
-                        build_from_basis::<_, B, V, i64, u16, _>(h, plain_basis)
-                            .into_qmatrix_inner()
-                    }
-                }
+                })
             })
-        });
+        } else {
+            with_value_dtype!(v_dtype, V, {
+                with_plain_basis!(&basis.inner, B, plain_basis, {
+                    match &ham.inner {
+                        BosonHamiltonianInner::Ham8(h) => {
+                            build_from_basis::<_, B, V, i64, u8, _>(h, plain_basis)
+                                .into_qmatrix_inner()
+                        }
+                        BosonHamiltonianInner::Ham16(h) => {
+                            build_from_basis::<_, B, V, i64, u16, _>(h, plain_basis)
+                                .into_qmatrix_inner()
+                        }
+                    }
+                })
+            })
+        };
 
         Ok(PyQMatrix { inner: mat_inner })
     }

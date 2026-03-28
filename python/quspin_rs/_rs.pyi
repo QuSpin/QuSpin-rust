@@ -846,6 +846,32 @@ class PyDitBasis:
         """
         ...
 
+    @staticmethod
+    def symmetric(
+        seeds: Iterable[_DitSeed],
+        ham: PyBosonHamiltonian,
+        grp: PyDitSymGrp,
+    ) -> PyDitBasis:
+        """Build a symmetry-reduced subspace for a bosonic (dit) system.
+
+        Like ``subspace``, but projects into a symmetry sector defined by
+        ``grp``, yielding a smaller basis.
+
+        Args:
+            seeds (Iterable[str | list[int]]): Initial states (same format as
+                ``subspace``).
+            ham (PyBosonHamiltonian): The Hamiltonian defining connectivity.
+            grp (PyDitSymGrp): The symmetry group defining the sector.
+
+        Returns:
+            PyDitBasis: Symmetry-reduced dit basis.
+
+        Raises:
+            ValueError: If ``ham.lhss != grp.lhss``, ``ham.n_sites !=
+                grp.n_sites``, any seed is malformed, or total bits exceed 8192.
+        """
+        ...
+
     def state_at(self, i: int) -> str:
         """Return the ``i``-th basis state as a decimal digit string.
 
@@ -987,7 +1013,8 @@ class PyQMatrix:
 
         Args:
             ham (PyBosonHamiltonian): The bosonic Hamiltonian.
-            basis (PyDitBasis): The dit Hilbert space basis (full or subspace).
+            basis (PyDitBasis): The dit Hilbert space basis (full, subspace,
+                or symmetric).
             dtype (numpy.dtype): NumPy dtype for matrix element storage.
                 Supported values: ``np.dtype("int8")``, ``np.dtype("int16")``,
                 ``np.dtype("float32")``, ``np.dtype("float64")``,
