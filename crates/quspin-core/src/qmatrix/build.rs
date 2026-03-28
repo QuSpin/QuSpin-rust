@@ -4,6 +4,7 @@ use crate::bitbasis::BitInt;
 use crate::hamiltonian::Hamiltonian;
 use crate::primitive::Primitive;
 use num_complex::Complex;
+use smallvec::SmallVec;
 
 // ---------------------------------------------------------------------------
 // Build from non-symmetric basis (FullSpace or Subspace)
@@ -98,8 +99,13 @@ where
 
     indptr.push(I::from_usize(0));
 
-    let mut row_buf: Vec<(C, Complex<f64>, G::State)> = Vec::new();
-    let mut ref_out: Vec<(G::State, Complex<f64>)> = Vec::new();
+    // Per-row buffers hoisted outside the loop so their allocations are
+    // amortised.  SmallVec avoids heap allocation entirely for small rows
+    // (capacity 64 covers typical nearest-neighbour Hamiltonians).
+    const ROW_CAP: usize = 64;
+    let mut row_buf: SmallVec<[(C, Complex<f64>); ROW_CAP]> = SmallVec::new();
+    let mut new_states: SmallVec<[G::State; ROW_CAP]> = SmallVec::new();
+    let mut ref_out: SmallVec<[(G::State, Complex<f64>); ROW_CAP]> = SmallVec::new();
 
     for row_idx in 0..dim {
         let (state, norm) = basis.entry(row_idx);
@@ -107,18 +113,19 @@ where
 
         // Collect all operator outputs for this row.
         row_buf.clear();
+        new_states.clear();
         ham.apply(state, |cindex, amp, new_state| {
-            row_buf.push((cindex, amp, new_state));
+            row_buf.push((cindex, amp));
+            new_states.push(new_state);
         });
 
-        if !row_buf.is_empty() {
+        if !new_states.is_empty() {
             // Batch-map every new_state to its orbit representative and
             // group character in a single amortised pass.
-            let new_states: Vec<G::State> = row_buf.iter().map(|(_, _, s)| *s).collect();
             ref_out.resize(new_states.len(), (new_states[0], Complex::new(1.0, 0.0)));
             basis.get_refstate_batch(&new_states, &mut ref_out);
 
-            for ((cindex, amp, _), (ref_state, grp_char)) in row_buf.iter().zip(ref_out.iter()) {
+            for ((cindex, amp), (ref_state, grp_char)) in row_buf.iter().zip(ref_out.iter()) {
                 let Some(col_idx) = basis.index(*ref_state) else {
                     continue;
                 };
