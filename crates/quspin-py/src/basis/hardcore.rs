@@ -1,6 +1,6 @@
 /// Python-facing `PyHardcoreBasis` pyclass.
 use crate::error::Error;
-use crate::hamiltonian::PyHardcoreHamiltonian;
+use crate::hamiltonian::{PyFermionHamiltonian, PyHardcoreHamiltonian};
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
 use quspin_core::basis::hardcore::dispatch::HardcoreBasisInner;
@@ -9,6 +9,7 @@ use quspin_core::basis::{
     space::{FullSpace, Subspace},
     sym::SymmetricSubspace,
 };
+use quspin_core::hamiltonian::fermion::dispatch::FermionHamiltonianInner;
 use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
 
 use super::symmetry::{PyFermionicSymGrp, PySpinSymGrp};
@@ -167,12 +168,15 @@ impl PyHardcoreBasis {
     /// Build a symmetry-reduced subspace for a fermionic system.
     ///
     /// Like :meth:`symmetric`, but accepts a :class:`PyFermionicSymGrp` whose
-    /// lattice elements include Jordan-Wigner permutation signs.
+    /// lattice elements include Jordan-Wigner permutation signs, and a
+    /// :class:`PyFermionHamiltonian` that carries Jordan-Wigner sign
+    /// accumulation in each operator string.
     ///
     /// Args:
     ///     seeds (Iterable[str | list[int]]): Initial states (same format as
     ///         ``subspace``).
-    ///     ham (PyHardcoreHamiltonian): The Hamiltonian defining connectivity.
+    ///     ham (PyFermionHamiltonian): The fermionic Hamiltonian defining
+    ///         connectivity (Jordan-Wigner signs included).
     ///     grp (PyFermionicSymGrp): The fermionic symmetry group.
     ///
     /// Returns:
@@ -184,7 +188,7 @@ impl PyHardcoreBasis {
     #[staticmethod]
     pub fn symmetric_fermionic(
         seeds: &Bound<'_, PyAny>,
-        ham: &PyHardcoreHamiltonian,
+        ham: &PyFermionHamiltonian,
         grp: &PyFermionicSymGrp,
     ) -> PyResult<Self> {
         let n_sites = ham.inner.max_site() + 1;
@@ -207,10 +211,10 @@ impl PyHardcoreBasis {
             for s in &seed_list {
                 let seed = seed_from_bytes::<B>(s);
                 match &ham.inner {
-                    HardcoreHamiltonianInner::Ham8(h) => {
+                    FermionHamiltonianInner::Ham8(h) => {
                         basis.build(seed, |state| h.apply_smallvec(state).into_iter());
                     }
-                    HardcoreHamiltonianInner::Ham16(h) => {
+                    FermionHamiltonianInner::Ham16(h) => {
                         basis.build(seed, |state| h.apply_smallvec(state).into_iter());
                     }
                 }
