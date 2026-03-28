@@ -1,5 +1,4 @@
 use super::lattice::BenesLatticeElement;
-use super::traits::SymGrp;
 use crate::bitbasis::{
     BenesPermDitLocations, BitInt, BitStateOp, DynamicPermDitValues, PermDitMask,
 };
@@ -163,34 +162,6 @@ impl<B: BitInt> SymGrpBase<B, DynamicPermDitValues> {
     pub fn push_spin_inv(&mut self, grp_char: Complex<f64>, locs: Vec<usize>) {
         let perm: Vec<u8> = (0..self.lhss).rev().map(|v| v as u8).collect();
         self.push_local_perm(grp_char, perm, locs);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SymGrp impl for SymGrpBase<B, L>
-// ---------------------------------------------------------------------------
-
-impl<B: BitInt, L: BitStateOp<B>> SymGrp for SymGrpBase<B, L> {
-    type State = B;
-
-    fn n_sites(&self) -> usize {
-        SymGrpBase::n_sites(self)
-    }
-
-    fn get_refstate(&self, state: B) -> (B, num_complex::Complex<f64>) {
-        SymGrpBase::get_refstate(self, state)
-    }
-
-    fn get_refstate_batch(&self, states: &[B], out: &mut [(B, Complex<f64>)]) {
-        SymGrpBase::get_refstate_batch(self, states, out);
-    }
-
-    fn check_refstate(&self, state: B) -> (B, f64) {
-        SymGrpBase::check_refstate(self, state)
-    }
-
-    fn check_refstate_batch(&self, states: &[B], out: &mut [(B, f64)]) {
-        SymGrpBase::check_refstate_batch(self, states, out);
     }
 }
 
