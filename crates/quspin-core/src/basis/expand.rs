@@ -115,18 +115,16 @@ where
 /// # Algorithm
 ///
 /// 1. [`expand_to_map`] produces a sparse map of full-space states → amplitudes.
-/// 2. Each state is decomposed into `(s_A, s_B)`.
-///    - For `lhss = 2` (fermions or hardcore bosons): a [`BenesPermDitLocations`]
-///      permutation is built once that maps `sites_a[i] → i` and
-///      `sites_b[j] → n_a + j`.  `op.apply(state)` gives the factored integer
-///      in a single O(log n) pass; `op.fermionic_sign(state)` gives the exact
-///      Jordan-Wigner exchange sign η.  Because `sites_a` and `sites_b` are
-///      both sorted ascending before building the permutation, the A–A and B–B
-///      sublists contribute no inversions — `fermionic_sign` counts only the
-///      physical A–B exchange pairs.
-///    - For `lhss > 2` (bosons): the state is split with `DynamicDitManip`.
-///      `s_A` is a `usize` dense index; `s_B` is packed into a `B`-typed key
-///      for HashMap-correctness with wide integers.
+/// 2. Each state is decomposed into `(s_A, s_B)` using a [`BenesPermDitLocations`]
+///    permutation built once with `sites_a[i] → i` and `sites_b[j] → n_a + j`.
+///    This works for any `lhss` (multi-bit dits, `bits_per_dit = ceil(log2(lhss))`).
+///    After `op.apply(state)`, A-subsystem dits are at positions `0..n_a` and
+///    B-subsystem dits are at positions `n_a..n_a+n_b`.  `op.fermionic_sign(state)`
+///    gives the Jordan-Wigner exchange sign η; it returns `1.0` for bosons since
+///    sign masks are only populated when `fermionic=true AND lhss=2`.  Because
+///    `sites_a` and `sites_b` are both sorted ascending, the A–A and B–B sublists
+///    contribute no permutation inversions, so `fermionic_sign` counts only the
+///    physical A–B exchange pairs.
 /// 3. States sharing the same `s_B` are grouped; their outer products are
 ///    accumulated into `out`.
 ///
@@ -176,54 +174,49 @@ pub fn reduced_density_matrix<B, T, E>(
     // Step 1: sparse expansion.
     let map = expand_to_map(space, vec);
 
+    // Build permutation once: sites_a_sorted[i] → i,  sites_b[j] → n_a + j.
+    // BenesPermDitLocations handles any lhss via multi-bit dits
+    // (bits_per_dit = ceil(log2(lhss))).  Sign masks are only populated when
+    // fermionic=true AND lhss=2; fermionic_sign returns 1.0 otherwise.
+    let mut perm = vec![0usize; n_sites];
+    for (i, &site) in sites_a_sorted.iter().enumerate() {
+        perm[site] = i;
+    }
+    for (j, &site) in sites_b.iter().enumerate() {
+        perm[site] = n_a + j;
+    }
+    let benes_op = BenesPermDitLocations::<B>::new(lhss, &perm, fermionic);
+
+    // After benes_op.apply(state), A-subsystem dits occupy positions 0..n_a-1
+    // and B-subsystem dits occupy positions n_a..n_a+n_b-1.
+    let manip = DynamicDitManip::new(lhss);
+    let n_a_bits = n_a * manip.bits;
+
     // Step 2: group by s_B (B-typed key for correctness with wide integers).
     let mut groups: HashMap<B, Vec<(usize, Complex<f64>)>> = HashMap::new();
 
-    if lhss == 2 {
-        // Build perm: sites_a_sorted[i] → i,  sites_b[j] → n_a + j.
-        let mut perm = vec![0usize; n_sites];
-        for (i, &site) in sites_a_sorted.iter().enumerate() {
-            perm[site] = i;
-        }
-        for (j, &site) in sites_b.iter().enumerate() {
-            perm[site] = n_a + j;
-        }
-        let benes_op = BenesPermDitLocations::<B>::new(2, &perm, fermionic);
+    for (state, amp) in &map {
+        let s_perm = benes_op.apply(*state);
 
-        // Mask covering the lower n_a bits (the A-subsystem after permutation).
-        // Special-cased for n_a == 0 to avoid a shift-by-BITS.
-        let mask_a: B = if n_a == 0 {
+        // sa: little-endian mixed-radix index for the A subsystem.
+        // Position 0 of s_perm holds the LSdigit.
+        let mut sa = 0usize;
+        let mut weight = 1usize;
+        for i in 0..n_a {
+            sa += weight * manip.get_dit(s_perm, i);
+            weight *= lhss;
+        }
+
+        // sb: B-subsystem dits shifted down to start at bit 0.
+        // Guard against shift-by-B::BITS when n_b == 0.
+        let sb: B = if n_b == 0 {
             B::from_u64(0)
         } else {
-            !B::from_u64(0) >> (B::BITS as usize - n_a)
+            s_perm >> n_a_bits
         };
 
-        for (state, amp) in &map {
-            let s_perm = benes_op.apply(*state);
-            let sa = (s_perm & mask_a).to_usize();
-            // n_b == 0 guard prevents a shift-by-B::BITS when all sites are in A.
-            let sb: B = if n_b == 0 {
-                B::from_u64(0)
-            } else {
-                s_perm >> n_a
-            };
-            let sign = benes_op.fermionic_sign(*state);
-            groups.entry(sb).or_default().push((sa, amp * sign));
-        }
-    } else {
-        // lhss > 2: bosons only (never fermionic).
-        let manip = DynamicDitManip::new(lhss);
-        for (state, amp) in &map {
-            // sa: dense mixed-radix index for the A subsystem.
-            let sa = manip.get_sub_state(*state, &sites_a_sorted);
-            // sb: pack B-site dits into a B-typed value for wide-integer safety.
-            let mut sb = B::from_u64(0);
-            for (j, &site) in sites_b.iter().enumerate() {
-                let dit = manip.get_dit(*state, site);
-                sb = manip.set_dit(sb, dit, j);
-            }
-            groups.entry(sb).or_default().push((sa, *amp));
-        }
+        let sign = benes_op.fermionic_sign(*state);
+        groups.entry(sb).or_default().push((sa, amp * sign));
     }
 
     // Step 3: accumulate outer products into the RDM.
