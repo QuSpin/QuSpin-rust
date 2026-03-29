@@ -37,24 +37,24 @@ use std::ops::AddAssign;
 /// - `[T]` — covers `&[T]` and slice expressions via `?Sized` function bounds
 /// - `Vec<T>`
 /// - `ArrayBase<S, Ix1>` — covers `Array1<T>`, `ArrayView1<'_, T>`, etc.
-pub trait AsStateVec<T> {
-    fn as_state_vec(&self) -> ArrayView1<'_, T>;
+pub trait ToView<T> {
+    fn to_view(&self) -> ArrayView1<'_, T>;
 }
 
-impl<T> AsStateVec<T> for [T] {
-    fn as_state_vec(&self) -> ArrayView1<'_, T> {
+impl<T> ToView<T> for [T] {
+    fn to_view(&self) -> ArrayView1<'_, T> {
         aview1(self)
     }
 }
 
-impl<T> AsStateVec<T> for Vec<T> {
-    fn as_state_vec(&self) -> ArrayView1<'_, T> {
+impl<T> ToView<T> for Vec<T> {
+    fn to_view(&self) -> ArrayView1<'_, T> {
         aview1(self.as_slice())
     }
 }
 
-impl<T, S: Data<Elem = T>> AsStateVec<T> for ArrayBase<S, Ix1> {
-    fn as_state_vec(&self) -> ArrayView1<'_, T> {
+impl<T, S: Data<Elem = T>> ToView<T> for ArrayBase<S, Ix1> {
+    fn to_view(&self) -> ArrayView1<'_, T> {
         self.view()
     }
 }
@@ -91,10 +91,10 @@ pub trait ExpandRefState<B: BitInt, T, O> {
 pub fn expand_to_map<B, T, E, V>(space: &E, vec: &V) -> HashMap<B, Complex<f64>>
 where
     B: BitInt,
-    V: AsStateVec<T> + ?Sized,
+    V: ToView<T> + ?Sized,
     E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
 {
-    let vec = vec.as_state_vec();
+    let vec = vec.to_view();
     debug_assert_eq!(vec.len(), space.size());
     let mut map: HashMap<B, Complex<f64>> = HashMap::new();
     for (i, coeff) in vec.iter().enumerate() {
@@ -126,7 +126,7 @@ pub fn get_full_vector<B, T, E, FS, V>(
     out: &mut [Complex<f64>],
 ) where
     B: BitInt,
-    V: AsStateVec<T> + ?Sized,
+    V: ToView<T> + ?Sized,
     E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
     FS: BasisSpace<B>,
     Complex<f64>: AddAssign,
@@ -194,10 +194,10 @@ pub fn reduced_density_matrix<B, T, E, V>(
     out: &mut Array2<Complex<f64>>,
 ) where
     B: BitInt,
-    V: AsStateVec<T> + ?Sized,
+    V: ToView<T> + ?Sized,
     E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
 {
-    let vec = vec.as_state_vec();
+    let vec = vec.to_view();
     debug_assert_eq!(vec.len(), space.size());
     let lhss = space.lhss();
     let n_sites = space.n_sites();
