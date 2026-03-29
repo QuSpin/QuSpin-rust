@@ -1,25 +1,33 @@
 /// Full-space expansion of subspace and symmetric-subspace vectors.
 ///
-/// [`get_full_vector`] maps a coefficient vector in a reduced basis back to
-/// the full Hilbert space by iterating over orbit images and accumulating
-/// symmetry-weighted contributions.
+/// [`expand_to_map`] is the core primitive: it expands a reduced-basis
+/// coefficient vector into a sparse `HashMap<B, Complex<f64>>` whose keys are
+/// full-space basis states and whose values are the accumulated complex
+/// amplitudes.  Memory scales with the number of states that actually carry
+/// non-zero weight, not with the full Hilbert-space dimension — important for
+/// particle-number-conserving subspaces where the subspace is much smaller
+/// than the full space.
 ///
-/// Full-space indices are resolved via a caller-supplied [`BasisSpace`]
-/// reference, which correctly handles both the lhss=2 (bit-packed) and
-/// lhss>2 (dit-packed) cases where raw state values are not contiguous
-/// dense indices.
+/// [`get_full_vector`] wraps [`expand_to_map`] and scatters the sparse result
+/// into a pre-allocated dense output slice indexed by a caller-supplied
+/// [`BasisSpace`].
+///
+/// [`reduced_density_matrix`] uses the same sparse map to compute the reduced
+/// density matrix for an arbitrary subsystem without ever materialising the
+/// full-space vector.
 use super::{
     orbit::iter_images,
     space::Subspace,
     sym_basis::{NormInt, SymBasis},
     traits::BasisSpace,
 };
-use crate::bitbasis::{BitInt, BitStateOp};
+use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, manip::DynamicDitManip};
 use num_complex::Complex;
-use std::ops::{AddAssign, Div, Mul};
+use std::collections::HashMap;
+use std::ops::AddAssign;
 
 // ---------------------------------------------------------------------------
-// Trait
+// ExpandRefState trait
 // ---------------------------------------------------------------------------
 
 /// Expand a single representative state from a subspace into `(state, value)`
@@ -34,75 +42,383 @@ pub trait ExpandRefState<B: BitInt, T, O> {
 }
 
 // ---------------------------------------------------------------------------
-// Top-level function
+// Core sparse expansion
 // ---------------------------------------------------------------------------
 
-/// Expand a subspace coefficient vector `vec` into the full-space vector
+/// Expand `vec` into a sparse map from full-space state → accumulated amplitude.
+///
+/// Calls [`ExpandRefState::expand_ref_state_iter`] for each basis state and
+/// accumulates contributions by state key.  States that cancel exactly are
+/// retained with zero amplitude; callers that need filtering can check
+/// `amp.norm()` themselves.
+///
+/// Memory is proportional to the number of distinct full-space states reached,
+/// not to `lhss^n_sites`.  This makes it efficient for particle-number-
+/// conserving subspaces and other sparse sectors.
+pub fn expand_to_map<B, T, E>(space: &E, vec: &[T]) -> HashMap<B, Complex<f64>>
+where
+    B: BitInt,
+    E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
+{
+    debug_assert_eq!(vec.len(), space.size());
+    let mut map: HashMap<B, Complex<f64>> = HashMap::new();
+    for (i, coeff) in vec.iter().enumerate() {
+        for (state, val) in space.expand_ref_state_iter(i, coeff) {
+            *map.entry(state).or_insert(Complex::new(0.0, 0.0)) += val;
+        }
+    }
+    map
+}
+
+// ---------------------------------------------------------------------------
+// Dense full-space vector
+// ---------------------------------------------------------------------------
+
+/// Expand a subspace coefficient vector `vec` into the dense full-space vector
 /// `out`.
 ///
-/// For each basis state, calls [`ExpandRefState::expand_ref_state_iter`] and
-/// accumulates contributions at the indices given by `full_space`.  `out`
-/// must be pre-zeroed by the caller and have length `full_space.size()`.
+/// Internally calls [`expand_to_map`] then scatters the sparse result into
+/// `out` using `full_space.index`.  `out` must be pre-zeroed by the caller
+/// and have length `full_space.size()`.
 ///
 /// # Panics
 ///
 /// Panics (debug only) if `vec.len() != space.size()`.
-pub fn get_full_vector<B, T, O, E, FS>(space: &E, full_space: &FS, vec: &[T], out: &mut [O])
+pub fn get_full_vector<B, T, E, FS>(space: &E, full_space: &FS, vec: &[T], out: &mut [Complex<f64>])
 where
     B: BitInt,
-    E: BasisSpace<B> + ExpandRefState<B, T, O>,
+    E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
     FS: BasisSpace<B>,
-    O: AddAssign,
+    Complex<f64>: AddAssign,
+{
+    let map = expand_to_map(space, vec);
+    for (state, val) in map {
+        if let Some(idx) = full_space.index(state) {
+            out[idx] += val;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Reduced density matrix
+// ---------------------------------------------------------------------------
+
+/// Compute the reduced density matrix (RDM) for the subsystem defined by
+/// `sites_a`, tracing out all other sites.
+///
+/// Given a pure state `|ψ⟩ = Σ_i c_i |i⟩` the RDM is:
+///
+/// ```text
+/// ρ_A[α, β] = Σ_{s_B}  ψ[α, s_B] · conj(ψ[β, s_B])
+/// ```
+///
+/// # Algorithm
+///
+/// 1. [`expand_to_map`] produces a sparse map of full-space states → amplitudes.
+/// 2. Each state is decomposed into `(s_A, s_B)`.
+///    - For `lhss = 2` (fermions or hardcore bosons): a [`BenesPermDitLocations`]
+///      permutation is built once that maps `sites_a[i] → i` and
+///      `sites_b[j] → n_a + j`.  `op.apply(state)` gives the factored integer
+///      in a single O(log n) pass; `op.fermionic_sign(state)` gives the exact
+///      Jordan-Wigner exchange sign η.  Because `sites_a` and `sites_b` are
+///      both sorted ascending before building the permutation, the A–A and B–B
+///      sublists contribute no inversions — `fermionic_sign` counts only the
+///      physical A–B exchange pairs.
+///    - For `lhss > 2` (bosons): the state is split with `DynamicDitManip`.
+///      `s_A` is a `usize` dense index; `s_B` is packed into a `B`-typed key
+///      for HashMap-correctness with wide integers.
+/// 3. States sharing the same `s_B` are grouped; their outer products are
+///    accumulated into `out`.
+///
+/// Memory is proportional to the number of non-zero states in the expanded
+/// map — never `lhss^n_sites`.
+///
+/// # Parameters
+///
+/// - `space`   — the reduced basis the coefficient vector lives in
+/// - `vec`     — coefficient vector of length `space.size()`
+/// - `sites_a` — site indices of subsystem A.  Sorted ascending internally;
+///   the caller's order does not affect the output.
+/// - `out`     — pre-zeroed output buffer of length `dim_a * dim_a` where
+///   `dim_a = lhss^sites_a.len()`, stored in row-major order
+///
+/// # Panics
+///
+/// Panics (debug only) if `vec.len() != space.size()` or
+/// `out.len() != dim_a * dim_a`.
+pub fn reduced_density_matrix<B, T, E>(
+    space: &E,
+    vec: &[T],
+    sites_a: &[usize],
+    out: &mut [Complex<f64>],
+) where
+    B: BitInt,
+    E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
 {
     debug_assert_eq!(vec.len(), space.size());
-    for (i, coeff) in vec.iter().enumerate() {
-        for (state, val) in space.expand_ref_state_iter(i, coeff) {
-            if let Some(idx) = full_space.index(state) {
-                out[idx] += val;
+    let lhss = space.lhss();
+    let n_sites = space.n_sites();
+    let n_a = sites_a.len();
+    let dim_a = lhss.pow(n_a as u32);
+    debug_assert_eq!(out.len(), dim_a * dim_a);
+
+    let fermionic = space.fermionic();
+
+    // Sort sites_a so that no A–A or B–B permutation inversions arise; the
+    // BenesPermDitLocations sign computation then counts only A–B exchange pairs.
+    let mut sites_a_sorted = sites_a.to_vec();
+    sites_a_sorted.sort_unstable();
+    let sites_b: Vec<usize> = (0..n_sites)
+        .filter(|s| !sites_a_sorted.contains(s))
+        .collect();
+    let n_b = sites_b.len();
+
+    // Step 1: sparse expansion.
+    let map = expand_to_map(space, vec);
+
+    // Step 2: group by s_B (B-typed key for correctness with wide integers).
+    let mut groups: HashMap<B, Vec<(usize, Complex<f64>)>> = HashMap::new();
+
+    if lhss == 2 {
+        // Build perm: sites_a_sorted[i] → i,  sites_b[j] → n_a + j.
+        let mut perm = vec![0usize; n_sites];
+        for (i, &site) in sites_a_sorted.iter().enumerate() {
+            perm[site] = i;
+        }
+        for (j, &site) in sites_b.iter().enumerate() {
+            perm[site] = n_a + j;
+        }
+        let benes_op = BenesPermDitLocations::<B>::new(2, &perm, fermionic);
+
+        // Mask covering the lower n_a bits (the A-subsystem after permutation).
+        // Special-cased for n_a == 0 to avoid a shift-by-BITS.
+        let mask_a: B = if n_a == 0 {
+            B::from_u64(0)
+        } else {
+            !B::from_u64(0) >> (B::BITS as usize - n_a)
+        };
+
+        for (state, amp) in &map {
+            let s_perm = benes_op.apply(*state);
+            let sa = (s_perm & mask_a).to_usize();
+            // n_b == 0 guard prevents a shift-by-B::BITS when all sites are in A.
+            let sb: B = if n_b == 0 {
+                B::from_u64(0)
+            } else {
+                s_perm >> n_a
+            };
+            let sign = benes_op.fermionic_sign(*state);
+            groups.entry(sb).or_default().push((sa, amp * sign));
+        }
+    } else {
+        // lhss > 2: bosons only (never fermionic).
+        let manip = DynamicDitManip::new(lhss);
+        for (state, amp) in &map {
+            // sa: dense mixed-radix index for the A subsystem.
+            let sa = manip.get_sub_state(*state, &sites_a_sorted);
+            // sb: pack B-site dits into a B-typed value for wide-integer safety.
+            let mut sb = B::from_u64(0);
+            for (j, &site) in sites_b.iter().enumerate() {
+                let dit = manip.get_dit(*state, site);
+                sb = manip.set_dit(sb, dit, j);
+            }
+            groups.entry(sb).or_default().push((sa, *amp));
+        }
+    }
+
+    // Step 3: accumulate outer products into the RDM.
+    for group in groups.values() {
+        for &(sa_i, c_i) in group {
+            for &(sa_j, c_j) in group {
+                out[sa_i * dim_a + sa_j] += c_i * c_j.conj();
             }
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Subspace impl
+// ExpandRefState impls
 // ---------------------------------------------------------------------------
 
 /// For a plain subspace every state is its own representative with norm 1.
-/// Yields a single `(state, O::from(coeff))` pair.
-impl<B, T, O> ExpandRefState<B, T, O> for Subspace<B>
+/// Yields a single `(state, coeff)` pair.
+impl<B, T> ExpandRefState<B, T, Complex<f64>> for Subspace<B>
 where
     B: BitInt,
     T: Copy,
-    O: From<T>,
+    Complex<f64>: From<T>,
 {
-    fn expand_ref_state_iter(&self, i: usize, coeff: &T) -> impl Iterator<Item = (B, O)> {
-        std::iter::once((self.state_at(i), O::from(*coeff)))
+    fn expand_ref_state_iter(
+        &self,
+        i: usize,
+        coeff: &T,
+    ) -> impl Iterator<Item = (B, Complex<f64>)> {
+        std::iter::once((self.state_at(i), Complex::<f64>::from(*coeff)))
     }
 }
-
-// ---------------------------------------------------------------------------
-// SymBasis impl
-// ---------------------------------------------------------------------------
 
 /// For a symmetric basis, yields one `(state, value)` pair per orbit image.
 ///
 /// For the `i`-th representative state `r` with orbit norm `n`, each image
 /// `s = g(r)` with group character `χ_g` contributes:
 /// `(s,  (coeff / n) * χ_g)`
-impl<B, L, N, T, O> ExpandRefState<B, T, O> for SymBasis<B, L, N>
+impl<B, L, N, T> ExpandRefState<B, T, Complex<f64>> for SymBasis<B, L, N>
 where
     B: BitInt,
     L: BitStateOp<B>,
     N: NormInt,
     T: Copy,
-    O: Copy + From<T> + Div<f64, Output = O> + Mul<Complex<f64>, Output = O>,
+    Complex<f64>: From<T>,
 {
-    fn expand_ref_state_iter(&self, i: usize, coeff: &T) -> impl Iterator<Item = (B, O)> {
+    fn expand_ref_state_iter(
+        &self,
+        i: usize,
+        coeff: &T,
+    ) -> impl Iterator<Item = (B, Complex<f64>)> {
         let (ref_state, norm) = self.entry(i);
-        let val = O::from(*coeff) / norm;
+        let val = Complex::<f64>::from(*coeff) / norm;
         iter_images(&self.lattice, &self.local, ref_state)
             .into_iter()
             .map(move |(s, char_g)| (s, val * char_g))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::basis::space::{FullSpace, Subspace};
+
+    /// For a 2-site spin-1/2 system in the product state |↓↑⟩ (site 0 = 0,
+    /// site 1 = 1), stored as state integer 0b10 = 2, tracing out site 1
+    /// should give the pure-state RDM ρ_A = |↓⟩⟨↓| = [[1,0],[0,0]] for site 0.
+    ///
+    /// Bit encoding: bit i = site i (LSB = site 0).
+    /// State 2 = 0b10: site 0 = 0 (↓), site 1 = 1 (↑).
+    #[test]
+    fn rdm_product_state_site0() {
+        let mut sub = Subspace::<u32>::new(2, 2, false);
+        sub.build(0u32, |s: u32| {
+            (0..2).map(move |i| (Complex::new(1.0, 0.0), s ^ (1 << i), 0u8))
+        });
+
+        // psi = |↓↑⟩ = state 2 = 0b10.
+        let idx = sub.index(0b10u32).unwrap();
+        let mut vec = vec![Complex::new(0.0, 0.0); sub.size()];
+        vec[idx] = Complex::new(1.0, 0.0);
+
+        // Trace out site 1, keep site 0.
+        // site 0 is in state 0 (↓) → ρ_A = [[1,0],[0,0]].
+        let mut rdm = vec![Complex::new(0.0, 0.0); 4];
+        reduced_density_matrix(&sub, &vec, &[0], &mut rdm);
+
+        let tol = 1e-14;
+        assert!((rdm[0].re - 1.0).abs() < tol, "rdm[0,0] = {}", rdm[0]);
+        assert!(rdm[1].norm() < tol, "rdm[0,1] = {}", rdm[1]);
+        assert!(rdm[2].norm() < tol, "rdm[1,0] = {}", rdm[2]);
+        assert!(rdm[3].norm() < tol, "rdm[1,1] = {}", rdm[3]);
+    }
+
+    /// Bell state |Φ+⟩ = (|00⟩ + |11⟩) / √2.
+    /// Tracing out either site gives the maximally mixed state ρ = I/2.
+    #[test]
+    fn rdm_bell_state_maximally_mixed() {
+        let mut sub = Subspace::<u32>::new(2, 2, false);
+        sub.build(0u32, |s: u32| {
+            (0..2).map(move |i| (Complex::new(1.0, 0.0), s ^ (1 << i), 0u8))
+        });
+
+        let inv_sqrt2 = Complex::new(1.0 / 2f64.sqrt(), 0.0);
+        let idx_00 = sub.index(0b00u32).unwrap();
+        let idx_11 = sub.index(0b11u32).unwrap();
+        let mut vec = vec![Complex::new(0.0, 0.0); sub.size()];
+        vec[idx_00] = inv_sqrt2;
+        vec[idx_11] = inv_sqrt2;
+
+        // Trace out site 1.
+        let mut rdm = vec![Complex::new(0.0, 0.0); 4];
+        reduced_density_matrix(&sub, &vec, &[0], &mut rdm);
+
+        let tol = 1e-14;
+        // ρ_A = [[0.5, 0], [0, 0.5]]
+        assert!((rdm[0].re - 0.5).abs() < tol, "rdm[0,0] = {}", rdm[0]);
+        assert!(rdm[1].norm() < tol, "rdm[0,1] = {}", rdm[1]);
+        assert!(rdm[2].norm() < tol, "rdm[1,0] = {}", rdm[2]);
+        assert!((rdm[3].re - 0.5).abs() < tol, "rdm[1,1] = {}", rdm[3]);
+    }
+
+    /// Trace is preserved: Tr(ρ_A) = 1 for a normalised state vector.
+    #[test]
+    fn rdm_trace_is_one() {
+        // Random-ish state on 4 sites.
+        let mut sub = Subspace::<u32>::new(2, 4, false);
+        sub.build(0u32, |s: u32| {
+            (0..4).map(move |i| (Complex::new(1.0, 0.0), s ^ (1 << i), 0u8))
+        });
+
+        // Uniform superposition over all 16 states.
+        let amp = Complex::new(1.0 / 4.0, 0.0);
+        let vec: Vec<Complex<f64>> = (0..sub.size()).map(|_| amp).collect();
+
+        // Trace out sites 2 and 3, keep sites 0 and 1 (dim_a = 4).
+        let mut rdm = vec![Complex::new(0.0, 0.0); 16];
+        reduced_density_matrix(&sub, &vec, &[0, 1], &mut rdm);
+
+        let trace: f64 = (0..4).map(|i| rdm[i * 4 + i].re).sum();
+        assert!((trace - 1.0).abs() < 1e-13, "trace = {trace}");
+    }
+
+    /// Hermiticity: ρ[i,j] = conj(ρ[j,i]).
+    #[test]
+    fn rdm_is_hermitian() {
+        let mut sub = Subspace::<u32>::new(2, 4, false);
+        sub.build(0u32, |s: u32| {
+            (0..4).map(move |i| (Complex::new(1.0, 0.0), s ^ (1 << i), 0u8))
+        });
+
+        // Non-uniform state with a complex coefficient.
+        let mut vec = vec![Complex::new(0.0, 0.0); sub.size()];
+        let idx0 = sub.index(0b0000).unwrap();
+        let idx1 = sub.index(0b0001).unwrap();
+        let idx2 = sub.index(0b0010).unwrap();
+        vec[idx0] = Complex::new(1.0 / 2f64.sqrt(), 0.0);
+        vec[idx1] = Complex::new(0.0, 1.0 / 2.0);
+        vec[idx2] = Complex::new(1.0 / 2.0, 0.0);
+
+        let mut rdm = vec![Complex::new(0.0, 0.0); 4];
+        reduced_density_matrix(&sub, &vec, &[0], &mut rdm);
+
+        let tol = 1e-14;
+        for i in 0..2 {
+            for j in 0..2 {
+                let diff = rdm[i * 2 + j] - rdm[j * 2 + i].conj();
+                assert!(diff.norm() < tol, "rdm[{i},{j}] not hermitian: {diff}");
+            }
+        }
+    }
+
+    /// get_full_vector still works correctly after the refactor to use expand_to_map.
+    #[test]
+    fn get_full_vector_roundtrip() {
+        let mut sub = Subspace::<u32>::new(2, 3, false);
+        sub.build(0u32, |s: u32| {
+            (0..3).map(move |i| (Complex::new(1.0, 0.0), s ^ (1 << i), 0u8))
+        });
+        let fs = FullSpace::<u32>::new(2, 3, false);
+
+        let amp = Complex::new(1.0 / (8f64.sqrt()), 0.0);
+        let vec: Vec<Complex<f64>> = (0..sub.size()).map(|_| amp).collect();
+
+        let mut out = vec![Complex::new(0.0, 0.0); fs.size()];
+        get_full_vector(&sub, &fs, &vec, &mut out);
+
+        // Every full-space slot should be filled with `amp`.
+        let tol = 1e-14;
+        for (i, v) in out.iter().enumerate() {
+            assert!((v.re - amp.re).abs() < tol, "out[{i}] = {v}");
+        }
     }
 }
