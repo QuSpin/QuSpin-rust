@@ -1,5 +1,5 @@
 use super::BasisSpace;
-use crate::bitbasis::BitInt;
+use crate::bitbasis::{BitInt, manip::DynamicDitManip};
 use std::collections::HashMap;
 
 /// A net amplitude is treated as zero when its magnitude is below
@@ -61,21 +61,57 @@ impl<B: BitInt> BasisSpace<B> for FullSpace<B> {
         self.dim
     }
 
-    /// `state_at(i) = dim - i - 1` (descending order).
+    /// Returns the `i`-th basis state in descending dense order.
+    ///
+    /// For lhss=2, the dense index equals the state integer value, so this is
+    /// `B::from_u64(dim - i - 1)`.  For lhss>2 the state integer is
+    /// bit-packed (ceil(log2(lhss)) bits per site), so the dense index `dim -
+    /// i - 1` is first decoded into per-site dit values and then re-encoded.
     #[inline]
     fn state_at(&self, i: usize) -> B {
-        B::from_u64((self.dim - i - 1) as u64)
+        if self.lhss == 2 {
+            return B::from_u64((self.dim - i - 1) as u64);
+        }
+        let manip = DynamicDitManip::new(self.lhss);
+        let mut dense = self.dim - i - 1;
+        let mut state = B::from_u64(0);
+        for site in 0..self.n_sites {
+            let dit = dense % self.lhss;
+            dense /= self.lhss;
+            state = manip.set_dit(state, dit, site);
+        }
+        state
     }
 
-    /// `index(s) = dim - s - 1`.
+    /// Returns the dense index of `state`, or `None` if it is not a valid
+    /// state in this full space.
+    ///
+    /// For lhss=2, the state integer is already a dense index.  For lhss>2
+    /// each site's dit value is extracted from the bit-packed state and
+    /// combined into a base-`lhss` number; any site with a dit value ≥ lhss
+    /// indicates an invalid state.
     #[inline]
     fn index(&self, state: B) -> Option<usize> {
-        let s = state.to_usize();
-        if s < self.dim {
-            Some(self.dim - s - 1)
-        } else {
-            None
+        if self.lhss == 2 {
+            let s = state.to_usize();
+            return if s < self.dim {
+                Some(self.dim - s - 1)
+            } else {
+                None
+            };
         }
+        let manip = DynamicDitManip::new(self.lhss);
+        let mut dense = 0usize;
+        let mut stride = 1usize;
+        for site in 0..self.n_sites {
+            let dit = manip.get_dit(state, site);
+            if dit >= self.lhss {
+                return None;
+            }
+            dense += dit * stride;
+            stride *= self.lhss;
+        }
+        Some(self.dim - dense - 1)
     }
 }
 

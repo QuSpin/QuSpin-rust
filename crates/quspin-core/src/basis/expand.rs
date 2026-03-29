@@ -4,11 +4,10 @@
 /// the full Hilbert space by iterating over orbit images and accumulating
 /// symmetry-weighted contributions.
 ///
-/// # Indexing convention
-///
-/// `out` is indexed by the raw (unsigned integer) value of each basis state,
-/// i.e. `out[state.to_usize()]`.  Callers are responsible for any reordering
-/// required by a specific full-space basis convention.
+/// Full-space indices are resolved via a caller-supplied [`BasisSpace`]
+/// reference, which correctly handles both the lhss=2 (bit-packed) and
+/// lhss>2 (dit-packed) cases where raw state values are not contiguous
+/// dense indices.
 use super::{
     orbit::iter_images,
     space::Subspace,
@@ -17,33 +16,21 @@ use super::{
 };
 use crate::bitbasis::{BitInt, BitStateOp};
 use num_complex::Complex;
-use std::ops::{AddAssign, Mul};
+use std::ops::{AddAssign, Div, Mul};
 
 // ---------------------------------------------------------------------------
 // Trait
 // ---------------------------------------------------------------------------
 
-/// Expand a single representative state from a subspace into a full-space
-/// coefficient vector.
+/// Expand a single representative state from a subspace into `(state, value)`
+/// pairs representing its contribution to the full-space vector.
 ///
-/// # Safety
-///
-/// Implementations reinterpret the raw pointer `coeff: *const T` as
-/// `*const O` via [`std::ptr::read`].  The caller must guarantee that `T` and
-/// `O` are layout-compatible (same size and alignment).  The valid `(T, O)`
-/// pairs for each dynamic-dispatch path will be validated separately.
-pub unsafe trait ExpandRefState<B: BitInt, T, O> {
-    /// Accumulate the contribution of the `i`-th basis state into `out`.
-    ///
-    /// `coeff` points to the subspace coefficient for state `i` and will be
-    /// unsafely reinterpreted as `O`.
-    ///
-    /// # Safety
-    /// * `coeff` must be a valid, aligned, non-null pointer whose pointee is
-    ///   layout-compatible with `O`.
-    /// * `out` must be large enough to hold every full-space index produced by
-    ///   the expansion (at minimum `lhss^n_sites` elements).
-    unsafe fn expand_ref_state(&self, i: usize, coeff: *const T, out: &mut [O]);
+/// The caller is responsible for mapping each returned state to a full-space
+/// index (e.g. via [`BasisSpace::index`]) and accumulating into the output.
+pub trait ExpandRefState<B: BitInt, T, O> {
+    /// Yields `(full_space_state, weighted_coefficient)` pairs for the `i`-th
+    /// basis state, given the subspace coefficient `coeff`.
+    fn expand_ref_state_iter(&self, i: usize, coeff: &T) -> impl Iterator<Item = (B, O)>;
 }
 
 // ---------------------------------------------------------------------------
@@ -53,26 +40,27 @@ pub unsafe trait ExpandRefState<B: BitInt, T, O> {
 /// Expand a subspace coefficient vector `vec` into the full-space vector
 /// `out`.
 ///
-/// For each basis state `i`, calls [`ExpandRefState::expand_ref_state`] with
-/// a pointer into `vec`.
-///
-/// # Safety
-///
-/// Inherits the safety requirements of the underlying [`ExpandRefState`]
-/// implementation: the `T`/`O` pair must be layout-compatible.
+/// For each basis state, calls [`ExpandRefState::expand_ref_state_iter`] and
+/// accumulates contributions at the indices given by `full_space`.  `out`
+/// must be pre-zeroed by the caller and have length `full_space.size()`.
 ///
 /// # Panics
 ///
 /// Panics (debug only) if `vec.len() != space.size()`.
-pub unsafe fn get_full_vector<B, T, O, E>(space: &E, vec: &[T], out: &mut [O])
+pub fn get_full_vector<B, T, O, E, FS>(space: &E, full_space: &FS, vec: &[T], out: &mut [O])
 where
     B: BitInt,
     E: BasisSpace<B> + ExpandRefState<B, T, O>,
+    FS: BasisSpace<B>,
+    O: AddAssign,
 {
     debug_assert_eq!(vec.len(), space.size());
-    for i in 0..space.size() {
-        // SAFETY: delegated to the ExpandRefState impl.
-        unsafe { space.expand_ref_state(i, vec.as_ptr().add(i), out) };
+    for (i, coeff) in vec.iter().enumerate() {
+        for (state, val) in space.expand_ref_state_iter(i, coeff) {
+            if let Some(idx) = full_space.index(state) {
+                out[idx] += val;
+            }
+        }
     }
 }
 
@@ -81,17 +69,15 @@ where
 // ---------------------------------------------------------------------------
 
 /// For a plain subspace every state is its own representative with norm 1.
-/// The coefficient is reinterpreted as `O` and added at `out[state.to_usize()]`.
-unsafe impl<B, T, O> ExpandRefState<B, T, O> for Subspace<B>
+/// Yields a single `(state, O::from(coeff))` pair.
+impl<B, T, O> ExpandRefState<B, T, O> for Subspace<B>
 where
     B: BitInt,
-    O: Copy + AddAssign,
+    T: Copy,
+    O: From<T>,
 {
-    unsafe fn expand_ref_state(&self, i: usize, coeff: *const T, out: &mut [O]) {
-        let idx = self.state_at(i).to_usize();
-        // SAFETY: caller guarantees T and O are layout-compatible.
-        let val: O = unsafe { std::ptr::read(coeff as *const O) };
-        out[idx] += val;
+    fn expand_ref_state_iter(&self, i: usize, coeff: &T) -> impl Iterator<Item = (B, O)> {
+        std::iter::once((self.state_at(i), O::from(*coeff)))
     }
 }
 
@@ -99,25 +85,24 @@ where
 // SymBasis impl
 // ---------------------------------------------------------------------------
 
-/// For a symmetric basis, all orbit images of the representative state are
-/// enumerated. Each image at state `s` with group character `χ_g` contributes
-/// `(χ_g / norm) * coeff` to `out[s.to_usize()]`.
-unsafe impl<B, L, N, T, O> ExpandRefState<B, T, O> for SymBasis<B, L, N>
+/// For a symmetric basis, yields one `(state, value)` pair per orbit image.
+///
+/// For the `i`-th representative state `r` with orbit norm `n`, each image
+/// `s = g(r)` with group character `χ_g` contributes:
+/// `(s,  (coeff / n) * χ_g)`
+impl<B, L, N, T, O> ExpandRefState<B, T, O> for SymBasis<B, L, N>
 where
     B: BitInt,
     L: BitStateOp<B>,
     N: NormInt,
-    O: Copy + AddAssign + Mul<Complex<f64>, Output = O>,
+    T: Copy,
+    O: Copy + From<T> + Div<f64, Output = O> + Mul<Complex<f64>, Output = O>,
 {
-    unsafe fn expand_ref_state(&self, i: usize, coeff: *const T, out: &mut [O]) {
+    fn expand_ref_state_iter(&self, i: usize, coeff: &T) -> impl Iterator<Item = (B, O)> {
         let (ref_state, norm) = self.entry(i);
-        // SAFETY: caller guarantees T and O are layout-compatible.
-        let val: O = unsafe { std::ptr::read(coeff as *const O) };
-        let inv_norm = 1.0 / norm;
-
-        for (s, char_g) in iter_images(&self.lattice, &self.local, ref_state) {
-            let idx = s.to_usize();
-            out[idx] += val * (char_g * inv_norm);
-        }
+        let val = O::from(*coeff) / norm;
+        iter_images(&self.lattice, &self.local, ref_state)
+            .into_iter()
+            .map(move |(s, char_g)| (s, val * char_g))
     }
 }
