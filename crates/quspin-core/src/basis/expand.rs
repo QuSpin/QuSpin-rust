@@ -191,6 +191,9 @@ pub fn reduced_density_matrix<B, T, E>(
     // and B-subsystem dits occupy positions n_a..n_a+n_b-1.
     let manip = DynamicDitManip::new(lhss);
     let n_a_bits = n_a * manip.bits;
+    // Positions of A-subsystem dits in the permuted state.  Pre-computed once
+    // so get_sub_state can be called without allocating inside the loop.
+    let a_positions: Vec<usize> = (0..n_a).collect();
 
     // Step 2: group by s_B (B-typed key for correctness with wide integers).
     let mut groups: HashMap<B, Vec<(usize, Complex<f64>)>> = HashMap::new();
@@ -198,9 +201,8 @@ pub fn reduced_density_matrix<B, T, E>(
     for (state, amp) in &map {
         let s_perm = benes_op.apply(*state);
 
-        // sa: little-endian mixed-radix index for the A subsystem.
-        // After the permutation, A-site dits occupy positions 0..n_a.
-        let sa = manip.get_subbits(s_perm, 0, n_a);
+        // sa: mixed-radix index for the A subsystem extracted from positions 0..n_a.
+        let sa = manip.get_sub_state(s_perm, &a_positions);
 
         // sb: B-subsystem dits shifted down to start at bit 0.
         // Guard against shift-by-B::BITS when n_b == 0.
