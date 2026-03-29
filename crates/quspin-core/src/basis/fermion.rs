@@ -2,7 +2,7 @@
 use super::dispatch::SpaceInner;
 use super::seed::seed_from_bytes;
 use super::space::{FullSpace, Subspace};
-use super::sym_basis::SymBasis;
+use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
 use crate::bitbasis::PermDitMask;
 use crate::error::QuSpinError;

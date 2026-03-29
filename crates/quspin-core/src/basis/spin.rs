@@ -2,7 +2,7 @@
 use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
 use super::space::{FullSpace, Subspace};
-use super::sym_basis::SymBasis;
+use super::sym::SymBasis;
 use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
 use crate::error::QuSpinError;
 use crate::hamiltonian::{BondHamiltonianInner, SpinHamiltonianInner};

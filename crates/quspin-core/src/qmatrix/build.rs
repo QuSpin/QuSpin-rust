@@ -1,7 +1,7 @@
 use super::{CIndex, Entry, Index, QMatrix};
 use crate::basis::{
     BasisSpace,
-    sym_basis::{NormInt, SymBasis},
+    sym::{NormInt, SymBasis},
 };
 use crate::bitbasis::{BitInt, BitStateOp};
 use crate::hamiltonian::Hamiltonian;

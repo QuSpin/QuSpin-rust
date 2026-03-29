@@ -18,7 +18,7 @@
 use super::{
     orbit::iter_images,
     space::Subspace,
-    sym_basis::{NormInt, SymBasis},
+    sym::{NormInt, SymBasis},
     traits::BasisSpace,
 };
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, manip::DynamicDitManip};

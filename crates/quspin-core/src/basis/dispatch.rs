@@ -20,7 +20,7 @@ use crate::basis::{
     BasisSpace,
     seed::{seed_from_bytes, state_to_str},
     space::{FullSpace, Subspace},
-    sym_basis::SymBasis,
+    sym::SymBasis,
 };
 use crate::bitbasis::{BitInt, DynamicPermDitValues, PermDitMask};
 use crate::error::QuSpinError;

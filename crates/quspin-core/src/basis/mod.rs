@@ -7,7 +7,7 @@ pub(crate) mod orbit;
 pub mod seed;
 pub mod space;
 pub mod spin;
-pub mod sym_basis;
+pub mod sym;
 pub mod traits;
 
 pub use boson::BosonBasis;
@@ -18,5 +18,5 @@ pub use seed::{
 };
 pub use space::{FullSpace, Subspace};
 pub use spin::{SpaceKind, SpinBasis};
-pub use sym_basis::{NormInt, SymBasis};
+pub use sym::{NormInt, SymBasis};
 pub use traits::{BasisSpace, SymGrp};
