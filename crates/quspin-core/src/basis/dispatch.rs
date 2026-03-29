@@ -46,6 +46,10 @@ type B8192 = ruint::Uint<8192, 128>;
 /// - 9 `Sub` variants (u32, u64, and 128–8192 bit ruint integers)
 /// - 9 `Sym` variants — LHSS=2 symmetric (hardcore bosons / spin-½ / fermions)
 /// - 9 `DitSym` variants — LHSS≥3 symmetric (bosons / higher spin)
+// BasisInner is a deliberate type-erased dispatch enum spanning many integer
+// widths. The B256 variants are large due to SmallVec inline storage, but this
+// is intentional — the lint is suppressed here rather than boxing everything.
+#[allow(clippy::large_enum_variant)]
 pub enum BasisInner {
     // Full Hilbert spaces (small n_sites only).
     Full32(FullSpace<u32>),
@@ -67,22 +71,22 @@ pub enum BasisInner {
     Sym64(SymBasis<u64, PermDitMask<u64>, u16>),
     Sym128(SymBasis<B128, PermDitMask<B128>, u32>),
     Sym256(SymBasis<B256, PermDitMask<B256>, u32>),
-    Sym512(SymBasis<B512, PermDitMask<B512>, u32>),
-    Sym1024(SymBasis<B1024, PermDitMask<B1024>, u32>),
-    Sym2048(SymBasis<B2048, PermDitMask<B2048>, u32>),
-    Sym4096(SymBasis<B4096, PermDitMask<B4096>, u32>),
-    Sym8192(SymBasis<B8192, PermDitMask<B8192>, u32>),
+    Sym512(Box<SymBasis<B512, PermDitMask<B512>, u32>>),
+    Sym1024(Box<SymBasis<B1024, PermDitMask<B1024>, u32>>),
+    Sym2048(Box<SymBasis<B2048, PermDitMask<B2048>, u32>>),
+    Sym4096(Box<SymBasis<B4096, PermDitMask<B4096>, u32>>),
+    Sym8192(Box<SymBasis<B8192, PermDitMask<B8192>, u32>>),
 
     // LHSS≥3 symmetry-reduced subspaces (bosons / higher spin).
     DitSym32(SymBasis<u32, DynamicPermDitValues, u8>),
     DitSym64(SymBasis<u64, DynamicPermDitValues, u16>),
     DitSym128(SymBasis<B128, DynamicPermDitValues, u32>),
     DitSym256(SymBasis<B256, DynamicPermDitValues, u32>),
-    DitSym512(SymBasis<B512, DynamicPermDitValues, u32>),
-    DitSym1024(SymBasis<B1024, DynamicPermDitValues, u32>),
-    DitSym2048(SymBasis<B2048, DynamicPermDitValues, u32>),
-    DitSym4096(SymBasis<B4096, DynamicPermDitValues, u32>),
-    DitSym8192(SymBasis<B8192, DynamicPermDitValues, u32>),
+    DitSym512(Box<SymBasis<B512, DynamicPermDitValues, u32>>),
+    DitSym1024(Box<SymBasis<B1024, DynamicPermDitValues, u32>>),
+    DitSym2048(Box<SymBasis<B2048, DynamicPermDitValues, u32>>),
+    DitSym4096(Box<SymBasis<B4096, DynamicPermDitValues, u32>>),
+    DitSym8192(Box<SymBasis<B8192, DynamicPermDitValues, u32>>),
 }
 
 impl BasisInner {
@@ -578,15 +582,38 @@ macro_rules! impl_from_basis_spaces {
     };
 }
 
+macro_rules! impl_from_basis_spaces_boxed {
+    ($B:ty, $N:ty, $sub_variant:ident, $sym_variant:ident, $dit_sym_variant:ident) => {
+        impl From<Subspace<$B>> for BasisInner {
+            #[inline]
+            fn from(b: Subspace<$B>) -> Self {
+                BasisInner::$sub_variant(b)
+            }
+        }
+        impl From<SymBasis<$B, PermDitMask<$B>, $N>> for BasisInner {
+            #[inline]
+            fn from(b: SymBasis<$B, PermDitMask<$B>, $N>) -> Self {
+                BasisInner::$sym_variant(Box::new(b))
+            }
+        }
+        impl From<SymBasis<$B, DynamicPermDitValues, $N>> for BasisInner {
+            #[inline]
+            fn from(b: SymBasis<$B, DynamicPermDitValues, $N>) -> Self {
+                BasisInner::$dit_sym_variant(Box::new(b))
+            }
+        }
+    };
+}
+
 impl_from_basis_spaces!(u32, u8, Sub32, Sym32, DitSym32);
 impl_from_basis_spaces!(u64, u16, Sub64, Sym64, DitSym64);
 impl_from_basis_spaces!(B128, u32, Sub128, Sym128, DitSym128);
 impl_from_basis_spaces!(B256, u32, Sub256, Sym256, DitSym256);
-impl_from_basis_spaces!(B512, u32, Sub512, Sym512, DitSym512);
-impl_from_basis_spaces!(B1024, u32, Sub1024, Sym1024, DitSym1024);
-impl_from_basis_spaces!(B2048, u32, Sub2048, Sym2048, DitSym2048);
-impl_from_basis_spaces!(B4096, u32, Sub4096, Sym4096, DitSym4096);
-impl_from_basis_spaces!(B8192, u32, Sub8192, Sym8192, DitSym8192);
+impl_from_basis_spaces_boxed!(B512, u32, Sub512, Sym512, DitSym512);
+impl_from_basis_spaces_boxed!(B1024, u32, Sub1024, Sym1024, DitSym1024);
+impl_from_basis_spaces_boxed!(B2048, u32, Sub2048, Sym2048, DitSym2048);
+impl_from_basis_spaces_boxed!(B4096, u32, Sub4096, Sym4096, DitSym4096);
+impl_from_basis_spaces_boxed!(B8192, u32, Sub8192, Sym8192, DitSym8192);
 
 // ---------------------------------------------------------------------------
 // Dispatch macros
