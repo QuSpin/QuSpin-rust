@@ -22,7 +22,9 @@ use crate::basis::{
     space::{FullSpace, Subspace},
     sym_basis::SymBasis,
 };
-use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
+use crate::bitbasis::{BitInt, DynamicPermDitValues, PermDitMask};
+use crate::error::QuSpinError;
+use num_complex::Complex;
 
 type B128 = ruint::Uint<128, 2>;
 type B256 = ruint::Uint<256, 4>;
@@ -258,6 +260,180 @@ impl BasisInner {
             | BasisInner::DitSym4096(_)
             | BasisInner::DitSym8192(_) => "symmetric",
         }
+    }
+
+    /// Returns `true` once `build` has been called on the inner basis.
+    ///
+    /// - `Full*` → always `true` (no build step required)
+    /// - `Sub*`  → `subspace.is_built()`
+    /// - `Sym*` / `DitSym*` → `sym_basis.is_built()`
+    pub fn is_built(&self) -> bool {
+        match self {
+            BasisInner::Full32(_) | BasisInner::Full64(_) => true,
+            BasisInner::Sub32(b) => b.is_built(),
+            BasisInner::Sub64(b) => b.is_built(),
+            BasisInner::Sub128(b) => b.is_built(),
+            BasisInner::Sub256(b) => b.is_built(),
+            BasisInner::Sub512(b) => b.is_built(),
+            BasisInner::Sub1024(b) => b.is_built(),
+            BasisInner::Sub2048(b) => b.is_built(),
+            BasisInner::Sub4096(b) => b.is_built(),
+            BasisInner::Sub8192(b) => b.is_built(),
+            BasisInner::Sym32(b) => b.is_built(),
+            BasisInner::Sym64(b) => b.is_built(),
+            BasisInner::Sym128(b) => b.is_built(),
+            BasisInner::Sym256(b) => b.is_built(),
+            BasisInner::Sym512(b) => b.is_built(),
+            BasisInner::Sym1024(b) => b.is_built(),
+            BasisInner::Sym2048(b) => b.is_built(),
+            BasisInner::Sym4096(b) => b.is_built(),
+            BasisInner::Sym8192(b) => b.is_built(),
+            BasisInner::DitSym32(b) => b.is_built(),
+            BasisInner::DitSym64(b) => b.is_built(),
+            BasisInner::DitSym128(b) => b.is_built(),
+            BasisInner::DitSym256(b) => b.is_built(),
+            BasisInner::DitSym512(b) => b.is_built(),
+            BasisInner::DitSym1024(b) => b.is_built(),
+            BasisInner::DitSym2048(b) => b.is_built(),
+            BasisInner::DitSym4096(b) => b.is_built(),
+            BasisInner::DitSym8192(b) => b.is_built(),
+        }
+    }
+
+    /// Add a lattice (site-permutation) symmetry element.
+    ///
+    /// Valid only on `Sym*` and `DitSym*` variants; errors on `Full*` / `Sub*`.
+    pub fn push_lattice(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+    ) -> Result<(), QuSpinError> {
+        match self {
+            BasisInner::Sym32(b) => b.push_lattice(grp_char, perm),
+            BasisInner::Sym64(b) => b.push_lattice(grp_char, perm),
+            BasisInner::Sym128(b) => b.push_lattice(grp_char, perm),
+            BasisInner::Sym256(b) => b.push_lattice(grp_char, perm),
+            BasisInner::Sym512(b) => b.push_lattice(grp_char, perm),
+            BasisInner::Sym1024(b) => b.push_lattice(grp_char, perm),
+            BasisInner::Sym2048(b) => b.push_lattice(grp_char, perm),
+            BasisInner::Sym4096(b) => b.push_lattice(grp_char, perm),
+            BasisInner::Sym8192(b) => b.push_lattice(grp_char, perm),
+            BasisInner::DitSym32(b) => b.push_lattice(grp_char, perm),
+            BasisInner::DitSym64(b) => b.push_lattice(grp_char, perm),
+            BasisInner::DitSym128(b) => b.push_lattice(grp_char, perm),
+            BasisInner::DitSym256(b) => b.push_lattice(grp_char, perm),
+            BasisInner::DitSym512(b) => b.push_lattice(grp_char, perm),
+            BasisInner::DitSym1024(b) => b.push_lattice(grp_char, perm),
+            BasisInner::DitSym2048(b) => b.push_lattice(grp_char, perm),
+            BasisInner::DitSym4096(b) => b.push_lattice(grp_char, perm),
+            BasisInner::DitSym8192(b) => b.push_lattice(grp_char, perm),
+            _ => {
+                return Err(QuSpinError::ValueError(
+                    "push_lattice requires a symmetric (Sym* or DitSym*) basis".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Add a local XOR-mask symmetry element for LHSS=2 (`Sym*`) bases.
+    ///
+    /// `locs` is the list of site indices to include in the mask.
+    /// Errors on `DitSym*`, `Full*`, and `Sub*` variants.
+    pub fn push_local_mask(
+        &mut self,
+        grp_char: Complex<f64>,
+        locs: &[usize],
+    ) -> Result<(), QuSpinError> {
+        macro_rules! build_mask_and_push {
+            ($basis:expr, $B:ty) => {{
+                let mask = locs.iter().fold(<$B>::from_u64(0), |acc, &site| {
+                    if site < <$B>::BITS as usize {
+                        acc | (<$B>::from_u64(1) << site)
+                    } else {
+                        acc
+                    }
+                });
+                $basis.push_local(grp_char, PermDitMask::new(mask));
+            }};
+        }
+        match self {
+            BasisInner::Sym32(b) => build_mask_and_push!(b, u32),
+            BasisInner::Sym64(b) => build_mask_and_push!(b, u64),
+            BasisInner::Sym128(b) => build_mask_and_push!(b, B128),
+            BasisInner::Sym256(b) => build_mask_and_push!(b, B256),
+            BasisInner::Sym512(b) => build_mask_and_push!(b, B512),
+            BasisInner::Sym1024(b) => build_mask_and_push!(b, B1024),
+            BasisInner::Sym2048(b) => build_mask_and_push!(b, B2048),
+            BasisInner::Sym4096(b) => build_mask_and_push!(b, B4096),
+            BasisInner::Sym8192(b) => build_mask_and_push!(b, B8192),
+            BasisInner::DitSym32(_)
+            | BasisInner::DitSym64(_)
+            | BasisInner::DitSym128(_)
+            | BasisInner::DitSym256(_)
+            | BasisInner::DitSym512(_)
+            | BasisInner::DitSym1024(_)
+            | BasisInner::DitSym2048(_)
+            | BasisInner::DitSym4096(_)
+            | BasisInner::DitSym8192(_) => {
+                return Err(QuSpinError::ValueError(
+                    "push_local_mask requires an LHSS=2 (Sym*) basis".into(),
+                ));
+            }
+            _ => {
+                return Err(QuSpinError::ValueError(
+                    "push_local_mask requires a symmetric basis".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Add a local value-permutation symmetry element for LHSS≥3 (`DitSym*`) bases.
+    ///
+    /// `perm[v] = w` maps local occupation `v` to `w` at each site in `locs`.
+    /// Errors on `Sym*`, `Full*`, and `Sub*` variants.
+    pub fn push_local_perm(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        macro_rules! push_perm {
+            ($basis:expr) => {
+                $basis.push_local(grp_char, DynamicPermDitValues::new($basis.lhss, perm, locs))
+            };
+        }
+        match self {
+            BasisInner::DitSym32(b) => push_perm!(b),
+            BasisInner::DitSym64(b) => push_perm!(b),
+            BasisInner::DitSym128(b) => push_perm!(b),
+            BasisInner::DitSym256(b) => push_perm!(b),
+            BasisInner::DitSym512(b) => push_perm!(b),
+            BasisInner::DitSym1024(b) => push_perm!(b),
+            BasisInner::DitSym2048(b) => push_perm!(b),
+            BasisInner::DitSym4096(b) => push_perm!(b),
+            BasisInner::DitSym8192(b) => push_perm!(b),
+            BasisInner::Sym32(_)
+            | BasisInner::Sym64(_)
+            | BasisInner::Sym128(_)
+            | BasisInner::Sym256(_)
+            | BasisInner::Sym512(_)
+            | BasisInner::Sym1024(_)
+            | BasisInner::Sym2048(_)
+            | BasisInner::Sym4096(_)
+            | BasisInner::Sym8192(_) => {
+                return Err(QuSpinError::ValueError(
+                    "push_local_perm requires an LHSS≥3 (DitSym*) basis".into(),
+                ));
+            }
+            _ => {
+                return Err(QuSpinError::ValueError(
+                    "push_local_perm requires a symmetric basis".into(),
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Returns `true` for `Sym*` and `DitSym*` variants (symmetry-reduced subspaces).
@@ -655,6 +831,146 @@ macro_rules! with_dit_sym_basis {
                 $body
             }
             _ => unreachable!("with_dit_sym_basis! called on a non-DitSym variant"),
+        }
+    };
+}
+
+/// Like `with_sym_basis!` but binds `$basis` as `&mut`.
+#[macro_export]
+macro_rules! with_sym_basis_mut {
+    ($inner:expr, $B:ident, $basis:ident, $body:block) => {
+        match $inner {
+            $crate::basis::dispatch::BasisInner::Sym32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sym64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sym128($basis) => {
+                type $B = ::ruint::Uint<128, 2>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sym256($basis) => {
+                type $B = ::ruint::Uint<256, 4>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sym512($basis) => {
+                type $B = ::ruint::Uint<512, 8>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sym1024($basis) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sym2048($basis) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sym4096($basis) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sym8192($basis) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
+            _ => unreachable!("with_sym_basis_mut! called on a non-Sym variant"),
+        }
+    };
+}
+
+/// Like `with_dit_sym_basis!` but binds `$basis` as `&mut`.
+#[macro_export]
+macro_rules! with_dit_sym_basis_mut {
+    ($inner:expr, $B:ident, $basis:ident, $body:block) => {
+        match $inner {
+            $crate::basis::dispatch::BasisInner::DitSym32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::DitSym64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::DitSym128($basis) => {
+                type $B = ::ruint::Uint<128, 2>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::DitSym256($basis) => {
+                type $B = ::ruint::Uint<256, 4>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::DitSym512($basis) => {
+                type $B = ::ruint::Uint<512, 8>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::DitSym1024($basis) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::DitSym2048($basis) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::DitSym4096($basis) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::DitSym8192($basis) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
+            _ => unreachable!("with_dit_sym_basis_mut! called on a non-DitSym variant"),
+        }
+    };
+}
+
+/// Like `with_plain_basis!` but restricted to `Sub*` variants and binds `$basis` as `&mut`.
+///
+/// Does not match `Full*` — full spaces are always built and cannot be mutated.
+#[macro_export]
+macro_rules! with_sub_basis_mut {
+    ($inner:expr, $B:ident, $basis:ident, $body:block) => {
+        match $inner {
+            $crate::basis::dispatch::BasisInner::Sub32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sub64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sub128($basis) => {
+                type $B = ::ruint::Uint<128, 2>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sub256($basis) => {
+                type $B = ::ruint::Uint<256, 4>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sub512($basis) => {
+                type $B = ::ruint::Uint<512, 8>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sub1024($basis) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sub2048($basis) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sub4096($basis) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                $body
+            }
+            $crate::basis::dispatch::BasisInner::Sub8192($basis) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
+            _ => unreachable!("with_sub_basis_mut! called on a non-Sub variant"),
         }
     };
 }

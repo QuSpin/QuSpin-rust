@@ -6,7 +6,7 @@
 use super::lattice::BenesLatticeElement;
 use super::sym_grp::SymGrpBase;
 use super::traits::BasisSpace;
-use crate::bitbasis::{BitInt, BitStateOp};
+use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
 use num_complex::Complex;
 use std::collections::HashMap;
 
@@ -100,6 +100,10 @@ pub struct SymBasis<B: BitInt, L, N: NormInt> {
     states: Vec<(B, N)>,
     /// Maps representative state → index in `states`.
     index_map: HashMap<B, usize>,
+    /// Set to `true` at the start of `build()`, never reset.
+    /// A seed whose orbit norm is zero produces no entries in `states`, so
+    /// `states.is_empty()` is not a reliable built indicator.
+    built: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +124,47 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
             local: grp.local,
             states: Vec::new(),
             index_map: HashMap::new(),
+            built: false,
         }
+    }
+
+    /// Construct an empty basis with no group elements and no states.
+    ///
+    /// Call [`push_lattice`](Self::push_lattice) / [`push_local`](Self::push_local)
+    /// to add symmetry elements, then [`build`](Self::build) to populate states.
+    pub fn new_empty(lhss: usize, n_sites: usize, fermionic: bool) -> Self {
+        SymBasis {
+            lhss,
+            fermionic,
+            n_sites,
+            lattice: Vec::new(),
+            local: Vec::new(),
+            states: Vec::new(),
+            index_map: HashMap::new(),
+            built: false,
+        }
+    }
+
+    /// Add a lattice (site-permutation) symmetry element. Valid before [`build`](Self::build).
+    ///
+    /// `perm[src] = dst` maps source site `src` to destination `dst`.
+    pub fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
+        let op = BenesPermDitLocations::<B>::new(self.lhss, perm, self.fermionic);
+        self.lattice
+            .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
+    }
+
+    /// Add a local symmetry element. Valid before [`build`](Self::build).
+    pub fn push_local(&mut self, grp_char: Complex<f64>, local_op: L) {
+        self.local.push((grp_char, local_op));
+    }
+
+    /// Returns `true` once [`build`](Self::build) has been called.
+    ///
+    /// Set at the very start of `build()` so a seed with zero orbit norm
+    /// (which produces no states) still marks the basis as built.
+    pub fn is_built(&self) -> bool {
+        self.built
     }
 
     /// Local Hilbert-space size.
@@ -188,6 +232,7 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         Op: Fn(B) -> Iter,
         Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
     {
+        self.built = true;
         let (ref_seed, _coeff) = self.get_refstate(seed);
         let (_ref2, norm_seed) = self.check_refstate(ref_seed);
 

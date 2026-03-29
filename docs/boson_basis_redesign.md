@@ -396,3 +396,151 @@ Sym* variant (always, since lhss=2):
         for seed in seeds { sym_basis.build(seed, |s| ham.apply(s)) }
     })
 ```
+
+---
+
+## Extension: `SpinBasis`
+
+`SpinBasis` follows the same design as `BosonBasis` with two differences:
+
+1. `add_inv` — a new method that adds a spin-inversion local symmetry element.
+2. `build_spin` takes a `SpinHamiltonianInner` instead of `BosonHamiltonianInner`.
+
+### Struct
+
+```rust
+pub struct SpinBasis {
+    pub n_sites: usize,
+    pub lhss:    usize,
+    space_kind:  SpaceKind,
+    pub inner:   BasisInner,
+}
+```
+
+### `new(n_sites, lhss, space_kind)`
+
+Identical to `BosonBasis::new`. Validation:
+- `lhss < 2` → error
+- `Full` with `n_sites > 64` → error
+- `Sub`/`Symm` with `n_sites > 8192` → error
+
+### `add_lattice`
+
+Identical to `BosonBasis::add_lattice`.
+
+### `add_inv`
+
+```rust
+pub fn add_inv(
+    &mut self,
+    locs: Option<Vec<u32>>,
+) -> Result<(), QuSpinError>
+```
+
+Adds the spin-inversion local symmetry: maps spin projection `m → -m` at the specified
+sites (or all sites if `locs` is `None`). The group character is always `−1.0`.
+
+- Errors if `space_kind != Symm`
+- Errors if `inner.is_built()`
+
+**Implementation differs by lhss:**
+
+`lhss = 2` — `Sym*` variants hold `PermDitMask<B>`:
+
+Spin-inversion at each target site is a single-bit XOR. Build a mask with one bit set per
+target site (using `DynamicDitManip` to get bit positions), then push a
+`(grp_char, PermDitMask::new(mask))` onto `sym_basis.local`.
+
+```
+mask = 0
+for loc in resolved_locs:
+    mask |= manip.site_mask(loc)   // sets the single bit for site `loc`
+sym_basis.local.push((grp_char, PermDitMask::new(mask)))
+```
+
+`lhss > 2` — `DitSym*` variants hold `DynamicPermDitValues`:
+
+The inversion permutation `n → lhss - 1 - n` reverses the local state ordering
+(highest spin at dit=0 maps to lowest spin and vice versa). Construct once and apply at
+all target sites.
+
+```
+perm: Vec<u8> = (0..lhss).rev().collect()   // [lhss-1, lhss-2, ..., 1, 0]
+locs_usize: Vec<usize> = resolved_locs as usize
+sym_basis.local.push((grp_char, DynamicPermDitValues::new(lhss, perm, locs_usize)))
+```
+
+This is the same permutation already constructed by `SymGrpBase::push_spin_inv`
+in the old code path.
+
+**Required addition to `SymBasis` and `BasisInner`:**
+
+`add_inv` needs a `push_local` builder method on `SymBasis`, analogous to `push_lattice`:
+
+```rust
+impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
+    /// Add a local symmetry element. Valid before build().
+    pub fn push_local(&mut self, grp_char: Complex<f64>, local_op: L);
+}
+```
+
+And corresponding dispatch methods on `BasisInner`:
+
+```rust
+impl BasisInner {
+    /// Push a local mask element onto Sym* variants (lhss=2). Errors for others.
+    pub fn push_local_mask<B: BitInt>(
+        &mut self,
+        grp_char: Complex<f64>,
+        mask: B,
+    ) -> Result<(), QuSpinError>;
+
+    /// Push a local permutation element onto DitSym* variants (lhss>2). Errors for others.
+    pub fn push_local_perm(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError>;
+}
+```
+
+`SpinBasis::add_inv` dispatches to `push_local_mask` for `Sym*` (lhss=2) and
+`push_local_perm` for `DitSym*` (lhss>2), selecting the right branch from `self.lhss`.
+
+### `build_spin`
+
+```rust
+pub fn build_spin(
+    &mut self,
+    ham: &SpinHamiltonianInner,
+    seeds: &[Vec<u8>],
+) -> Result<(), QuSpinError>
+```
+
+- Errors if `space_kind == Full`
+- Errors if `inner.is_built()`
+- Errors if `ham.lhss() != self.lhss`
+
+Dispatch is identical to `BosonBasis::build_boson`:
+
+```
+Sub* variant:
+    with_plain_basis_mut!(&mut self.inner, B, subspace, {
+        enumerate ham from seeds → populate subspace.states + subspace.index_map
+    })
+
+Sym* variant (lhss=2):
+    with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+        for seed in seeds { sym_basis.build(seed, |s| ham.apply(s)) }
+    })
+
+DitSym* variant (lhss>2):
+    with_dit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+        for seed in seeds { sym_basis.build(seed, |s| ham.apply(s)) }
+    })
+```
+
+### `build_bond`
+
+Identical to `BosonBasis::build_bond` (see above). Errors if `ham.lhss() != self.lhss`.

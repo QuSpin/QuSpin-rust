@@ -87,6 +87,7 @@ pub struct Subspace<B: BitInt> {
     n_sites: usize,
     states: Vec<B>,
     index_map: HashMap<B, usize>,
+    built: bool,
 }
 
 impl<B: BitInt> Subspace<B> {
@@ -96,7 +97,19 @@ impl<B: BitInt> Subspace<B> {
             n_sites,
             states: Vec::new(),
             index_map: HashMap::new(),
+            built: false,
         }
+    }
+
+    /// Construct an empty subspace. `lhss` is accepted for API uniformity with
+    /// [`SymBasis::new_empty`] but is not stored — subspaces are lhss-agnostic.
+    pub fn new_empty(n_sites: usize, _lhss: usize) -> Self {
+        Self::new(n_sites)
+    }
+
+    /// Returns `true` once [`build`](Self::build) has been called.
+    pub fn is_built(&self) -> bool {
+        self.built
     }
 
     /// Build the subspace reachable from `seed` under the action of `op`.
@@ -114,6 +127,7 @@ impl<B: BitInt> Subspace<B> {
         Op: Fn(B) -> Iter,
         Iter: IntoIterator<Item = (num_complex::Complex<f64>, B, I)>,
     {
+        self.built = true;
         let mut stack: Vec<B> = Vec::new();
 
         if let std::collections::hash_map::Entry::Vacant(e) = self.index_map.entry(seed) {
