@@ -22,10 +22,42 @@ use super::{
     traits::BasisSpace,
 };
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, manip::DynamicDitManip};
-use ndarray::{Array2, ArrayView1};
+use ndarray::{Array2, ArrayBase, ArrayView1, Data, Ix1, aview1};
 use num_complex::Complex;
 use std::collections::HashMap;
 use std::ops::AddAssign;
+
+// ---------------------------------------------------------------------------
+// AsStateVec — blanket conversion to ArrayView1
+// ---------------------------------------------------------------------------
+
+/// Convert a coefficient vector into an [`ArrayView1`].
+///
+/// Implemented for:
+/// - `[T]` — covers `&[T]` and slice expressions via `?Sized` function bounds
+/// - `Vec<T>`
+/// - `ArrayBase<S, Ix1>` — covers `Array1<T>`, `ArrayView1<'_, T>`, etc.
+pub trait AsStateVec<T> {
+    fn as_state_vec(&self) -> ArrayView1<'_, T>;
+}
+
+impl<T> AsStateVec<T> for [T] {
+    fn as_state_vec(&self) -> ArrayView1<'_, T> {
+        aview1(self)
+    }
+}
+
+impl<T> AsStateVec<T> for Vec<T> {
+    fn as_state_vec(&self) -> ArrayView1<'_, T> {
+        aview1(self.as_slice())
+    }
+}
+
+impl<T, S: Data<Elem = T>> AsStateVec<T> for ArrayBase<S, Ix1> {
+    fn as_state_vec(&self) -> ArrayView1<'_, T> {
+        self.view()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // ExpandRefState trait
@@ -56,11 +88,13 @@ pub trait ExpandRefState<B: BitInt, T, O> {
 /// Memory is proportional to the number of distinct full-space states reached,
 /// not to `lhss^n_sites`.  This makes it efficient for particle-number-
 /// conserving subspaces and other sparse sectors.
-pub fn expand_to_map<B, T, E>(space: &E, vec: ArrayView1<'_, T>) -> HashMap<B, Complex<f64>>
+pub fn expand_to_map<B, T, E, V>(space: &E, vec: &V) -> HashMap<B, Complex<f64>>
 where
     B: BitInt,
+    V: AsStateVec<T> + ?Sized,
     E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
 {
+    let vec = vec.as_state_vec();
     debug_assert_eq!(vec.len(), space.size());
     let mut map: HashMap<B, Complex<f64>> = HashMap::new();
     for (i, coeff) in vec.iter().enumerate() {
@@ -85,13 +119,14 @@ where
 /// # Panics
 ///
 /// Panics (debug only) if `vec.len() != space.size()`.
-pub fn get_full_vector<B, T, E, FS>(
+pub fn get_full_vector<B, T, E, FS, V>(
     space: &E,
     full_space: &FS,
-    vec: ArrayView1<'_, T>,
+    vec: &V,
     out: &mut [Complex<f64>],
 ) where
     B: BitInt,
+    V: AsStateVec<T> + ?Sized,
     E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
     FS: BasisSpace<B>,
     Complex<f64>: AddAssign,
@@ -152,15 +187,17 @@ pub fn get_full_vector<B, T, E, FS>(
 ///
 /// Panics (debug only) if `vec.len() != space.size()` or
 /// `out` does not have shape `(dim_a, dim_a)`.
-pub fn reduced_density_matrix<B, T, E>(
+pub fn reduced_density_matrix<B, T, E, V>(
     space: &E,
-    vec: ArrayView1<'_, T>,
+    vec: &V,
     sites_a: &[usize],
     out: &mut Array2<Complex<f64>>,
 ) where
     B: BitInt,
+    V: AsStateVec<T> + ?Sized,
     E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
 {
+    let vec = vec.as_state_vec();
     debug_assert_eq!(vec.len(), space.size());
     let lhss = space.lhss();
     let n_sites = space.n_sites();
@@ -180,7 +217,7 @@ pub fn reduced_density_matrix<B, T, E>(
     let n_b = sites_b.len();
 
     // Step 1: sparse expansion.
-    let map = expand_to_map(space, vec);
+    let map = expand_to_map(space, &vec);
 
     // Build permutation once: sites_a_sorted[i] → i,  sites_b[j] → n_a + j.
     // BenesPermDitLocations handles any lhss via multi-bit dits
@@ -289,7 +326,7 @@ where
 mod tests {
     use super::*;
     use crate::basis::space::{FullSpace, Subspace};
-    use ndarray::{Array2, aview1};
+    use ndarray::Array2;
 
     /// For a 2-site spin-1/2 system in the product state |↓↑⟩ (site 0 = 0,
     /// site 1 = 1), stored as state integer 0b10 = 2, tracing out site 1
@@ -312,7 +349,7 @@ mod tests {
         // Trace out site 1, keep site 0.
         // site 0 is in state 0 (↓) → ρ_A = [[1,0],[0,0]].
         let mut rdm = Array2::<Complex<f64>>::zeros((2, 2));
-        reduced_density_matrix::<u32, _, _>(&sub, aview1(&vec), &[0], &mut rdm);
+        reduced_density_matrix(&sub, &vec, &[0], &mut rdm);
 
         let tol = 1e-14;
         assert!(
@@ -343,7 +380,7 @@ mod tests {
 
         // Trace out site 1.
         let mut rdm = Array2::<Complex<f64>>::zeros((2, 2));
-        reduced_density_matrix::<u32, _, _>(&sub, aview1(&vec), &[0], &mut rdm);
+        reduced_density_matrix(&sub, &vec, &[0], &mut rdm);
 
         let tol = 1e-14;
         // ρ_A = [[0.5, 0], [0, 0.5]]
@@ -376,7 +413,7 @@ mod tests {
 
         // Trace out sites 2 and 3, keep sites 0 and 1 (dim_a = 4).
         let mut rdm = Array2::<Complex<f64>>::zeros((4, 4));
-        reduced_density_matrix::<u32, _, _>(&sub, aview1(&vec), &[0, 1], &mut rdm);
+        reduced_density_matrix(&sub, &vec, &[0, 1], &mut rdm);
 
         let trace: f64 = (0..4).map(|i| rdm[[i, i]].re).sum();
         assert!((trace - 1.0).abs() < 1e-13, "trace = {trace}");
@@ -400,7 +437,7 @@ mod tests {
         vec[idx2] = Complex::new(1.0 / 2.0, 0.0);
 
         let mut rdm = Array2::<Complex<f64>>::zeros((2, 2));
-        reduced_density_matrix::<u32, _, _>(&sub, aview1(&vec), &[0], &mut rdm);
+        reduced_density_matrix(&sub, &vec, &[0], &mut rdm);
 
         let tol = 1e-14;
         for i in 0..2 {
@@ -424,7 +461,7 @@ mod tests {
         let vec: Vec<Complex<f64>> = (0..sub.size()).map(|_| amp).collect();
 
         let mut out = vec![Complex::new(0.0, 0.0); fs.size()];
-        get_full_vector(&sub, &fs, aview1(&vec), &mut out);
+        get_full_vector(&sub, &fs, &vec, &mut out);
 
         // Every full-space slot should be filled with `amp`.
         let tol = 1e-14;
