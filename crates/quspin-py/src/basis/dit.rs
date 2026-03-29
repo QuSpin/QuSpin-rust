@@ -63,9 +63,9 @@ impl PyDitBasis {
             )));
         }
         let inner = if total_bits <= 32 {
-            BasisInner::Full32(FullSpace::new(lhss, n_sites))
+            BasisInner::Full32(FullSpace::new(lhss, n_sites, false))
         } else {
-            BasisInner::Full64(FullSpace::new(lhss, n_sites))
+            BasisInner::Full64(FullSpace::new(lhss, n_sites, false))
         };
         Ok(PyDitBasis { inner, lhss, manip })
     }
@@ -99,7 +99,7 @@ impl PyDitBasis {
                 "total_bits={total_bits} exceeds the maximum supported value of 8192"
             ))),
             {
-                let mut basis = Subspace::<B>::new(lhss, n_sites);
+                let mut basis = Subspace::<B>::new(lhss, n_sites, false);
                 for s in &seed_list {
                     let seed = dit_seed_from_bytes::<B>(s, &manip);
                     match &ham.inner {

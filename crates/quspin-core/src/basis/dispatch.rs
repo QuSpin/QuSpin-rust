@@ -1079,7 +1079,7 @@ mod tests {
 
     #[test]
     fn display_full_space() {
-        let inner = BasisInner::Full32(FullSpace::new(2, 2));
+        let inner = BasisInner::Full32(FullSpace::new(2, 2, false));
         let s = inner.to_string();
         assert!(s.starts_with("full(n_sites=2, size=4, symmetries=[]):"));
         assert!(s.contains("|11>"));
@@ -1088,7 +1088,7 @@ mod tests {
 
     #[test]
     fn display_subspace() {
-        let mut sub = Subspace::<u32>::new(2, 2);
+        let mut sub = Subspace::<u32>::new(2, 2, false);
         sub.build(0b01u32, |s| {
             vec![(num_complex::Complex::new(1.0, 0.0), s ^ 0b11, 0u8)]
         });
@@ -1101,7 +1101,7 @@ mod tests {
     #[test]
     fn display_index_alignment() {
         // 16 states → indices 0-15, width 2; row 9 and 10 should be right-aligned
-        let inner = BasisInner::Full32(FullSpace::new(2, 4));
+        let inner = BasisInner::Full32(FullSpace::new(2, 4, false));
         let s = inner.to_string();
         assert!(s.contains("  9."));
         assert!(s.contains(" 10."));
@@ -1110,7 +1110,7 @@ mod tests {
     #[test]
     fn display_truncation() {
         // 64 states > 50 → should truncate with "..."
-        let inner = BasisInner::Full32(FullSpace::new(2, 6));
+        let inner = BasisInner::Full32(FullSpace::new(2, 6, false));
         let s = inner.to_string();
         assert!(s.contains("..."), "expected truncation marker");
         // First 25 rows present (index 0 and 24)

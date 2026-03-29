@@ -8,6 +8,12 @@ pub trait BasisSpace<B: BitInt> {
     /// Number of lattice sites.
     fn n_sites(&self) -> usize;
 
+    /// Local Hilbert-space size (number of states per site).
+    fn lhss(&self) -> usize;
+
+    /// Whether Jordan-Wigner signs are tracked (fermionic basis).
+    fn fermionic(&self) -> bool;
+
     /// Number of basis states.
     fn size(&self) -> usize;
 

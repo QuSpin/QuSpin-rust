@@ -38,16 +38,18 @@ pub struct FullSpace<B: BitInt> {
     n_sites: usize,
     dim: usize,
     manip: DynamicDitManip,
+    fermionic: bool,
     _marker: std::marker::PhantomData<B>,
 }
 
 impl<B: BitInt> FullSpace<B> {
-    pub fn new(lhss: usize, n_sites: usize) -> Self {
+    pub fn new(lhss: usize, n_sites: usize, fermionic: bool) -> Self {
         let dim = lhss.pow(n_sites as u32);
         FullSpace {
             n_sites,
             dim,
             manip: DynamicDitManip::new(lhss),
+            fermionic,
             _marker: std::marker::PhantomData,
         }
     }
@@ -61,6 +63,16 @@ impl<B: BitInt> BasisSpace<B> for FullSpace<B> {
     #[inline]
     fn n_sites(&self) -> usize {
         self.n_sites
+    }
+
+    #[inline]
+    fn lhss(&self) -> usize {
+        self.manip.lhss
+    }
+
+    #[inline]
+    fn fermionic(&self) -> bool {
+        self.fermionic
     }
 
     #[inline]
@@ -125,6 +137,7 @@ impl<B: BitInt> BasisSpace<B> for FullSpace<B> {
 pub struct Subspace<B: BitInt> {
     lhss: usize,
     n_sites: usize,
+    fermionic: bool,
     states: Vec<B>,
     index_map: HashMap<B, usize>,
     built: bool,
@@ -132,10 +145,11 @@ pub struct Subspace<B: BitInt> {
 
 impl<B: BitInt> Subspace<B> {
     /// Create an empty subspace for a system with `lhss` local states and `n_sites` lattice sites.
-    pub fn new(lhss: usize, n_sites: usize) -> Self {
+    pub fn new(lhss: usize, n_sites: usize, fermionic: bool) -> Self {
         Subspace {
             lhss,
             n_sites,
+            fermionic,
             states: Vec::new(),
             index_map: HashMap::new(),
             built: false,
@@ -143,8 +157,8 @@ impl<B: BitInt> Subspace<B> {
     }
 
     /// Construct an empty subspace (API uniformity with [`SymBasis::new_empty`]).
-    pub fn new_empty(lhss: usize, n_sites: usize) -> Self {
-        Self::new(lhss, n_sites)
+    pub fn new_empty(lhss: usize, n_sites: usize, fermionic: bool) -> Self {
+        Self::new(lhss, n_sites, fermionic)
     }
 
     pub fn lhss(&self) -> usize {
@@ -224,6 +238,16 @@ impl<B: BitInt> BasisSpace<B> for Subspace<B> {
     }
 
     #[inline]
+    fn lhss(&self) -> usize {
+        self.lhss
+    }
+
+    #[inline]
+    fn fermionic(&self) -> bool {
+        self.fermionic
+    }
+
+    #[inline]
     fn size(&self) -> usize {
         self.states.len()
     }
@@ -252,7 +276,7 @@ mod tests {
 
     #[test]
     fn full_space_state_at() {
-        let fs = FullSpace::<u32>::new(2, 2);
+        let fs = FullSpace::<u32>::new(2, 2, false);
         assert_eq!(fs.state_at(0), 3u32); // dim-0-1 = 3
         assert_eq!(fs.state_at(1), 2u32);
         assert_eq!(fs.state_at(2), 1u32);
@@ -261,7 +285,7 @@ mod tests {
 
     #[test]
     fn full_space_index_roundtrip() {
-        let fs = FullSpace::<u64>::new(2, 3);
+        let fs = FullSpace::<u64>::new(2, 3, false);
         for i in 0..8 {
             let s = fs.state_at(i);
             assert_eq!(fs.index(s), Some(i));
@@ -270,7 +294,7 @@ mod tests {
 
     #[test]
     fn full_space_out_of_range() {
-        let fs = FullSpace::<u32>::new(2, 2);
+        let fs = FullSpace::<u32>::new(2, 2, false);
         assert_eq!(fs.index(4u32), None);
         assert_eq!(fs.index(100u32), None);
     }
@@ -291,14 +315,14 @@ mod tests {
     #[test]
     fn subspace_build_full_connectivity() {
         // X on every site connects all 2^3 = 8 states from seed 0
-        let mut sub = Subspace::<u32>::new(2, 3);
+        let mut sub = Subspace::<u32>::new(2, 3, false);
         sub.build(0u32, x_op_all_sites(3));
         assert_eq!(sub.size(), 8);
     }
 
     #[test]
     fn subspace_build_sorted_ascending() {
-        let mut sub = Subspace::<u32>::new(2, 3);
+        let mut sub = Subspace::<u32>::new(2, 3, false);
         sub.build(0u32, x_op_all_sites(3));
         for i in 0..sub.size() {
             assert_eq!(sub.state_at(i), i as u32);
@@ -307,7 +331,7 @@ mod tests {
 
     #[test]
     fn subspace_index_roundtrip() {
-        let mut sub = Subspace::<u32>::new(2, 3);
+        let mut sub = Subspace::<u32>::new(2, 3, false);
         sub.build(0u32, x_op_all_sites(3));
         for i in 0..sub.size() {
             let s = sub.state_at(i);
@@ -356,7 +380,7 @@ mod tests {
         for k in 0..=n_sites {
             // Seed: lowest k bits set (e.g. k=2, n=6 → 0b000011)
             let seed = if k == 0 { 0u32 } else { (1u32 << k) - 1 };
-            let mut sub = Subspace::<u32>::new(2, n_sites);
+            let mut sub = Subspace::<u32>::new(2, n_sites, false);
             sub.build(seed, |s| ham.apply_smallvec(s).into_iter());
 
             let expected = binom(n_sites, k);
@@ -388,7 +412,7 @@ mod tests {
             results
         };
         // Start from |01⟩ = 1 (1 particle): should reach |01⟩=1 and |10⟩=2 in 3 sites
-        let mut sub = Subspace::<u32>::new(2, 3);
+        let mut sub = Subspace::<u32>::new(2, 3, false);
         sub.build(0b001u32, hop_op);
         // 3-site, 1-particle sector: {001, 010, 100} = {1, 2, 4}
         assert_eq!(sub.size(), 3);

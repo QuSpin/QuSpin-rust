@@ -61,9 +61,9 @@ impl BosonBasis {
                     )));
                 }
                 if n_bits <= 32 {
-                    BasisInner::Full32(FullSpace::<u32>::new(lhss, n_sites))
+                    BasisInner::Full32(FullSpace::<u32>::new(lhss, n_sites, false))
                 } else {
-                    BasisInner::Full64(FullSpace::<u64>::new(lhss, n_sites))
+                    BasisInner::Full64(FullSpace::<u64>::new(lhss, n_sites, false))
                 }
             }
             SpaceKind::Sub => crate::select_b_for_n_sites!(
@@ -73,7 +73,7 @@ impl BosonBasis {
                     "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
                      exceeding the 8192-bit maximum"
                 ))),
-                { BasisInner::from(Subspace::<B>::new_empty(lhss, n_sites)) }
+                { BasisInner::from(Subspace::<B>::new_empty(lhss, n_sites, false)) }
             ),
             SpaceKind::Symm => {
                 if lhss == 2 {

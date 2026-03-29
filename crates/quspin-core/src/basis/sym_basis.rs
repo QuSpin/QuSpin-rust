@@ -287,6 +287,16 @@ impl<B: BitInt, L, N: NormInt> BasisSpace<B> for SymBasis<B, L, N> {
     }
 
     #[inline]
+    fn lhss(&self) -> usize {
+        self.lhss
+    }
+
+    #[inline]
+    fn fermionic(&self) -> bool {
+        self.fermionic
+    }
+
+    #[inline]
     fn size(&self) -> usize {
         self.states.len()
     }

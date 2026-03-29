@@ -46,9 +46,9 @@ impl PyHardcoreBasis {
             )));
         }
         let inner = if n_sites <= 32 {
-            BasisInner::Full32(FullSpace::new(2, n_sites))
+            BasisInner::Full32(FullSpace::new(2, n_sites, false))
         } else {
-            BasisInner::Full64(FullSpace::new(2, n_sites))
+            BasisInner::Full64(FullSpace::new(2, n_sites, false))
         };
         Ok(PyHardcoreBasis { inner })
     }
@@ -85,7 +85,7 @@ impl PyHardcoreBasis {
                 "n_sites={n_sites} exceeds the maximum supported value of 8192"
             ))),
             {
-                let mut basis = Subspace::<B>::new(2, n_sites);
+                let mut basis = Subspace::<B>::new(2, n_sites, false);
                 for s in &seed_list {
                     let seed = seed_from_bytes::<B>(s);
                     match &ham.inner {
