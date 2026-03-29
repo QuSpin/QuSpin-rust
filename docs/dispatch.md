@@ -52,17 +52,17 @@ SymmetryGrpInner::Sym8192 →  SymmetryGrp<Uint<8192,128>>
 Chosen eagerly in `PySymmetryGrp::new` from `n_sites` (≤32 → `u32`, ≤64 →
 `u64`, then powers-of-two up to 8192).
 
-### `HardcoreBasisInner` — erases `B` for basis spaces
+### `HardcoreSpaceInner` — erases `B` for basis spaces
 
 ```
-HardcoreBasisInner::Full32   →  FullSpace<u32>
-HardcoreBasisInner::Full64   →  FullSpace<u64>
-HardcoreBasisInner::Sub32    →  Subspace<u32>
+HardcoreSpaceInner::Full32   →  FullSpace<u32>
+HardcoreSpaceInner::Full64   →  FullSpace<u64>
+HardcoreSpaceInner::Sub32    →  Subspace<u32>
 …
-HardcoreBasisInner::Sub8192  →  Subspace<Uint<8192,128>>
-HardcoreBasisInner::Sym32    →  SymmetricSubspace<u32>
+HardcoreSpaceInner::Sub8192  →  Subspace<Uint<8192,128>>
+HardcoreSpaceInner::Sym32    →  SymmetricSubspace<u32>
 …
-HardcoreBasisInner::Sym8192  →  SymmetricSubspace<Uint<8192,128>>
+HardcoreSpaceInner::Sym8192  →  SymmetricSubspace<Uint<8192,128>>
 ```
 
 20 variants total: 2 Full (small `n_sites` only) + 9 Sub + 9 Sym.
@@ -107,7 +107,7 @@ The full set of dispatch macros exported from `quspin-core`:
 | Macro | Erased types recovered | Variants covered |
 |-------|------------------------|------------------|
 | `with_qmatrix!` | `V`, `C` | 12 (all QMatrixInner) |
-| `with_basis!` | `B` | 20 (all HardcoreBasisInner) |
+| `with_basis!` | `B` | 20 (all HardcoreSpaceInner) |
 | `with_plain_basis!` | `B` | 11 (Full* + Sub*) |
 | `with_sym_basis!` | `B` | 9 (Sym* only) |
 | `with_sym_grp!` | `B` | 9 (all SymmetryGrpInner) |
@@ -171,7 +171,7 @@ with_value_dtype!(v_dtype, V, {
 Result: PyQMatrix { inner: QMatrixInner::QMf64U8(…) }
 ```
 
-The key insight is that `MatrixDType` resolves `V`, `HardcoreBasisInner` resolves
+The key insight is that `MatrixDType` resolves `V`, `HardcoreSpaceInner` resolves
 `B`, and the `HardcoreHamiltonianInner` arm resolves `C`. All three are peeled
 off in nested match expansions. By the time `build_from_basis` is called, all
 four type parameters are concrete.
@@ -251,7 +251,7 @@ then call `V::from_complex(sum)` to store the result, regardless of what `V` is.
        │                                      │
  with_value_dtype!                            │          PyHardcoreBasis
     type V = f64 ─────────────────────────────┼──────────────────┐
-                                              │         HardcoreBasisInner
+                                              │         HardcoreSpaceInner
                                     build path│         with_plain_basis! /
                                               │         with_sym_basis!
                                               │           type B = u32

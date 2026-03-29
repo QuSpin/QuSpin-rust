@@ -1,5 +1,5 @@
 /// Bosonic basis type [`BosonBasis`].
-use super::dispatch::BasisInner;
+use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
 use super::space::{FullSpace, Subspace};
 use super::sym_basis::SymBasis;
@@ -26,7 +26,7 @@ pub struct BosonBasis {
     pub n_sites: usize,
     pub lhss: usize,
     space_kind: SpaceKind,
-    pub inner: BasisInner,
+    pub inner: SpaceInner,
 }
 
 impl BosonBasis {
@@ -61,9 +61,9 @@ impl BosonBasis {
                     )));
                 }
                 if n_bits <= 32 {
-                    BasisInner::Full32(FullSpace::<u32>::new(lhss, n_sites, false))
+                    SpaceInner::Full32(FullSpace::<u32>::new(lhss, n_sites, false))
                 } else {
-                    BasisInner::Full64(FullSpace::<u64>::new(lhss, n_sites, false))
+                    SpaceInner::Full64(FullSpace::<u64>::new(lhss, n_sites, false))
                 }
             }
             SpaceKind::Sub => crate::select_b_for_n_sites!(
@@ -73,7 +73,7 @@ impl BosonBasis {
                     "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
                      exceeding the 8192-bit maximum"
                 ))),
-                { BasisInner::from(Subspace::<B>::new_empty(lhss, n_sites, false)) }
+                { SpaceInner::from(Subspace::<B>::new_empty(lhss, n_sites, false)) }
             ),
             SpaceKind::Symm => {
                 if lhss == 2 {
@@ -85,7 +85,7 @@ impl BosonBasis {
                              exceeding the 8192-bit maximum"
                         ))),
                         {
-                            BasisInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
+                            SpaceInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
                                 lhss, n_sites, false,
                             ))
                         }
@@ -99,7 +99,7 @@ impl BosonBasis {
                              exceeding the 8192-bit maximum"
                         ))),
                         {
-                            BasisInner::from(SymBasis::<B, DynamicPermDitValues, _>::new_empty(
+                            SpaceInner::from(SymBasis::<B, DynamicPermDitValues, _>::new_empty(
                                 lhss, n_sites, false,
                             ))
                         }

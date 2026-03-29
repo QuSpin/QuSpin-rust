@@ -2,7 +2,7 @@
 ///
 /// Replaces the two-type hierarchy (`SymGrpBase<B,L>` + `SymmetricSubspace<G,N>`)
 /// with a single flat struct. `N` is an explicit type parameter — the B→N
-/// pairing is encoded in `BasisInner` variant definitions, not a runtime enum.
+/// pairing is encoded in `SpaceInner` variant definitions, not a runtime enum.
 use super::lattice::BenesLatticeElement;
 use super::traits::BasisSpace;
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
@@ -28,7 +28,7 @@ const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
 /// - B = u64  → N = u16
 /// - B = Uint<128..8192> → N = u32
 ///
-/// This pairing is enforced statically via [`BasisInner`](crate::basis::dispatch::BasisInner)
+/// This pairing is enforced statically via [`SpaceInner`](crate::basis::dispatch::SpaceInner)
 /// variant definitions and the `with_sym_grp!` macro.
 pub trait NormInt: Copy + Send + Sync + 'static {
     fn from_norm(norm: f64) -> Self;

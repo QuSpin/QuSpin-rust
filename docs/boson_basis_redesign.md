@@ -10,14 +10,14 @@ pub struct BosonBasis {
     pub n_sites: usize,
     pub lhss:    usize,
     space_kind:  SpaceKind,
-    pub inner:   BasisInner,
+    pub inner:   SpaceInner,
 }
 ```
 
 ## Key Insight
 
-`SymmetryGrpInner` is redundant. `BasisInner::Sym*` variants hold
-`SymBasis<B, PermDitMask<B>, N>` and `BasisInner::DitSym*` hold
+`SymmetryGrpInner` is redundant. `SpaceInner::Sym*` variants hold
+`SymBasis<B, PermDitMask<B>, N>` and `SpaceInner::DitSym*` hold
 `SymBasis<B, DynamicPermDitValues, N>`. `SymBasis` already stores:
 
 ```
@@ -92,10 +92,10 @@ impl<B: BitInt> Subspace<B> {
 }
 ```
 
-### 3. `BasisInner` — add dispatch methods for builder phase
+### 3. `SpaceInner` — add dispatch methods for builder phase
 
 ```rust
-impl BasisInner {
+impl SpaceInner {
     /// Push a lattice element. Errors if not a Sym*/DitSym* variant.
     pub fn push_lattice(
         &mut self,
@@ -124,10 +124,10 @@ impl BasisInner {
 
 | space_kind | lhss  | `inner` at construction |
 |------------|-------|-------------------------|
-| `Full`     | >= 2  | `select_b_for_n_sites!` → `BasisInner::Full32/64(FullSpace::new(...))` |
-| `Sub`      | any   | `select_b_for_n_sites!` → `BasisInner::Sub*(Subspace::new_empty(...))` |
-| `Symm`     | == 2  | `select_b_for_n_sites!` → `BasisInner::Sym*(SymBasis::new_empty(lhss=2, ...))` |
-| `Symm`     | > 2   | `select_b_for_n_sites!` → `BasisInner::DitSym*(SymBasis::new_empty(lhss, ...))` |
+| `Full`     | >= 2  | `select_b_for_n_sites!` → `SpaceInner::Full32/64(FullSpace::new(...))` |
+| `Sub`      | any   | `select_b_for_n_sites!` → `SpaceInner::Sub*(Subspace::new_empty(...))` |
+| `Symm`     | == 2  | `select_b_for_n_sites!` → `SpaceInner::Sym*(SymBasis::new_empty(lhss=2, ...))` |
+| `Symm`     | > 2   | `select_b_for_n_sites!` → `SpaceInner::DitSym*(SymBasis::new_empty(lhss, ...))` |
 
 Validation at `new()`:
 - `lhss < 2` → error
@@ -189,16 +189,16 @@ DitSym* variant (lhss>2):
 
 ## Mutable Dispatch
 
-The existing macros (`with_sym_basis!`, etc.) take `&BasisInner`. We need `&mut`
-variants, or equivalent methods on `BasisInner`. The simplest approach is adding
+The existing macros (`with_sym_basis!`, etc.) take `&SpaceInner`. We need `&mut`
+variants, or equivalent methods on `SpaceInner`. The simplest approach is adding
 `_mut` macro variants that mirror the existing ones but bind `mut`:
 
 ```rust
 macro_rules! with_sym_basis_mut {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            BasisInner::Sym32(ref mut $basis) => { type $B = u32; $body }
-            BasisInner::Sym64(ref mut $basis) => { type $B = u64; $body }
+            SpaceInner::Sym32(ref mut $basis) => { type $B = u32; $body }
+            SpaceInner::Sym64(ref mut $basis) => { type $B = u64; $body }
             // ... 9 variants
             _ => unreachable!()
         }
@@ -210,7 +210,7 @@ macro_rules! with_sym_basis_mut {
 
 ## What Does NOT Change
 
-- `BasisInner` enum shape (29 variants) — unchanged, just gets new methods
+- `SpaceInner` enum shape (29 variants) — unchanged, just gets new methods
 - `SymBasis<B, L, N>` struct shape — gains one `built: bool` field; otherwise unchanged
 - `Subspace<B>` struct shape — gains one `built: bool` field; otherwise unchanged
 - `with_sym_basis!`, `with_dit_sym_basis!`, `with_plain_basis!` macros — unchanged
@@ -223,7 +223,7 @@ macro_rules! with_sym_basis_mut {
 
 1. Add `SymBasis::new_empty`, `push_lattice`, `is_built`
 2. Add `Subspace::new_empty`, `is_built`
-3. Add `BasisInner::push_lattice`, `is_built`
+3. Add `SpaceInner::push_lattice`, `is_built`
 4. Add `with_sym_basis_mut!`, `with_dit_sym_basis_mut!`, `with_plain_basis_mut!` macros
 5. Write `boson_basis.rs` using the new struct and methods
 6. Write `fermion_basis.rs` using the same infrastructure (see FermionBasis extension below)
@@ -247,7 +247,7 @@ macro_rules! with_sym_basis_mut {
 pub struct FermionBasis {
     pub n_sites: usize,
     space_kind:  SpaceKind,
-    pub inner:   BasisInner,
+    pub inner:   SpaceInner,
 }
 ```
 
@@ -255,9 +255,9 @@ pub struct FermionBasis {
 
 | space_kind | `inner` at construction |
 |------------|-------------------------|
-| `Full`     | `select_b_for_n_sites!` → `BasisInner::Full*(FullSpace::new(...))` |
-| `Sub`      | `select_b_for_n_sites!` → `BasisInner::Sub*(Subspace::new_empty(...))` |
-| `Symm`     | `select_b_for_n_sites!` → `BasisInner::Sym*(SymBasis::new_empty(lhss=2, n_sites, fermionic=true))` |
+| `Full`     | `select_b_for_n_sites!` → `SpaceInner::Full*(FullSpace::new(...))` |
+| `Sub`      | `select_b_for_n_sites!` → `SpaceInner::Sub*(Subspace::new_empty(...))` |
+| `Symm`     | `select_b_for_n_sites!` → `SpaceInner::Sym*(SymBasis::new_empty(lhss=2, n_sites, fermionic=true))` |
 
 Validation at `new()`:
 - `Full` with `n_sites > 64` → error
@@ -413,7 +413,7 @@ pub struct SpinBasis {
     pub n_sites: usize,
     pub lhss:    usize,
     space_kind:  SpaceKind,
-    pub inner:   BasisInner,
+    pub inner:   SpaceInner,
 }
 ```
 
@@ -473,7 +473,7 @@ sym_basis.local.push((grp_char, DynamicPermDitValues::new(lhss, perm, locs_usize
 This is the same permutation already constructed by `SymGrpBase::push_spin_inv`
 in the old code path.
 
-**Required addition to `SymBasis` and `BasisInner`:**
+**Required addition to `SymBasis` and `SpaceInner`:**
 
 `add_inv` needs a `push_local` builder method on `SymBasis`, analogous to `push_lattice`:
 
@@ -484,10 +484,10 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
 }
 ```
 
-And corresponding dispatch methods on `BasisInner`:
+And corresponding dispatch methods on `SpaceInner`:
 
 ```rust
-impl BasisInner {
+impl SpaceInner {
     /// Push a local mask element onto Sym* variants (lhss=2). Errors for others.
     pub fn push_local_mask<B: BitInt>(
         &mut self,

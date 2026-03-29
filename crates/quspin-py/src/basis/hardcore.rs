@@ -3,7 +3,7 @@ use crate::error::Error;
 use crate::hamiltonian::PyHardcoreHamiltonian;
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
-use quspin_core::basis::dispatch::BasisInner;
+use quspin_core::basis::dispatch::SpaceInner;
 use quspin_core::basis::{
     seed_from_bytes, seed_from_str,
     space::{FullSpace, Subspace},
@@ -16,7 +16,7 @@ use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
 
 #[pyclass(name = "PyHardcoreBasis")]
 pub struct PyHardcoreBasis {
-    pub inner: BasisInner,
+    pub inner: SpaceInner,
 }
 
 #[pymethods]
@@ -46,9 +46,9 @@ impl PyHardcoreBasis {
             )));
         }
         let inner = if n_sites <= 32 {
-            BasisInner::Full32(FullSpace::new(2, n_sites, false))
+            SpaceInner::Full32(FullSpace::new(2, n_sites, false))
         } else {
-            BasisInner::Full64(FullSpace::new(2, n_sites, false))
+            SpaceInner::Full64(FullSpace::new(2, n_sites, false))
         };
         Ok(PyHardcoreBasis { inner })
     }
@@ -97,7 +97,7 @@ impl PyHardcoreBasis {
                         }
                     }
                 }
-                BasisInner::from(basis)
+                SpaceInner::from(basis)
             }
         );
         Ok(PyHardcoreBasis { inner })

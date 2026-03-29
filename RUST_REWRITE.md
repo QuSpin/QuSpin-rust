@@ -271,12 +271,12 @@ The dispatch layer bridges the runtime-polymorphic public API (variant types, DT
 ##### `#[pyclass]` Types
 Three Python-facing wrapper types in `quspin-py`, each a thin `#[pyclass]` struct holding an inner enum:
 - `PyPauliHamiltonian` — wraps `PauliHamiltonianInner { Ham8(PauliHamiltonian<u8>), Ham16(PauliHamiltonian<u16>) }`
-- `PyHardcoreBasis` — wraps `HardcoreBasisInner` (see below)
+- `PyHardcoreBasis` — wraps `HardcoreSpaceInner` (see below)
 - `PyQMatrix` — wraps `QMatrixInner` over all valid (V, I, C) combinations (see below)
 
 No `PyArray` or `PyScalar` — NumPy arrays pass through directly via the `numpy` crate. New Hamiltonian and Basis types will be added as additional `#[pyclass]` types in future; the dispatch macros are designed to accommodate this without restructuring.
 
-##### `PyHardcoreBasis` — `HardcoreBasisInner` Enum
+##### `PyHardcoreBasis` — `HardcoreSpaceInner` Enum
 16 variants: `Full32` and `Full64` hardcoded (FullSpace only practical for small systems); all other variants generated from a `for_each_bitset!` registry macro via the `paste` crate for identifier concatenation:
 
 ```rust
@@ -297,7 +297,7 @@ macro_rules! for_each_bitset {
 // Generates Sub32, Sym32, Sub64, Sym64, Sub128, Sym128, ...
 macro_rules! define_basis_enum {
     ($(($uint:ty, $bits:literal)),*) => {
-        enum HardcoreBasisInner {
+        enum HardcoreSpaceInner {
             Full32(FullSpace<u32>),
             Full64(FullSpace<u64>),
             $(paste::paste! {
