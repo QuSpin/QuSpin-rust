@@ -7,15 +7,7 @@ use super::lattice::BenesLatticeElement;
 use super::traits::BasisSpace;
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
 use num_complex::Complex;
-use smallvec::SmallVec;
 use std::collections::HashMap;
-
-/// Inline capacity for the local-op buffer: 4! = 24, the maximum number of
-/// permutations for lhss ≤ 4 (the largest statically-supported lhss).
-const LOCAL_INLINE_CAP: usize = 24;
-
-/// Inline capacity for the lattice-op buffer.
-const LATTICE_INLINE_CAP: usize = 128;
 
 /// See `space::AMP_CANCEL_TOL` for the rationale.
 const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
@@ -100,8 +92,8 @@ pub struct SymBasis<B: BitInt, L, N: NormInt> {
     pub(crate) lhss: usize,
     pub(crate) fermionic: bool,
     pub(crate) n_sites: usize,
-    pub(crate) lattice: SmallVec<[BenesLatticeElement<B>; LATTICE_INLINE_CAP]>,
-    pub(crate) local: SmallVec<[(Complex<f64>, L); LOCAL_INLINE_CAP]>,
+    pub(crate) lattice: Vec<BenesLatticeElement<B>>,
+    pub(crate) local: Vec<(Complex<f64>, L)>,
     // Basis data (was SymmetricSubspace<G, N>)
     /// `(representative_state, orbit_norm)` pairs, sorted ascending by state.
     states: Vec<(B, N)>,
@@ -127,8 +119,8 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
             lhss,
             fermionic,
             n_sites,
-            lattice: SmallVec::new(),
-            local: SmallVec::new(),
+            lattice: Vec::new(),
+            local: Vec::new(),
             states: Vec::new(),
             index_map: HashMap::new(),
             built: false,

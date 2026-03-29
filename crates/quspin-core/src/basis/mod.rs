@@ -1,5 +1,6 @@
 pub mod boson;
 pub mod dispatch;
+pub mod expand;
 pub mod fermion;
 pub(crate) mod lattice;
 pub(crate) mod orbit;
