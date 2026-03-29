@@ -16,7 +16,7 @@ use smallvec::SmallVec;
 /// - 4-site translation × 1 local op  =  8 images
 /// - 8-site translation × 1 local op  = 16 images
 /// - 32-site translation × 1 local op = 64 images
-const ORBIT_INLINE_CAP: usize = 64;
+const ORBIT_INLINE_CAP: usize = 512;
 
 // ---------------------------------------------------------------------------
 // Scalar helpers

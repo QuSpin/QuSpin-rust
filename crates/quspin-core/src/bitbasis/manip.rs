@@ -135,6 +135,40 @@ impl DynamicDitManip {
         }
         out
     }
+
+    /// Decode a base-`lhss` dense index into a bit-packed basis state.
+    ///
+    /// The inverse of [`dense_from_state`](Self::dense_from_state).
+    /// Site 0 receives the least-significant base-`lhss` digit.
+    #[inline]
+    pub fn state_from_dense<I: BitInt>(&self, mut dense: usize, n_sites: usize) -> I {
+        let mut state = I::from_u64(0);
+        for site in 0..n_sites {
+            let dit = dense % self.lhss;
+            dense /= self.lhss;
+            state = self.set_dit(state, dit, site);
+        }
+        state
+    }
+
+    /// Compute the base-`lhss` dense index of a bit-packed basis state.
+    ///
+    /// Returns `None` if any site's dit value is ≥ `lhss` (invalid state).
+    /// The inverse of [`state_from_dense`](Self::state_from_dense).
+    #[inline]
+    pub fn dense_from_state<I: BitInt>(&self, state: I, n_sites: usize) -> Option<usize> {
+        let mut dense = 0usize;
+        let mut stride = 1usize;
+        for site in 0..n_sites {
+            let dit = self.get_dit(state, site);
+            if dit >= self.lhss {
+                return None;
+            }
+            dense += dit * stride;
+            stride *= self.lhss;
+        }
+        Some(dense)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +207,16 @@ impl<const LHSS: usize> DitManip<LHSS> {
     #[inline]
     pub fn set_sub_state<I: BitInt>(s: I, val: usize, locs: &[usize]) -> I {
         Self::INNER.set_sub_state(s, val, locs)
+    }
+
+    #[inline]
+    pub fn state_from_dense<I: BitInt>(dense: usize, n_sites: usize) -> I {
+        Self::INNER.state_from_dense(dense, n_sites)
+    }
+
+    #[inline]
+    pub fn dense_from_state<I: BitInt>(state: I, n_sites: usize) -> Option<usize> {
+        Self::INNER.dense_from_state(state, n_sites)
     }
 
     #[inline]
