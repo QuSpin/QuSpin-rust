@@ -6,7 +6,6 @@
 ///
 /// Seed strings are decimal digit sequences, e.g. `"012"` for a 3-site
 /// system with LHSS=3.  Seed lists are `list[int]` with values in `0..lhss`.
-use crate::basis::symmetry::PyDitSymGrp;
 use crate::error::Error;
 use crate::hamiltonian::boson::PyBosonHamiltonian;
 use pyo3::prelude::*;
@@ -122,70 +121,6 @@ impl PyDitBasis {
                 BasisInner::from(basis)
             }
         );
-        Ok(PyDitBasis { inner, lhss, manip })
-    }
-
-    /// Build a symmetry-reduced subspace for a bosonic (dit) system.
-    ///
-    /// Like ``subspace``, but projects into a symmetry sector defined by ``grp``,
-    /// yielding a smaller basis.
-    ///
-    /// Args:
-    ///     seeds (Iterable[str | list[int]]): Initial states (same format as
-    ///         ``subspace``).
-    ///     ham (PyBosonHamiltonian): The Hamiltonian defining connectivity.
-    ///     grp (PyDitSymGrp): The symmetry group defining the sector.
-    ///
-    /// Returns:
-    ///     PyDitBasis: Symmetry-reduced dit basis.
-    ///
-    /// Raises:
-    ///     ValueError: If ``ham.lhss != grp.lhss``, ``ham.n_sites != grp.n_sites``,
-    ///         if any seed is malformed, or if the total bit width exceeds 8192.
-    #[staticmethod]
-    pub fn symmetric(
-        seeds: &Bound<'_, PyAny>,
-        ham: &PyBosonHamiltonian,
-        grp: &PyDitSymGrp,
-    ) -> PyResult<Self> {
-        let lhss = ham.inner.lhss();
-        let n_sites = ham.inner.max_site() + 1;
-        let manip = DynamicDitManip::new(lhss);
-
-        if grp.inner.n_sites() != n_sites {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "n_sites mismatch: symmetry group has {} sites but Hamiltonian has {}",
-                grp.inner.n_sites(),
-                n_sites
-            )));
-        }
-        if grp.inner.lhss() != lhss {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "lhss mismatch: symmetry group has lhss={} but Hamiltonian has lhss={}",
-                grp.inner.lhss(),
-                lhss
-            )));
-        }
-
-        let seed_list = extract_dit_seed_list(seeds, &manip)?;
-        let dit = grp.inner.as_dit();
-        let inner = quspin_core::with_dit_sym_grp!(dit, B, N, sym_grp, {
-            let mut basis =
-                quspin_core::basis::sym_basis::SymBasis::<B, _, N>::from_grp(sym_grp.clone());
-            for s in &seed_list {
-                let seed = dit_seed_from_bytes::<B>(s, &manip);
-                match &ham.inner {
-                    BosonHamiltonianInner::Ham8(h) => {
-                        basis.build(seed, |state| h.apply_smallvec(state).into_iter());
-                    }
-                    BosonHamiltonianInner::Ham16(h) => {
-                        basis.build(seed, |state| h.apply_smallvec(state).into_iter());
-                    }
-                }
-            }
-            BasisInner::from(basis)
-        });
-
         Ok(PyDitBasis { inner, lhss, manip })
     }
 

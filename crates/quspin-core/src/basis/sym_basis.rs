@@ -4,7 +4,6 @@
 /// with a single flat struct. `N` is an explicit type parameter — the B→N
 /// pairing is encoded in `BasisInner` variant definitions, not a runtime enum.
 use super::lattice::BenesLatticeElement;
-use super::sym_grp::SymGrpBase;
 use super::traits::BasisSpace;
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
 use num_complex::Complex;
@@ -111,23 +110,6 @@ pub struct SymBasis<B: BitInt, L, N: NormInt> {
 // ---------------------------------------------------------------------------
 
 impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
-    /// Construct from a consumed group builder, starting with empty basis data.
-    ///
-    /// The group fields (lattice, local ops, metadata) are moved in from `grp`.
-    /// Call [`build`](Self::build) afterwards to populate the basis states.
-    pub fn from_grp(grp: SymGrpBase<B, L>) -> Self {
-        SymBasis {
-            lhss: grp.lhss,
-            fermionic: grp.fermionic,
-            n_sites: grp.n_sites,
-            lattice: grp.lattice,
-            local: grp.local,
-            states: Vec::new(),
-            index_map: HashMap::new(),
-            built: false,
-        }
-    }
-
     /// Construct an empty basis with no group elements and no states.
     ///
     /// Call [`push_lattice`](Self::push_lattice) / [`push_local`](Self::push_local)
@@ -327,7 +309,7 @@ impl<B: BitInt, L, N: NormInt> BasisSpace<B> for SymBasis<B, L, N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::sym_grp::SymGrpInner;
+    use crate::bitbasis::PermDitMask;
     use num_complex::Complex;
 
     fn x_op(n_sites: u32) -> impl Fn(u32) -> Vec<(Complex<f64>, u32, u8)> {
@@ -338,17 +320,13 @@ mod tests {
         }
     }
 
-    fn push_id_lattice(grp: &mut SymGrpInner<u32>, n_sites: usize) {
-        let perm: Vec<usize> = (0..n_sites).collect();
-        grp.push_lattice(Complex::new(1.0, 0.0), &perm);
-    }
-
     #[test]
     fn sym_basis_bitflip_2site() {
-        let mut grp = SymGrpInner::<u32>::new_empty(2, 2, false);
-        push_id_lattice(&mut grp, 2);
-        grp.push_inverse(Complex::new(1.0, 0.0), &[0, 1]);
-        let mut basis = SymBasis::<u32, _, u32>::from_grp(grp);
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 2, false);
+        basis.push_lattice(Complex::new(1.0, 0.0), &[0, 1]);
+        // spin inversion: XOR mask at all sites
+        let mask = PermDitMask::<u32>::new(0b11u32);
+        basis.push_local(Complex::new(1.0, 0.0), mask);
         basis.build(0u32, x_op(2));
 
         assert_eq!(basis.size(), 2);
@@ -358,18 +336,16 @@ mod tests {
 
     #[test]
     fn sym_basis_no_symmetry_matches_subspace() {
-        let mut grp = SymGrpInner::<u32>::new_empty(2, 3, false);
-        push_id_lattice(&mut grp, 3);
-        let mut basis = SymBasis::<u32, _, u32>::from_grp(grp);
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
+        basis.push_lattice(Complex::new(1.0, 0.0), &[0, 1, 2]);
         basis.build(0u32, x_op(3));
         assert_eq!(basis.size(), 8);
     }
 
     #[test]
     fn sym_basis_sorted_ascending() {
-        let mut grp = SymGrpInner::<u32>::new_empty(2, 3, false);
-        push_id_lattice(&mut grp, 3);
-        let mut basis = SymBasis::<u32, _, u32>::from_grp(grp);
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
+        basis.push_lattice(Complex::new(1.0, 0.0), &[0, 1, 2]);
         basis.build(0u32, x_op(3));
         for i in 1..basis.size() {
             assert!(basis.state_at(i) > basis.state_at(i - 1));
@@ -378,10 +354,10 @@ mod tests {
 
     #[test]
     fn sym_basis_u8_norm() {
-        let mut grp = SymGrpInner::<u32>::new_empty(2, 2, false);
-        push_id_lattice(&mut grp, 2);
-        grp.push_inverse(Complex::new(1.0, 0.0), &[0, 1]);
-        let mut basis = SymBasis::<u32, _, u8>::from_grp(grp);
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(2, 2, false);
+        basis.push_lattice(Complex::new(1.0, 0.0), &[0, 1]);
+        let mask = PermDitMask::<u32>::new(0b11u32);
+        basis.push_local(Complex::new(1.0, 0.0), mask);
         basis.build(0u32, x_op(2));
         assert_eq!(basis.size(), 2);
         for i in 0..basis.size() {
@@ -392,10 +368,10 @@ mod tests {
 
     #[test]
     fn sym_basis_entry_roundtrip() {
-        let mut grp = SymGrpInner::<u32>::new_empty(2, 2, false);
-        push_id_lattice(&mut grp, 2);
-        grp.push_inverse(Complex::new(1.0, 0.0), &[0, 1]);
-        let mut basis = SymBasis::<u32, _, u8>::from_grp(grp);
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(2, 2, false);
+        basis.push_lattice(Complex::new(1.0, 0.0), &[0, 1]);
+        let mask = PermDitMask::<u32>::new(0b11u32);
+        basis.push_local(Complex::new(1.0, 0.0), mask);
         basis.build(0u32, x_op(2));
         for i in 0..basis.size() {
             let (_, norm) = basis.entry(i);
