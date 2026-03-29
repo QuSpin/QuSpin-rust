@@ -45,11 +45,10 @@ impl PyHardcoreBasis {
                 "n_sites={n_sites} exceeds 64; full Hilbert spaces beyond 2^64 are not supported"
             )));
         }
-        let dim = 1usize << n_sites;
         let inner = if n_sites <= 32 {
-            BasisInner::Full32(FullSpace::new(n_sites, dim))
+            BasisInner::Full32(FullSpace::new(2, n_sites))
         } else {
-            BasisInner::Full64(FullSpace::new(n_sites, dim))
+            BasisInner::Full64(FullSpace::new(2, n_sites))
         };
         Ok(PyHardcoreBasis { inner })
     }
@@ -86,7 +85,7 @@ impl PyHardcoreBasis {
                 "n_sites={n_sites} exceeds the maximum supported value of 8192"
             ))),
             {
-                let mut basis = Subspace::<B>::new(n_sites);
+                let mut basis = Subspace::<B>::new(2, n_sites);
                 for s in &seed_list {
                     let seed = seed_from_bytes::<B>(s);
                     match &ham.inner {

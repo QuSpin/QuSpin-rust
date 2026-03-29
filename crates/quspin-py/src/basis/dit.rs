@@ -62,17 +62,10 @@ impl PyDitBasis {
                  use subspace() for larger systems"
             )));
         }
-        // dim = lhss^n_sites (computed without overflow for small cases)
-        let dim = (lhss as u64).checked_pow(n_sites as u32).ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err(
-                "lhss^n_sites overflows u64; use subspace() instead",
-            )
-        })? as usize;
-
         let inner = if total_bits <= 32 {
-            BasisInner::Full32(FullSpace::new(n_sites, dim))
+            BasisInner::Full32(FullSpace::new(lhss, n_sites))
         } else {
-            BasisInner::Full64(FullSpace::new(n_sites, dim))
+            BasisInner::Full64(FullSpace::new(lhss, n_sites))
         };
         Ok(PyDitBasis { inner, lhss, manip })
     }
@@ -106,7 +99,7 @@ impl PyDitBasis {
                 "total_bits={total_bits} exceeds the maximum supported value of 8192"
             ))),
             {
-                let mut basis = Subspace::<B>::new(n_sites);
+                let mut basis = Subspace::<B>::new(lhss, n_sites);
                 for s in &seed_list {
                     let seed = dit_seed_from_bytes::<B>(s, &manip);
                     match &ham.inner {

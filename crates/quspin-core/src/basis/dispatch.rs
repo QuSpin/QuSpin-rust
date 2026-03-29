@@ -121,6 +121,41 @@ impl BasisInner {
         }
     }
 
+    /// Local Hilbert-space size (number of states per site).
+    pub fn lhss(&self) -> usize {
+        match self {
+            BasisInner::Full32(b) => b.lhss(),
+            BasisInner::Full64(b) => b.lhss(),
+            BasisInner::Sub32(b) => b.lhss(),
+            BasisInner::Sub64(b) => b.lhss(),
+            BasisInner::Sub128(b) => b.lhss(),
+            BasisInner::Sub256(b) => b.lhss(),
+            BasisInner::Sub512(b) => b.lhss(),
+            BasisInner::Sub1024(b) => b.lhss(),
+            BasisInner::Sub2048(b) => b.lhss(),
+            BasisInner::Sub4096(b) => b.lhss(),
+            BasisInner::Sub8192(b) => b.lhss(),
+            BasisInner::Sym32(b) => b.lhss(),
+            BasisInner::Sym64(b) => b.lhss(),
+            BasisInner::Sym128(b) => b.lhss(),
+            BasisInner::Sym256(b) => b.lhss(),
+            BasisInner::Sym512(b) => b.lhss(),
+            BasisInner::Sym1024(b) => b.lhss(),
+            BasisInner::Sym2048(b) => b.lhss(),
+            BasisInner::Sym4096(b) => b.lhss(),
+            BasisInner::Sym8192(b) => b.lhss(),
+            BasisInner::DitSym32(b) => b.lhss(),
+            BasisInner::DitSym64(b) => b.lhss(),
+            BasisInner::DitSym128(b) => b.lhss(),
+            BasisInner::DitSym256(b) => b.lhss(),
+            BasisInner::DitSym512(b) => b.lhss(),
+            BasisInner::DitSym1024(b) => b.lhss(),
+            BasisInner::DitSym2048(b) => b.lhss(),
+            BasisInner::DitSym4096(b) => b.lhss(),
+            BasisInner::DitSym8192(b) => b.lhss(),
+        }
+    }
+
     /// Number of basis states.
     pub fn size(&self) -> usize {
         match self {
@@ -1044,7 +1079,7 @@ mod tests {
 
     #[test]
     fn display_full_space() {
-        let inner = BasisInner::Full32(FullSpace::new(2, 4));
+        let inner = BasisInner::Full32(FullSpace::new(2, 2));
         let s = inner.to_string();
         assert!(s.starts_with("full(n_sites=2, size=4, symmetries=[]):"));
         assert!(s.contains("|11>"));
@@ -1053,7 +1088,7 @@ mod tests {
 
     #[test]
     fn display_subspace() {
-        let mut sub = Subspace::<u32>::new(2);
+        let mut sub = Subspace::<u32>::new(2, 2);
         sub.build(0b01u32, |s| {
             vec![(num_complex::Complex::new(1.0, 0.0), s ^ 0b11, 0u8)]
         });
@@ -1066,7 +1101,7 @@ mod tests {
     #[test]
     fn display_index_alignment() {
         // 16 states → indices 0-15, width 2; row 9 and 10 should be right-aligned
-        let inner = BasisInner::Full32(FullSpace::new(4, 16));
+        let inner = BasisInner::Full32(FullSpace::new(2, 4));
         let s = inner.to_string();
         assert!(s.contains("  9."));
         assert!(s.contains(" 10."));
@@ -1075,7 +1110,7 @@ mod tests {
     #[test]
     fn display_truncation() {
         // 64 states > 50 → should truncate with "..."
-        let inner = BasisInner::Full32(FullSpace::new(6, 64));
+        let inner = BasisInner::Full32(FullSpace::new(2, 6));
         let s = inner.to_string();
         assert!(s.contains("..."), "expected truncation marker");
         // First 25 rows present (index 0 and 24)

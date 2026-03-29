@@ -201,7 +201,7 @@ fn display_z_1site() {
     // Basis (descending): 0→|1>, 1→|0>
     // QuSpin convention: Z|1> = +|1>, Z|0> = -|0>  →  diagonal [+1, -1]
     let ham = single_z(0, 1);
-    let basis = FullSpace::<u32>::new(1, 2);
+    let basis = FullSpace::<u32>::new(2, 1);
     show("Z on 1 site", &ham, &basis, &[1.0]);
     let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
     #[rustfmt::skip]
@@ -215,7 +215,7 @@ fn display_z_1site() {
 fn display_x_1site() {
     // X|1> = |0>, X|0> = |1>  →  off-diagonal [[0,1],[1,0]]
     let ham = single_x(0, 1);
-    let basis = FullSpace::<u32>::new(1, 2);
+    let basis = FullSpace::<u32>::new(2, 1);
     show("X on 1 site", &ham, &basis, &[1.0]);
     let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
     #[rustfmt::skip]
@@ -229,7 +229,7 @@ fn display_x_1site() {
 fn display_xx_2site() {
     // XX flips both bits: |11>↔|00>, |01>↔|10>  →  anti-diagonal
     let ham = two_body(HardcoreOp::X, HardcoreOp::X, 2);
-    let basis = FullSpace::<u32>::new(2, 4);
+    let basis = FullSpace::<u32>::new(2, 2);
     show("XX on 2 sites", &ham, &basis, &[1.0]);
     let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
     #[rustfmt::skip]
@@ -247,7 +247,7 @@ fn display_yy_2site() {
     //                              for |00>→|11>: i*(+1) * i*(+1) = -1
     //                              for |01>↔|10>: +1 each
     let ham = two_body(HardcoreOp::Y, HardcoreOp::Y, 2);
-    let basis = FullSpace::<u32>::new(2, 4);
+    let basis = FullSpace::<u32>::new(2, 2);
     show("YY on 2 sites", &ham, &basis, &[1.0]);
     let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
     #[rustfmt::skip]
@@ -265,7 +265,7 @@ fn display_zz_2site() {
     //              (+1)(-1)=-1 for |10>, (+1)(+1)=+1 for |00>
     //   (Z conv: s = 1-2n, so s=−1 for occupied, s=+1 for empty)
     let ham = two_body(HardcoreOp::Z, HardcoreOp::Z, 2);
-    let basis = FullSpace::<u32>::new(2, 4);
+    let basis = FullSpace::<u32>::new(2, 2);
     show("ZZ on 2 sites", &ham, &basis, &[1.0]);
     let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
     #[rustfmt::skip]
@@ -285,7 +285,7 @@ fn display_heisenberg_2site() {
     // |10>: ZZ=-1, XX+YY connect to |01> with amp 1+1=2  →  row [0,+2,-1,0]
     // |00>: ZZ=+1, XX and YY off-diag to |11>  →  row [0, 0, 0, +1]
     let ham = heisenberg_chain(2);
-    let basis = FullSpace::<u32>::new(2, 4);
+    let basis = FullSpace::<u32>::new(2, 2);
     show("Heisenberg XXX chain, 2 sites", &ham, &basis, &[1.0]);
     let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
     #[rustfmt::skip]
@@ -304,7 +304,7 @@ fn display_heisenberg_3site() {
     // static=[["xx",bonds],["yy",bonds],["zz",bonds]].
     // QuSpin and our FullSpace both enumerate states in descending order [7..0].
     let ham = heisenberg_chain(3);
-    let basis = FullSpace::<u32>::new(3, 8);
+    let basis = FullSpace::<u32>::new(2, 3);
     show("Heisenberg XXX chain, 3 sites", &ham, &basis, &[1.0]);
     let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
     #[rustfmt::skip]
@@ -325,7 +325,7 @@ fn display_heisenberg_4site() {
     // Heisenberg XXX chain, L=4, 16x16.
     // Reference generated with QuSpin spin_basis_1d(L=4, pauli=1).
     let ham = heisenberg_chain(4);
-    let basis = FullSpace::<u32>::new(4, 16);
+    let basis = FullSpace::<u32>::new(2, 4);
     show("Heisenberg XXX chain, 4 sites", &ham, &basis, &[1.0]);
     let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
     #[rustfmt::skip]
@@ -356,7 +356,7 @@ fn display_tfi_3site() {
     // Reference generated with QuSpin spin_basis_1d(L=3, pauli=1),
     // static=[["zz",zz_bonds],["x",x_field]].
     let ham = tfi_chain(3);
-    let basis = FullSpace::<u32>::new(3, 8);
+    let basis = FullSpace::<u32>::new(2, 3);
     show("TFI chain J=1 h=0.5, 3 sites", &ham, &basis, &[1.0, 0.5]);
     let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
     #[rustfmt::skip]

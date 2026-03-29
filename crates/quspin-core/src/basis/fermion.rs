@@ -50,11 +50,10 @@ impl FermionBasis {
                         "Full fermion basis requires n_sites <= 64, got n_sites={n_sites}"
                     )));
                 }
-                let dim = 1usize << n_sites;
                 if n_bits <= 32 {
-                    BasisInner::Full32(FullSpace::<u32>::new(n_sites, dim))
+                    BasisInner::Full32(FullSpace::<u32>::new(2, n_sites))
                 } else {
-                    BasisInner::Full64(FullSpace::<u64>::new(n_sites, dim))
+                    BasisInner::Full64(FullSpace::<u64>::new(2, n_sites))
                 }
             }
             SpaceKind::Sub => crate::select_b_for_n_sites!(
@@ -63,7 +62,7 @@ impl FermionBasis {
                 return Err(QuSpinError::ValueError(format!(
                     "n_sites={n_sites} exceeds the maximum supported value of 8192"
                 ))),
-                { BasisInner::from(Subspace::<B>::new_empty(n_sites, 2)) }
+                { BasisInner::from(Subspace::<B>::new_empty(2, n_sites)) }
             ),
             SpaceKind::Symm => crate::select_b_for_n_sites!(
                 n_bits,
