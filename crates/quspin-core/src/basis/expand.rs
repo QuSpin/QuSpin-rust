@@ -22,6 +22,7 @@ use super::{
     traits::BasisSpace,
 };
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, manip::DynamicDitManip};
+use ndarray::Array2;
 use num_complex::Complex;
 use std::collections::HashMap;
 use std::ops::AddAssign;
@@ -137,18 +138,21 @@ where
 /// - `vec`     — coefficient vector of length `space.size()`
 /// - `sites_a` — site indices of subsystem A.  Sorted ascending internally;
 ///   the caller's order does not affect the output.
-/// - `out`     — pre-zeroed output buffer of length `dim_a * dim_a` where
-///   `dim_a = lhss^sites_a.len()`, stored in row-major order
+///
+/// # Parameters
+///
+/// - `out` — a `dim_a × dim_a` matrix where `dim_a = lhss^sites_a.len()`.
+///   Accumulated into (not zeroed); caller is responsible for zeroing if needed.
 ///
 /// # Panics
 ///
 /// Panics (debug only) if `vec.len() != space.size()` or
-/// `out.len() != dim_a * dim_a`.
+/// `out` does not have shape `(dim_a, dim_a)`.
 pub fn reduced_density_matrix<B, T, E>(
     space: &E,
     vec: &[T],
     sites_a: &[usize],
-    out: &mut [Complex<f64>],
+    out: &mut Array2<Complex<f64>>,
 ) where
     B: BitInt,
     E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
@@ -158,7 +162,7 @@ pub fn reduced_density_matrix<B, T, E>(
     let n_sites = space.n_sites();
     let n_a = sites_a.len();
     let dim_a = lhss.pow(n_a as u32);
-    debug_assert_eq!(out.len(), dim_a * dim_a);
+    debug_assert_eq!(out.shape(), &[dim_a, dim_a]);
 
     let fermionic = space.fermionic();
 
@@ -220,7 +224,7 @@ pub fn reduced_density_matrix<B, T, E>(
     for group in groups.values() {
         for &(sa_i, c_i) in group {
             for &(sa_j, c_j) in group {
-                out[sa_i * dim_a + sa_j] += c_i * c_j.conj();
+                out[[sa_i, sa_j]] += c_i * c_j.conj();
             }
         }
     }
@@ -281,6 +285,7 @@ where
 mod tests {
     use super::*;
     use crate::basis::space::{FullSpace, Subspace};
+    use ndarray::Array2;
 
     /// For a 2-site spin-1/2 system in the product state |↓↑⟩ (site 0 = 0,
     /// site 1 = 1), stored as state integer 0b10 = 2, tracing out site 1
@@ -302,14 +307,18 @@ mod tests {
 
         // Trace out site 1, keep site 0.
         // site 0 is in state 0 (↓) → ρ_A = [[1,0],[0,0]].
-        let mut rdm = vec![Complex::new(0.0, 0.0); 4];
-        reduced_density_matrix(&sub, &vec, &[0], &mut rdm);
+        let mut rdm = Array2::<Complex<f64>>::zeros((2, 2));
+        reduced_density_matrix::<u32, _, _>(&sub, &vec, &[0], &mut rdm);
 
         let tol = 1e-14;
-        assert!((rdm[0].re - 1.0).abs() < tol, "rdm[0,0] = {}", rdm[0]);
-        assert!(rdm[1].norm() < tol, "rdm[0,1] = {}", rdm[1]);
-        assert!(rdm[2].norm() < tol, "rdm[1,0] = {}", rdm[2]);
-        assert!(rdm[3].norm() < tol, "rdm[1,1] = {}", rdm[3]);
+        assert!(
+            (rdm[[0, 0]].re - 1.0).abs() < tol,
+            "rdm[0,0] = {}",
+            rdm[[0, 0]]
+        );
+        assert!(rdm[[0, 1]].norm() < tol, "rdm[0,1] = {}", rdm[[0, 1]]);
+        assert!(rdm[[1, 0]].norm() < tol, "rdm[1,0] = {}", rdm[[1, 0]]);
+        assert!(rdm[[1, 1]].norm() < tol, "rdm[1,1] = {}", rdm[[1, 1]]);
     }
 
     /// Bell state |Φ+⟩ = (|00⟩ + |11⟩) / √2.
@@ -329,15 +338,23 @@ mod tests {
         vec[idx_11] = inv_sqrt2;
 
         // Trace out site 1.
-        let mut rdm = vec![Complex::new(0.0, 0.0); 4];
-        reduced_density_matrix(&sub, &vec, &[0], &mut rdm);
+        let mut rdm = Array2::<Complex<f64>>::zeros((2, 2));
+        reduced_density_matrix::<u32, _, _>(&sub, &vec, &[0], &mut rdm);
 
         let tol = 1e-14;
         // ρ_A = [[0.5, 0], [0, 0.5]]
-        assert!((rdm[0].re - 0.5).abs() < tol, "rdm[0,0] = {}", rdm[0]);
-        assert!(rdm[1].norm() < tol, "rdm[0,1] = {}", rdm[1]);
-        assert!(rdm[2].norm() < tol, "rdm[1,0] = {}", rdm[2]);
-        assert!((rdm[3].re - 0.5).abs() < tol, "rdm[1,1] = {}", rdm[3]);
+        assert!(
+            (rdm[[0, 0]].re - 0.5).abs() < tol,
+            "rdm[0,0] = {}",
+            rdm[[0, 0]]
+        );
+        assert!(rdm[[0, 1]].norm() < tol, "rdm[0,1] = {}", rdm[[0, 1]]);
+        assert!(rdm[[1, 0]].norm() < tol, "rdm[1,0] = {}", rdm[[1, 0]]);
+        assert!(
+            (rdm[[1, 1]].re - 0.5).abs() < tol,
+            "rdm[1,1] = {}",
+            rdm[[1, 1]]
+        );
     }
 
     /// Trace is preserved: Tr(ρ_A) = 1 for a normalised state vector.
@@ -354,10 +371,10 @@ mod tests {
         let vec: Vec<Complex<f64>> = (0..sub.size()).map(|_| amp).collect();
 
         // Trace out sites 2 and 3, keep sites 0 and 1 (dim_a = 4).
-        let mut rdm = vec![Complex::new(0.0, 0.0); 16];
-        reduced_density_matrix(&sub, &vec, &[0, 1], &mut rdm);
+        let mut rdm = Array2::<Complex<f64>>::zeros((4, 4));
+        reduced_density_matrix::<u32, _, _>(&sub, &vec, &[0, 1], &mut rdm);
 
-        let trace: f64 = (0..4).map(|i| rdm[i * 4 + i].re).sum();
+        let trace: f64 = (0..4).map(|i| rdm[[i, i]].re).sum();
         assert!((trace - 1.0).abs() < 1e-13, "trace = {trace}");
     }
 
@@ -378,13 +395,13 @@ mod tests {
         vec[idx1] = Complex::new(0.0, 1.0 / 2.0);
         vec[idx2] = Complex::new(1.0 / 2.0, 0.0);
 
-        let mut rdm = vec![Complex::new(0.0, 0.0); 4];
-        reduced_density_matrix(&sub, &vec, &[0], &mut rdm);
+        let mut rdm = Array2::<Complex<f64>>::zeros((2, 2));
+        reduced_density_matrix::<u32, _, _>(&sub, &vec, &[0], &mut rdm);
 
         let tol = 1e-14;
         for i in 0..2 {
             for j in 0..2 {
-                let diff = rdm[i * 2 + j] - rdm[j * 2 + i].conj();
+                let diff = rdm[[i, j]] - rdm[[j, i]].conj();
                 assert!(diff.norm() < tol, "rdm[{i},{j}] not hermitian: {diff}");
             }
         }
