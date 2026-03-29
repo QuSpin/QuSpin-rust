@@ -199,13 +199,8 @@ pub fn reduced_density_matrix<B, T, E>(
         let s_perm = benes_op.apply(*state);
 
         // sa: little-endian mixed-radix index for the A subsystem.
-        // Position 0 of s_perm holds the LSdigit.
-        let mut sa = 0usize;
-        let mut weight = 1usize;
-        for i in 0..n_a {
-            sa += weight * manip.get_dit(s_perm, i);
-            weight *= lhss;
-        }
+        // After the permutation, A-site dits occupy positions 0..n_a.
+        let sa = manip.get_subbits(s_perm, 0, n_a);
 
         // sb: B-subsystem dits shifted down to start at bit 0.
         // Guard against shift-by-B::BITS when n_b == 0.

@@ -121,6 +121,23 @@ impl DynamicDitManip {
         out
     }
 
+    /// Extract `len` consecutive dits starting at position `start` as a
+    /// little-endian mixed-radix index: position `start` is the LSdigit.
+    ///
+    /// Equivalent to the manual loop `Σ_{i=0}^{len-1} dit(start+i) * lhss^i`.
+    /// Useful after a [`BenesPermDitLocations`] permutation that packs a
+    /// subsystem into contiguous positions.
+    #[inline]
+    pub fn get_subbits<I: BitInt>(&self, s: I, start: usize, len: usize) -> usize {
+        let mut out = 0usize;
+        let mut weight = 1usize;
+        for i in start..start + len {
+            out += weight * self.get_dit(s, i);
+            weight *= self.lhss;
+        }
+        out
+    }
+
     /// Insert a mixed-radix sub-state value `val` into basis state `s` at the
     /// given positions.
     ///
