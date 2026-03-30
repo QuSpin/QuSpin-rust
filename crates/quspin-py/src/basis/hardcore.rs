@@ -8,7 +8,7 @@ use quspin_core::basis::{
     seed_from_bytes, seed_from_str,
     space::{FullSpace, Subspace},
 };
-use quspin_core::hamiltonian::pauli::dispatch::HardcoreOperatorInner;
+use quspin_core::operator::pauli::dispatch::HardcoreOperatorInner;
 
 // ---------------------------------------------------------------------------
 // PyHardcoreBasis

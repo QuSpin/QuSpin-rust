@@ -1,7 +1,7 @@
 use crate::bitbasis::BitInt;
 use crate::error::QuSpinError;
-use crate::hamiltonian::Operator;
-use crate::hamiltonian::ParseOp;
+use crate::operator::Operator;
+use crate::operator::ParseOp;
 use num_complex::Complex;
 use smallvec::SmallVec;
 
@@ -245,7 +245,7 @@ impl<C: Copy + Ord> Operator<C> for HardcoreOperator<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hamiltonian::pauli::{HardcoreOp, OpEntry};
+    use crate::operator::pauli::{HardcoreOp, OpEntry};
 
     use num_complex::Complex;
     use smallvec::smallvec;

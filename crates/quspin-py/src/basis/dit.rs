@@ -16,7 +16,7 @@ use quspin_core::basis::{
     space::{FullSpace, Subspace},
 };
 use quspin_core::bitbasis::manip::DynamicDitManip;
-use quspin_core::hamiltonian::boson::dispatch::BosonOperatorInner;
+use quspin_core::operator::boson::dispatch::BosonOperatorInner;
 
 // ---------------------------------------------------------------------------
 // PyDitBasis

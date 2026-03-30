@@ -4,7 +4,7 @@ use crate::basis::{
     sym::{NormInt, SymBasis},
 };
 use crate::bitbasis::{BitInt, BitStateOp};
-use crate::hamiltonian::Operator;
+use crate::operator::Operator;
 use crate::primitive::Primitive;
 use num_complex::Complex;
 use smallvec::SmallVec;
@@ -171,12 +171,12 @@ where
 mod tests {
     use super::*;
     use crate::basis::space::{FullSpace, Subspace};
-    use crate::hamiltonian::pauli::HardcoreOperator;
+    use crate::operator::pauli::HardcoreOperator;
     use num_complex::Complex;
     use smallvec::smallvec;
 
     fn xx_ham() -> HardcoreOperator<u8> {
-        use crate::hamiltonian::pauli::{HardcoreOp, OpEntry};
+        use crate::operator::pauli::{HardcoreOp, OpEntry};
         // H = Σ_i X_i X_{i+1}, two-site chain
         // Term 0: X_0 X_1, cindex=0, coeff=1
         let ops0 = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
@@ -216,7 +216,7 @@ mod tests {
         // 1-particle sector of 2-site XX: states {|01⟩=1, |10⟩=2}
         // XX connects them: H|01⟩=|10⟩, H|10⟩=|01⟩
         // Subspace sorted ascending: state_at(0)=1, state_at(1)=2
-        use crate::hamiltonian::pauli::{HardcoreOp, OpEntry};
+        use crate::operator::pauli::{HardcoreOp, OpEntry};
         let ops = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)];
         let ham = HardcoreOperator::new(terms);

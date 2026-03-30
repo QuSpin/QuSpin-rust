@@ -22,8 +22,8 @@
 /// - `n_sites` is inferred from `max_site_index + 1`.
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::hamiltonian::pauli::dispatch::HardcoreOperatorInner;
-use quspin_core::hamiltonian::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
+use quspin_core::operator::pauli::dispatch::HardcoreOperatorInner;
+use quspin_core::operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
 
 use super::parse::parse_term;
 

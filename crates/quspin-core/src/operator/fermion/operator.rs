@@ -3,8 +3,8 @@ use smallvec::SmallVec;
 
 use crate::bitbasis::BitInt;
 use crate::error::QuSpinError;
-use crate::hamiltonian::Operator;
-use crate::hamiltonian::ParseOp;
+use crate::operator::Operator;
+use crate::operator::ParseOp;
 
 // ---------------------------------------------------------------------------
 // FermionOp
@@ -260,7 +260,7 @@ impl<C: Copy + Ord> Operator<C> for FermionOperator<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hamiltonian::fermion::{FermionOp, FermionOpEntry};
+    use crate::operator::fermion::{FermionOp, FermionOpEntry};
     use num_complex::Complex;
     use smallvec::smallvec;
 

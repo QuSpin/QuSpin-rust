@@ -1,5 +1,5 @@
 use super::BondOperator;
-use crate::hamiltonian::Operator;
+use crate::operator::Operator;
 
 /// Type-erased `BondOperator`: either u8 or u16 cindex type.
 ///

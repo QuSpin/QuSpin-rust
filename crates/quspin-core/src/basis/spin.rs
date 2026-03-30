@@ -5,7 +5,7 @@ use super::space::{FullSpace, Subspace};
 use super::sym::SymBasis;
 use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
 use crate::error::QuSpinError;
-use crate::hamiltonian::{BondOperatorInner, SpinOperatorInner};
+use crate::operator::{BondOperatorInner, SpinOperatorInner};
 use crate::{with_dit_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut};
 use num_complex::Complex;
 
@@ -299,7 +299,7 @@ impl SpinBasis {
         ham: &BondOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        use crate::hamiltonian::Operator;
+        use crate::operator::Operator;
         use smallvec::SmallVec;
 
         if self.space_kind == SpaceKind::Full {
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn spin_basis_build_spin_half() {
-        use crate::hamiltonian::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
+        use crate::operator::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
         use smallvec::smallvec;
 
         // H = S+_0 S-_1 + S-_0 S+_1  (hopping / XX+YY-type), lhss=2
@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn spin_basis_build_spin_one_lhss3() {
-        use crate::hamiltonian::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
+        use crate::operator::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
         use smallvec::smallvec;
 
         // H = S+_0 S-_1 + S-_0 S+_1  (spin-1 hopping), lhss=3

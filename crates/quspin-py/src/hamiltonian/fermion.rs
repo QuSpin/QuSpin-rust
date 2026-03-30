@@ -19,8 +19,8 @@
 ///   site `2*i+1` = spin-up orbital `i`.
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::hamiltonian::fermion::dispatch::FermionOperatorInner;
-use quspin_core::hamiltonian::fermion::{FermionOp, FermionOpEntry, FermionOperator};
+use quspin_core::operator::fermion::dispatch::FermionOperatorInner;
+use quspin_core::operator::fermion::{FermionOp, FermionOpEntry, FermionOperator};
 
 use super::parse::parse_term;
 

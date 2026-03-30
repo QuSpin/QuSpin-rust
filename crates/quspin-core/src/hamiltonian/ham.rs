@@ -242,7 +242,7 @@ fn build_merged_cindex_maps<C: CIndex>(
 mod tests {
     use super::*;
     use crate::basis::space::FullSpace;
-    use crate::hamiltonian::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
+    use crate::operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
     use crate::qmatrix::build::build_from_basis;
     use num_complex::Complex;
     use smallvec::smallvec;

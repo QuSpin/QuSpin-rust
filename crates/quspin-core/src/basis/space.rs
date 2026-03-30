@@ -357,7 +357,7 @@ mod tests {
         // added to the subspace when the net amplitude is zero.
         // Starting from a seed with k ones the subspace dimension must equal
         // C(n_sites, k) for all k in 0..=n_sites.
-        use crate::hamiltonian::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
+        use crate::operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
         use smallvec::smallvec;
 
         let n_sites: usize = 6;

@@ -6,7 +6,7 @@ use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
 use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
 use crate::error::QuSpinError;
-use crate::hamiltonian::{BondOperatorInner, BosonOperatorInner};
+use crate::operator::{BondOperatorInner, BosonOperatorInner};
 use crate::{with_dit_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut};
 use num_complex::Complex;
 
@@ -263,7 +263,7 @@ impl BosonBasis {
         ham: &BondOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        use crate::hamiltonian::Operator;
+        use crate::operator::Operator;
         use smallvec::SmallVec;
 
         if self.space_kind == SpaceKind::Full {
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn boson_basis_build_boson_lhss2() {
-        use crate::hamiltonian::boson::{BosonOp, BosonOpEntry, BosonOperator};
+        use crate::operator::boson::{BosonOp, BosonOpEntry, BosonOperator};
         use smallvec::smallvec;
 
         // H = a†_0 a_1 + a_0 a†_1  (hopping), lhss=2, 4 sites
@@ -429,7 +429,7 @@ mod tests {
 
     #[test]
     fn boson_basis_build_bond_lhss3() {
-        use crate::hamiltonian::bond::{BondOperator, BondTerm};
+        use crate::operator::bond::{BondOperator, BondTerm};
         use ndarray::Array2;
 
         // Hopping matrix for lhss=3 (9x9): swaps |1,0> <-> |0,1> at two sites.

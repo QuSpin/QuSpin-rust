@@ -12,8 +12,8 @@ use num_complex::Complex;
 use numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2};
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList, PyTuple};
-use quspin_core::hamiltonian::bond::dispatch::BondOperatorInner;
-use quspin_core::hamiltonian::bond::{BondOperator, BondTerm};
+use quspin_core::operator::bond::dispatch::BondOperatorInner;
+use quspin_core::operator::bond::{BondOperator, BondTerm};
 
 // ---------------------------------------------------------------------------
 // PyBondTerm

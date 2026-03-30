@@ -6,7 +6,7 @@ use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
 use crate::bitbasis::PermDitMask;
 use crate::error::QuSpinError;
-use crate::hamiltonian::{BondOperatorInner, FermionOperatorInner};
+use crate::operator::{BondOperatorInner, FermionOperatorInner};
 use crate::{with_sub_basis_mut, with_sym_basis_mut};
 use num_complex::Complex;
 
@@ -194,7 +194,7 @@ impl FermionBasis {
         ham: &BondOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        use crate::hamiltonian::Operator;
+        use crate::operator::Operator;
         use smallvec::SmallVec;
 
         if self.space_kind == SpaceKind::Full {
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn fermion_basis_build_fermion() {
-        use crate::hamiltonian::fermion::{FermionOp, FermionOpEntry, FermionOperator};
+        use crate::operator::fermion::{FermionOp, FermionOpEntry, FermionOperator};
         use smallvec::smallvec;
 
         // Hopping Hamiltonian: H = sum_i (c†_i c_{i+1} + c†_{i+1} c_i), 4 sites.
@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn fermion_basis_build_bond() {
-        use crate::hamiltonian::bond::{BondOperator, BondTerm};
+        use crate::operator::bond::{BondOperator, BondTerm};
         use ndarray::array;
 
         // Hopping matrix for LHSS=2: [[0,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,0]]

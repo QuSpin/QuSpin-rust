@@ -1,10 +1,10 @@
 use crate::bitbasis::{BitInt, manip::DynamicDitManip};
-use crate::hamiltonian::Operator;
+use crate::operator::Operator;
 use num_complex::Complex;
 use smallvec::SmallVec;
 
 use crate::error::QuSpinError;
-use crate::hamiltonian::ParseOp;
+use crate::operator::ParseOp;
 
 // ---------------------------------------------------------------------------
 // BosonOp
@@ -236,7 +236,7 @@ impl<C: Copy + Ord> Operator<C> for BosonOperator<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hamiltonian::boson::{BosonOp, BosonOpEntry};
+    use crate::operator::boson::{BosonOp, BosonOpEntry};
     use num_complex::Complex;
     use smallvec::smallvec;
 

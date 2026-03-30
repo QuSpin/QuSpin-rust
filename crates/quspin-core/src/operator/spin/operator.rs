@@ -1,7 +1,7 @@
 use crate::bitbasis::{BitInt, manip::DynamicDitManip};
 use crate::error::QuSpinError;
-use crate::hamiltonian::Operator;
-use crate::hamiltonian::ParseOp;
+use crate::operator::Operator;
+use crate::operator::ParseOp;
 use num_complex::Complex;
 use smallvec::SmallVec;
 
@@ -243,7 +243,7 @@ impl<C: Copy + Ord> Operator<C> for SpinOperator<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hamiltonian::spin::{SpinOp, SpinOpEntry};
+    use crate::operator::spin::{SpinOp, SpinOpEntry};
     use num_complex::Complex;
     use smallvec::smallvec;
 

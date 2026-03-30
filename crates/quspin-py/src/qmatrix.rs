@@ -29,9 +29,9 @@ use crate::basis::hardcore::PyHardcoreBasis;
 use crate::dtype::{FromPyDescr, ValueDType};
 use crate::error::Error;
 use crate::hamiltonian::{PyBosonHamiltonian, PyFermionHamiltonian, PyHardcoreHamiltonian};
-use quspin_core::hamiltonian::boson::dispatch::BosonOperatorInner;
-use quspin_core::hamiltonian::fermion::dispatch::FermionOperatorInner;
-use quspin_core::hamiltonian::pauli::dispatch::HardcoreOperatorInner;
+use quspin_core::operator::boson::dispatch::BosonOperatorInner;
+use quspin_core::operator::fermion::dispatch::FermionOperatorInner;
+use quspin_core::operator::pauli::dispatch::HardcoreOperatorInner;
 use quspin_core::with_value_dtype;
 
 // ---------------------------------------------------------------------------
@@ -149,7 +149,7 @@ impl PyQMatrix {
         }
         let v_dtype = <ValueDType as FromPyDescr>::from_descr(py, dtype).map_err(Error::from)?;
 
-        use quspin_core::hamiltonian::bond::dispatch::BondOperatorInner;
+        use quspin_core::operator::bond::dispatch::BondOperatorInner;
         let mat_inner = if basis.inner.is_symmetric() {
             with_value_dtype!(v_dtype, V, {
                 with_sym_basis!(&basis.inner, B, sym_basis, {

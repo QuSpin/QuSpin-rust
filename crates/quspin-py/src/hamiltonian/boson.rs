@@ -22,8 +22,8 @@
 /// - Each `coupling_list` element is `(coeff, site_0, site_1, ...)`.
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::hamiltonian::boson::dispatch::BosonOperatorInner;
-use quspin_core::hamiltonian::boson::{BosonOp, BosonOpEntry, BosonOperator};
+use quspin_core::operator::boson::dispatch::BosonOperatorInner;
+use quspin_core::operator::boson::{BosonOp, BosonOpEntry, BosonOperator};
 
 use super::parse::parse_term;
 
