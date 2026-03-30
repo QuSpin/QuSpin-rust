@@ -1,6 +1,6 @@
 /// Python-facing `PyFermionHamiltonian` pyclass.
 ///
-/// Wraps a `FermionHamiltonianInner` enum that selects the cindex type at
+/// Wraps a `FermionOperatorInner` enum that selects the cindex type at
 /// construction time based on the number of operator strings and site indices.
 ///
 /// ## Python constructor
@@ -19,8 +19,8 @@
 ///   site `2*i+1` = spin-up orbital `i`.
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::hamiltonian::fermion::dispatch::FermionHamiltonianInner;
-use quspin_core::hamiltonian::fermion::{FermionHamiltonian, FermionOp, FermionOpEntry};
+use quspin_core::hamiltonian::fermion::dispatch::FermionOperatorInner;
+use quspin_core::hamiltonian::fermion::{FermionOp, FermionOpEntry, FermionOperator};
 
 use super::parse::parse_term;
 
@@ -30,7 +30,7 @@ use super::parse::parse_term;
 
 #[pyclass(name = "PyFermionHamiltonian")]
 pub struct PyFermionHamiltonian {
-    pub inner: FermionHamiltonianInner,
+    pub inner: FermionOperatorInner,
     /// Number of distinct cindex values (= length of the outer terms list).
     pub num_cindices: usize,
 }
@@ -83,13 +83,13 @@ impl PyFermionHamiltonian {
                 .into_iter()
                 .map(|r| FermionOpEntry::new(r.cindex as u16, r.coeff, r.ops))
                 .collect();
-            FermionHamiltonianInner::Ham16(FermionHamiltonian::new(entries))
+            FermionOperatorInner::Ham16(FermionOperator::new(entries))
         } else {
             let entries: Vec<FermionOpEntry<u8>> = raw
                 .into_iter()
                 .map(|r| FermionOpEntry::new(r.cindex as u8, r.coeff, r.ops))
                 .collect();
-            FermionHamiltonianInner::Ham8(FermionHamiltonian::new(entries))
+            FermionOperatorInner::Ham8(FermionOperator::new(entries))
         };
 
         Ok(PyFermionHamiltonian {

@@ -357,7 +357,7 @@ mod tests {
         // added to the subspace when the net amplitude is zero.
         // Starting from a seed with k ones the subspace dimension must equal
         // C(n_sites, k) for all k in 0..=n_sites.
-        use crate::hamiltonian::hardcore::{HardcoreHamiltonian, HardcoreOp, OpEntry};
+        use crate::hamiltonian::hardcore::{HardcoreOp, HardcoreOperator, OpEntry};
         use smallvec::smallvec;
 
         let n_sites: usize = 6;
@@ -375,7 +375,7 @@ mod tests {
                 smallvec![(HardcoreOp::Y, i), (HardcoreOp::Y, i + 1)],
             ));
         }
-        let ham = HardcoreHamiltonian::new(terms);
+        let ham = HardcoreOperator::new(terms);
 
         for k in 0..=n_sites {
             // Seed: lowest k bits set (e.g. k=2, n=6 → 0b000011)

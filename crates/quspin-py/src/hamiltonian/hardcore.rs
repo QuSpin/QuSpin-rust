@@ -1,8 +1,8 @@
 /// Python-facing `PyHardcoreHamiltonian` pyclass.
 ///
-/// Wraps a `HardcoreHamiltonianInner` enum that selects between
-/// `HardcoreHamiltonian<u8>` (≤ 255 cindices / site indices) and
-/// `HardcoreHamiltonian<u16>` (larger).  The cindex type is chosen at
+/// Wraps a `HardcoreOperatorInner` enum that selects between
+/// `HardcoreOperator<u8>` (≤ 255 cindices / site indices) and
+/// `HardcoreOperator<u16>` (larger).  The cindex type is chosen at
 /// construction time based on the maximum cindex and site index seen in the
 /// input.
 ///
@@ -22,8 +22,8 @@
 /// - `n_sites` is inferred from `max_site_index + 1`.
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
-use quspin_core::hamiltonian::hardcore::{HardcoreHamiltonian, HardcoreOp, OpEntry};
+use quspin_core::hamiltonian::hardcore::dispatch::HardcoreOperatorInner;
+use quspin_core::hamiltonian::hardcore::{HardcoreOp, HardcoreOperator, OpEntry};
 
 use super::parse::parse_term;
 
@@ -33,7 +33,7 @@ use super::parse::parse_term;
 
 #[pyclass(name = "PyHardcoreHamiltonian")]
 pub struct PyHardcoreHamiltonian {
-    pub inner: HardcoreHamiltonianInner,
+    pub inner: HardcoreOperatorInner,
     /// Number of distinct cindex values (= length of the outer terms list).
     pub num_cindices: usize,
 }
@@ -86,13 +86,13 @@ impl PyHardcoreHamiltonian {
                 .into_iter()
                 .map(|r| OpEntry::new(r.cindex as u16, r.coeff, r.ops))
                 .collect();
-            HardcoreHamiltonianInner::Ham16(HardcoreHamiltonian::new(entries))
+            HardcoreOperatorInner::Ham16(HardcoreOperator::new(entries))
         } else {
             let entries: Vec<OpEntry<u8>> = raw
                 .into_iter()
                 .map(|r| OpEntry::new(r.cindex as u8, r.coeff, r.ops))
                 .collect();
-            HardcoreHamiltonianInner::Ham8(HardcoreHamiltonian::new(entries))
+            HardcoreOperatorInner::Ham8(HardcoreOperator::new(entries))
         };
 
         Ok(PyHardcoreHamiltonian {

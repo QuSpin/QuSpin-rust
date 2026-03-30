@@ -6,7 +6,7 @@ use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
 use crate::bitbasis::PermDitMask;
 use crate::error::QuSpinError;
-use crate::hamiltonian::{BondHamiltonianInner, FermionHamiltonianInner};
+use crate::hamiltonian::{BondOperatorInner, FermionOperatorInner};
 use crate::{with_sub_basis_mut, with_sym_basis_mut};
 use num_complex::Complex;
 
@@ -123,7 +123,7 @@ impl FermionBasis {
         self.inner.push_lattice(grp_char, &perm)
     }
 
-    /// Build the subspace reachable from `seeds` using a [`FermionHamiltonianInner`].
+    /// Build the subspace reachable from `seeds` using a [`FermionOperatorInner`].
     ///
     /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
     ///
@@ -132,7 +132,7 @@ impl FermionBasis {
     /// - Basis is already built
     pub fn build_fermion(
         &mut self,
-        ham: &FermionHamiltonianInner,
+        ham: &FermionOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
         if self.space_kind == SpaceKind::Full {
@@ -150,10 +150,10 @@ impl FermionBasis {
                     for seed in seeds {
                         let s = seed_from_bytes::<B>(seed);
                         match ham {
-                            FermionHamiltonianInner::Ham8(h) => {
+                            FermionOperatorInner::Ham8(h) => {
                                 subspace.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
-                            FermionHamiltonianInner::Ham16(h) => {
+                            FermionOperatorInner::Ham16(h) => {
                                 subspace.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
                         }
@@ -165,10 +165,10 @@ impl FermionBasis {
                     for seed in seeds {
                         let s = seed_from_bytes::<B>(seed);
                         match ham {
-                            FermionHamiltonianInner::Ham8(h) => {
+                            FermionOperatorInner::Ham8(h) => {
                                 sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
-                            FermionHamiltonianInner::Ham16(h) => {
+                            FermionOperatorInner::Ham16(h) => {
                                 sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
                         }
@@ -181,7 +181,7 @@ impl FermionBasis {
         Ok(())
     }
 
-    /// Build the subspace reachable from `seeds` using a [`BondHamiltonianInner`].
+    /// Build the subspace reachable from `seeds` using a [`BondOperatorInner`].
     ///
     /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
     ///
@@ -191,10 +191,10 @@ impl FermionBasis {
     /// - `ham.lhss() != 2`
     pub fn build_bond(
         &mut self,
-        ham: &BondHamiltonianInner,
+        ham: &BondOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        use crate::hamiltonian::Hamiltonian;
+        use crate::hamiltonian::Operator;
         use smallvec::SmallVec;
 
         if self.space_kind == SpaceKind::Full {
@@ -216,10 +216,10 @@ impl FermionBasis {
             ($ham_inner:expr, $state:expr) => {{
                 let mut out: SmallVec<[(Complex<f64>, _, u8); 8]> = SmallVec::new();
                 match $ham_inner {
-                    BondHamiltonianInner::Ham8(h) => {
+                    BondOperatorInner::Ham8(h) => {
                         h.apply($state, |c, amp, ns| out.push((amp, ns, c)));
                     }
-                    BondHamiltonianInner::Ham16(h) => {
+                    BondOperatorInner::Ham16(h) => {
                         h.apply($state, |c, amp, ns| out.push((amp, ns, c as u8)));
                     }
                 }
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn fermion_basis_build_fermion() {
-        use crate::hamiltonian::fermion::{FermionHamiltonian, FermionOp, FermionOpEntry};
+        use crate::hamiltonian::fermion::{FermionOp, FermionOpEntry, FermionOperator};
         use smallvec::smallvec;
 
         // Hopping Hamiltonian: H = sum_i (c†_i c_{i+1} + c†_{i+1} c_i), 4 sites.
@@ -316,7 +316,7 @@ mod tests {
                 smallvec![(FermionOp::Plus, i + 1), (FermionOp::Minus, i)],
             ));
         }
-        let ham = FermionHamiltonianInner::Ham8(FermionHamiltonian::new(terms));
+        let ham = FermionOperatorInner::Ham8(FermionOperator::new(terms));
 
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Sub).unwrap();
         // Seed: state 0b0011 = sites 0 and 1 occupied (2-particle sector).
@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn fermion_basis_build_bond() {
-        use crate::hamiltonian::bond::{BondHamiltonian, BondTerm};
+        use crate::hamiltonian::bond::{BondOperator, BondTerm};
         use ndarray::array;
 
         // Hopping matrix for LHSS=2: [[0,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,0]]
@@ -367,7 +367,7 @@ mod tests {
             matrix: hop_mat,
             bonds,
         };
-        let ham = BondHamiltonianInner::Ham8(BondHamiltonian::new(vec![term]).unwrap());
+        let ham = BondOperatorInner::Ham8(BondOperator::new(vec![term]).unwrap());
 
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Sub).unwrap();
         // Seed: state 0b0011 (sites 0 and 1 occupied = 2-particle sector).

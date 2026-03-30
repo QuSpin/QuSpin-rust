@@ -3,17 +3,17 @@
 /// `PyBondTerm` is a thin wrapper around a parsed `(matrix, bonds)` pair.
 /// Shallow validation (dtype, 2-D shape, int pairs) happens at construction;
 /// semantic validation (perfect-square dim, lhss range, site bounds) is
-/// delegated to `BondHamiltonian::new` in quspin-core.
+/// delegated to `BondOperator::new` in quspin-core.
 ///
 /// `PyBondHamiltonian` accepts a `list[PyBondTerm]`, assigns cindices by
-/// position, and forwards to `BondHamiltonian::new`.
+/// position, and forwards to `BondOperator::new`.
 use ndarray::Array2;
 use num_complex::Complex;
 use numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2};
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList, PyTuple};
-use quspin_core::hamiltonian::bond::dispatch::BondHamiltonianInner;
-use quspin_core::hamiltonian::bond::{BondHamiltonian, BondTerm};
+use quspin_core::hamiltonian::bond::dispatch::BondOperatorInner;
+use quspin_core::hamiltonian::bond::{BondOperator, BondTerm};
 
 // ---------------------------------------------------------------------------
 // PyBondTerm
@@ -112,17 +112,17 @@ impl PyBondTerm {
 
 #[pyclass(name = "PyBondHamiltonian")]
 pub struct PyBondHamiltonian {
-    pub inner: BondHamiltonianInner,
+    pub inner: BondOperatorInner,
 }
 
 #[pymethods]
 impl PyBondHamiltonian {
-    /// Construct a BondHamiltonian from a list of `PyBondTerm` objects.
+    /// Construct a BondOperator from a list of `PyBondTerm` objects.
     ///
     /// Each term is assigned a ``cindex`` equal to its position in the list.
     /// ``n_sites`` is inferred from the maximum site index across all bonds,
     /// plus one.  All semantic validation (lhss, matrix shape, site bounds) is
-    /// performed by `BondHamiltonian::new` in quspin-core.
+    /// performed by `BondOperator::new` in quspin-core.
     ///
     /// Args:
     ///     terms (list[PyBondTerm]): One entry per ``cindex``.
@@ -167,9 +167,9 @@ impl PyBondHamiltonian {
                     bonds,
                 })
                 .collect();
-            let ham = BondHamiltonian::new(bond_terms)
+            let ham = BondOperator::new(bond_terms)
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-            BondHamiltonianInner::Ham16(ham)
+            BondOperatorInner::Ham16(ham)
         } else {
             let bond_terms: Vec<BondTerm<u8>> = raw
                 .into_iter()
@@ -179,9 +179,9 @@ impl PyBondHamiltonian {
                     bonds,
                 })
                 .collect();
-            let ham = BondHamiltonian::new(bond_terms)
+            let ham = BondOperator::new(bond_terms)
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-            BondHamiltonianInner::Ham8(ham)
+            BondOperatorInner::Ham8(ham)
         };
 
         Ok(PyBondHamiltonian { inner })

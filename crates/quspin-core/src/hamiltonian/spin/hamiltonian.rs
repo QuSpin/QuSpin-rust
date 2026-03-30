@@ -1,12 +1,12 @@
 use crate::bitbasis::{BitInt, manip::DynamicDitManip};
-use crate::hamiltonian::Hamiltonian;
+use crate::hamiltonian::Operator;
 use num_complex::Complex;
 use smallvec::SmallVec;
 
 use super::op::SpinOpEntry;
 
 // ---------------------------------------------------------------------------
-// SpinHamiltonian
+// SpinOperator
 // ---------------------------------------------------------------------------
 
 /// A collection of operator strings forming a spin-S Hamiltonian.
@@ -20,7 +20,7 @@ use super::op::SpinOpEntry;
 /// Terms are stored sorted by `cindex` and a `DynamicDitManip` is stored
 /// to avoid re-construction on every `apply` call.
 #[derive(Clone, Debug)]
-pub struct SpinHamiltonian<C> {
+pub struct SpinOperator<C> {
     terms: Vec<SpinOpEntry<C>>,
     manip: DynamicDitManip,
     /// Maximum site index across all operator strings (inferred from terms).
@@ -29,7 +29,7 @@ pub struct SpinHamiltonian<C> {
     num_cindices: usize,
 }
 
-impl<C: Copy + Ord> SpinHamiltonian<C> {
+impl<C: Copy + Ord> SpinOperator<C> {
     /// Construct from a list of `SpinOpEntry` terms and the LHSS.
     /// Terms are sorted by `cindex`.
     pub fn new(mut terms: Vec<SpinOpEntry<C>>, lhss: usize) -> Self {
@@ -51,7 +51,7 @@ impl<C: Copy + Ord> SpinHamiltonian<C> {
             .map(|&(_, site)| site as usize)
             .max()
             .unwrap_or(0);
-        SpinHamiltonian {
+        SpinOperator {
             terms,
             manip: DynamicDitManip::new(lhss),
             max_site,
@@ -96,7 +96,7 @@ impl<C: Copy + Ord> SpinHamiltonian<C> {
     }
 }
 
-impl<C: Copy + Ord> Hamiltonian<C> for SpinHamiltonian<C> {
+impl<C: Copy + Ord> Operator<C> for SpinOperator<C> {
     fn max_site(&self) -> usize {
         self.max_site
     }
@@ -237,7 +237,7 @@ mod tests {
         }
     }
 
-    // --- SpinHamiltonian integration: S+_0 S-_1 + S-_0 S+_1 hopping for S=1 ---
+    // --- SpinOperator integration: S+_0 S-_1 + S-_0 S+_1 hopping for S=1 ---
 
     #[test]
     fn spin_one_hopping_connects_states() {
@@ -263,7 +263,7 @@ mod tests {
                 smallvec![(SpinOp::Minus, 0), (SpinOp::Plus, 1)],
             ),
         ];
-        let ham = SpinHamiltonian::new(terms, 3);
+        let ham = SpinOperator::new(terms, 3);
         let result = ham.apply_smallvec(state);
 
         assert_eq!(result.len(), 1);

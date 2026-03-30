@@ -1,27 +1,27 @@
-/// Type-erased `FermionHamiltonianInner`.
+/// Type-erased `FermionOperatorInner`.
 ///
-/// Selects between `FermionHamiltonian<u8>` (≤ 255 cindices / site indices)
-/// and `FermionHamiltonian<u16>` (larger), matching the cindex types supported
+/// Selects between `FermionOperator<u8>` (≤ 255 cindices / site indices)
+/// and `FermionOperator<u16>` (larger), matching the cindex types supported
 /// by `QMatrixInner`.
-use super::FermionHamiltonian;
+use super::FermionOperator;
 
-pub enum FermionHamiltonianInner {
-    Ham8(FermionHamiltonian<u8>),
-    Ham16(FermionHamiltonian<u16>),
+pub enum FermionOperatorInner {
+    Ham8(FermionOperator<u8>),
+    Ham16(FermionOperator<u16>),
 }
 
-impl FermionHamiltonianInner {
+impl FermionOperatorInner {
     pub fn max_site(&self) -> usize {
         match self {
-            FermionHamiltonianInner::Ham8(h) => h.max_site(),
-            FermionHamiltonianInner::Ham16(h) => h.max_site(),
+            FermionOperatorInner::Ham8(h) => h.max_site(),
+            FermionOperatorInner::Ham16(h) => h.max_site(),
         }
     }
 
     pub fn num_cindices(&self) -> usize {
         match self {
-            FermionHamiltonianInner::Ham8(h) => h.num_cindices(),
-            FermionHamiltonianInner::Ham16(h) => h.num_cindices(),
+            FermionOperatorInner::Ham8(h) => h.num_cindices(),
+            FermionOperatorInner::Ham16(h) => h.num_cindices(),
         }
     }
 

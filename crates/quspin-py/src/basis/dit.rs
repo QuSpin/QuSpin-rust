@@ -16,7 +16,7 @@ use quspin_core::basis::{
     space::{FullSpace, Subspace},
 };
 use quspin_core::bitbasis::manip::DynamicDitManip;
-use quspin_core::hamiltonian::boson::dispatch::BosonHamiltonianInner;
+use quspin_core::hamiltonian::boson::dispatch::BosonOperatorInner;
 
 // ---------------------------------------------------------------------------
 // PyDitBasis
@@ -103,10 +103,10 @@ impl PyDitBasis {
                 for s in &seed_list {
                     let seed = dit_seed_from_bytes::<B>(s, &manip);
                     match &ham.inner {
-                        BosonHamiltonianInner::Ham8(h) => {
+                        BosonOperatorInner::Ham8(h) => {
                             basis.build(seed, |state| h.apply_smallvec(state).into_iter());
                         }
-                        BosonHamiltonianInner::Ham16(h) => {
+                        BosonOperatorInner::Ham16(h) => {
                             basis.build(seed, |state| h.apply_smallvec(state).into_iter());
                         }
                     }

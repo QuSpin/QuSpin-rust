@@ -6,7 +6,7 @@ use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
 use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
 use crate::error::QuSpinError;
-use crate::hamiltonian::{BondHamiltonianInner, BosonHamiltonianInner};
+use crate::hamiltonian::{BondOperatorInner, BosonOperatorInner};
 use crate::{with_dit_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut};
 use num_complex::Complex;
 
@@ -154,7 +154,7 @@ impl BosonBasis {
         self.inner.push_lattice(grp_char, &perm)
     }
 
-    /// Build the subspace reachable from `seeds` using a [`BosonHamiltonianInner`].
+    /// Build the subspace reachable from `seeds` using a [`BosonOperatorInner`].
     ///
     /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
     ///
@@ -167,7 +167,7 @@ impl BosonBasis {
     /// - `ham.lhss() != self.lhss`
     pub fn build_boson(
         &mut self,
-        ham: &BosonHamiltonianInner,
+        ham: &BosonOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
         if self.space_kind == SpaceKind::Full {
@@ -204,10 +204,10 @@ impl BosonBasis {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
                         match ham {
-                            BosonHamiltonianInner::Ham8(h) => {
+                            BosonOperatorInner::Ham8(h) => {
                                 subspace.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
-                            BosonHamiltonianInner::Ham16(h) => {
+                            BosonOperatorInner::Ham16(h) => {
                                 subspace.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
                         }
@@ -219,10 +219,10 @@ impl BosonBasis {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
                         match ham {
-                            BosonHamiltonianInner::Ham8(h) => {
+                            BosonOperatorInner::Ham8(h) => {
                                 sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
-                            BosonHamiltonianInner::Ham16(h) => {
+                            BosonOperatorInner::Ham16(h) => {
                                 sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
                         }
@@ -234,10 +234,10 @@ impl BosonBasis {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
                         match ham {
-                            BosonHamiltonianInner::Ham8(h) => {
+                            BosonOperatorInner::Ham8(h) => {
                                 sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
-                            BosonHamiltonianInner::Ham16(h) => {
+                            BosonOperatorInner::Ham16(h) => {
                                 sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
                         }
@@ -250,7 +250,7 @@ impl BosonBasis {
         Ok(())
     }
 
-    /// Build the subspace reachable from `seeds` using a [`BondHamiltonianInner`].
+    /// Build the subspace reachable from `seeds` using a [`BondOperatorInner`].
     ///
     /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
     ///
@@ -260,10 +260,10 @@ impl BosonBasis {
     /// - `ham.lhss() != self.lhss`
     pub fn build_bond(
         &mut self,
-        ham: &BondHamiltonianInner,
+        ham: &BondOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        use crate::hamiltonian::Hamiltonian;
+        use crate::hamiltonian::Operator;
         use smallvec::SmallVec;
 
         if self.space_kind == SpaceKind::Full {
@@ -286,10 +286,10 @@ impl BosonBasis {
             ($ham_inner:expr, $state:expr) => {{
                 let mut out: SmallVec<[(Complex<f64>, _, u8); 8]> = SmallVec::new();
                 match $ham_inner {
-                    BondHamiltonianInner::Ham8(h) => {
+                    BondOperatorInner::Ham8(h) => {
                         h.apply($state, |c, amp, ns| out.push((amp, ns, c)));
                     }
-                    BondHamiltonianInner::Ham16(h) => {
+                    BondOperatorInner::Ham16(h) => {
                         h.apply($state, |c, amp, ns| out.push((amp, ns, c as u8)));
                     }
                 }
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn boson_basis_build_boson_lhss2() {
-        use crate::hamiltonian::boson::{BosonHamiltonian, BosonOp, BosonOpEntry};
+        use crate::hamiltonian::boson::{BosonOp, BosonOpEntry, BosonOperator};
         use smallvec::smallvec;
 
         // H = a†_0 a_1 + a_0 a†_1  (hopping), lhss=2, 4 sites
@@ -416,7 +416,7 @@ mod tests {
                 smallvec![(BosonOp::Minus, i), (BosonOp::Plus, i + 1)],
             ));
         }
-        let ham = BosonHamiltonianInner::Ham8(BosonHamiltonian::new(terms, lhss));
+        let ham = BosonOperatorInner::Ham8(BosonOperator::new(terms, lhss));
 
         let mut basis = BosonBasis::new(n_sites, lhss, SpaceKind::Sub).unwrap();
         // Seed: 2 bosons, sites 0 and 1 occupied.
@@ -429,7 +429,7 @@ mod tests {
 
     #[test]
     fn boson_basis_build_bond_lhss3() {
-        use crate::hamiltonian::bond::{BondHamiltonian, BondTerm};
+        use crate::hamiltonian::bond::{BondOperator, BondTerm};
         use ndarray::Array2;
 
         // Hopping matrix for lhss=3 (9x9): swaps |1,0> <-> |0,1> at two sites.
@@ -451,7 +451,7 @@ mod tests {
             matrix: mat,
             bonds,
         };
-        let ham = BondHamiltonianInner::Ham8(BondHamiltonian::new(vec![term]).unwrap());
+        let ham = BondOperatorInner::Ham8(BondOperator::new(vec![term]).unwrap());
 
         let mut basis = BosonBasis::new(n_sites, lhss, SpaceKind::Sub).unwrap();
         // Seed: 1 boson at site 0 (dit=1), all others empty (dit=0).

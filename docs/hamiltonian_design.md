@@ -210,6 +210,239 @@ overhead is bounded per matrix-vector operation.
 
 ---
 
+## Implementation plan
+
+### Current state (as of 2026-03-29)
+
+| Component | Status | Notes |
+|---|---|---|
+| `QMatrix<V, I, C>` | Exists | Single type param `V`; no M/V split; no `remap_cindices` |
+| `trait Hamiltonian<C>` / `SpinHamiltonian` / etc. | Exists | Needs rename to `operator` module |
+| `Hamiltonian<M, I, C>` struct | Not started | |
+| `HamiltonianInner` | Not started | |
+| `TimeEvolution` / `SchrodingerEq` | Not started | |
+| `quspin-py` bindings | Frozen | Full rewrite planned after quspin-core refactor |
+
+---
+
+### Step 0 — `QMatrix` refactor (`qmatrix/matrix.rs`, `qmatrix/ops.rs`, `qmatrix/build.rs`, `qmatrix/dispatch.rs`)
+
+This is a prerequisite for everything else.
+
+**0a — Rename type parameter `V → M`**
+
+Mechanical rename throughout `matrix.rs`, `Entry`, `QMatrix`, `ops.rs`
+(`binary_op`), `build.rs` (`build_from_basis`), and `dispatch.rs`
+(`QMatrixInner` and `with_qmatrix!`).  No logic changes.
+
+**0b — Split computation methods to accept a separate output type `V`**
+
+Affect: `dot`, `dot_transpose`, `to_csr`, `to_csr_into`, `to_csr_nnz`,
+`to_dense`, `to_dense_into`.  Each gains a type parameter `V: Primitive` for
+the output/coefficient type, distinct from the stored type `M`.
+
+The conversion path in method bodies becomes:
+
+```rust
+let entry_as_v = V::from_complex(entry.value.to_complex()); // M → Complex<f64> → V
+let contrib = coeff[c] * entry_as_v * input[col];           // V × V × V → V
+```
+
+`check_coeff` and `check_dot_args` are updated to accept `&[V]` rather than
+`&[M]`.  Call sites that were `dot::<V>(...)` must now supply `V` explicitly.
+
+Update the `with_qmatrix!` macro: inject `type $M = ...` instead of
+`type $V = ...`.
+
+**0c — Add `remap_cindices`**
+
+```rust
+pub fn remap_cindices(self, mapping: &[C]) -> Self
+```
+
+Iterates `self.data`, replaces each `entry.cindex` with `mapping[entry.cindex.as_usize()]`,
+then re-sorts each row by `(col, cindex)` and recomputes `num_coeff`.
+Precondition (documented, not checked): the remapping does not create duplicate
+`(col, cindex)` keys within any row.
+
+**Tests to add:**
+- `dot` with `M = f64`, `V = Complex<f64>` (cross-type call)
+- `remap_cindices` round-trip: remap then verify row order and `num_coeff`
+
+---
+
+### Step 1 — `operator` module rename
+
+All changes are in `crates/quspin-core/src/`:
+
+| Old | New |
+|---|---|
+| `src/hamiltonian/` directory | `src/operator/` directory |
+| `hamiltonian/mod.rs`: `pub trait Hamiltonian<C>` | `operator/mod.rs`: `pub trait Operator<C>` |
+| `SpinHamiltonian` / `SpinHamiltonianInner` | `SpinOperator` / `SpinOperatorInner` |
+| `FermionHamiltonian` / `FermionHamiltonianInner` | `FermionOperator` / `FermionOperatorInner` |
+| `BosonHamiltonian` / `BosonHamiltonianInner` | `BosonOperator` / `BosonOperatorInner` |
+| `HardcoreHamiltonian` / `HardcoreHamiltonianInner` | `HardcoreOperator` / `HardcoreOperatorInner` |
+| `BondHamiltonian` / `BondHamiltonianInner` | `BondOperator` / `BondOperatorInner` |
+| `lib.rs`: `pub use hamiltonian::{Hamiltonian, ParseOp}` | `pub use operator::{Operator, ParseOp}` |
+
+`ParseOp`, `BondTerm`, all `*Op`, and `*OpEntry` types are **unchanged**.
+
+Update `qmatrix/build.rs`: `Hamiltonian<C>` bound → `Operator<C>`.
+
+Update `quspin-py` call sites (even though the module is frozen, it must compile).
+
+---
+
+### Step 2 — New `hamiltonian` module (`src/hamiltonian/mod.rs`)
+
+Create the directory `src/hamiltonian/` with `mod.rs`.
+
+**2a — `Hamiltonian<M, I, C>` struct and constructor**
+
+```rust
+pub struct Hamiltonian<M: Primitive, I: Index, C: CIndex> {
+    matrix: QMatrix<M, I, C>,
+    coeff_fns: Vec<Arc<dyn Fn(f64) -> Complex<f64> + Send + Sync>>,
+}
+```
+
+Constructor validates `coeff_fns.len() == matrix.num_coeff().saturating_sub(1)`.
+
+**2b — `eval_coeffs` and public query methods**
+
+`eval_coeffs(&self, t: f64) -> Vec<Complex<f64>>` prepends the static `1.0`
+and evaluates each function at `t`.
+
+`dim()`, `num_coeff()` — delegate to `self.matrix`.
+
+**2c — Time-parameterised output methods**
+
+All output type is fixed to `Complex<f64>`.  Each method calls
+`let coeffs = self.eval_coeffs(time)` then delegates to
+`self.matrix.{method}::<Complex<f64>>(&coeffs, ...)`:
+
+- `to_csr_nnz(time, drop_zeros) -> Result<usize>`
+- `to_csr_into(time, drop_zeros, indptr, indices, data: &mut [Complex<f64>]) -> Result<()>`
+- `to_csr(time, drop_zeros) -> Result<(Vec<I>, Vec<I>, Vec<Complex<f64>>)>`
+- `to_dense_into(time, output: &mut [Complex<f64>]) -> Result<()>`
+- `to_dense(time) -> Result<Vec<Complex<f64>>>`
+- `dot(overwrite, time, input, output: &mut [Complex<f64>]) -> Result<()>`
+- `dot_transpose(overwrite, time, input, output: &mut [Complex<f64>]) -> Result<()>`
+
+**2d — `Add` / `Sub` with cindex merging**
+
+Implement `Add<Output = Self>` and `Sub<Output = Self>` for
+`Hamiltonian<M, I, C>` using the algorithm from the design doc:
+
+1. Deduplicate `coeff_fns` from both operands by `Arc::ptr_eq`, building
+   `lhs_cindex_map` and `rhs_cindex_map`.
+2. Call `lhs.matrix.remap_cindices(&lhs_cindex_map)` and same for rhs.
+3. Call `binary_op` (reuse from `ops.rs`) on the remapped matrices.
+4. Wrap in `Hamiltonian { matrix: result_mat, coeff_fns: merged_fns }`.
+
+`cindex 0` (the static part) always maps to `0` in both operands and is never
+remapped.
+
+**2e — `HamiltonianInner`**
+
+12-variant enum mirroring `QMatrixInner`: `M × C`, index type fixed to `i64`.
+
+```rust
+pub enum HamiltonianInner {
+    HMf64U8(Hamiltonian<f64, i64, u8>),
+    HMf64U16(Hamiltonian<f64, i64, u16>),
+    // … 10 more variants …
+}
+```
+
+Methods exposed: `dim()`, `num_coeff()`, `dtype_name()`, `try_add`,
+`try_sub`, and the time-parameterised operations (all returning
+`Complex<f64>`).
+
+Add `with_hamiltonian!` macro following the same pattern as `with_qmatrix!`.
+
+Re-export from `lib.rs`:
+```rust
+pub mod hamiltonian;
+pub use hamiltonian::{Hamiltonian, HamiltonianInner};
+```
+
+**Tests to add:**
+- `eval_coeffs` returns `[1.0, f(t)]` for a one-function Hamiltonian.
+- `dot` at time `t` equals manual `coeff_fns[0](t) * qmatrix.dot(...)`.
+- `Add`: two Hamiltonians sharing the same `Arc` function collapse to one cindex.
+- `Add`: two Hamiltonians with distinct functions preserve both cindices.
+
+---
+
+### Step 3 — `quspin-py` bindings (deferred)
+
+`quspin-py` is frozen pending a full rewrite.  When that rewrite begins:
+
+- Add `PyCoeffFn(Py<PyAny>)` wrapper implementing `Fn(f64) -> Complex<f64>`
+  (GIL acquired once per `eval_coeffs` call).
+- Expose `HamiltonianInner` as a Python class.
+- Construct `HamiltonianInner` from a `QMatrixInner` + list of Python callables.
+
+---
+
+### Step 4 — Time evolution
+
+**4a — Path A: internal stepper (`src/hamiltonian/evolve.rs`)**
+
+Implement a self-contained DOP853 adaptive Runge-Kutta stepper operating on
+`Vec<Complex<f64>>` (no `Copy` constraint, arbitrary runtime dimension):
+
+```rust
+pub struct TimeEvolution<M: Primitive, I: Index, C: CIndex> {
+    hamiltonian: Hamiltonian<M, I, C>,
+}
+
+impl<M, I, C> TimeEvolution<M, I, C> {
+    pub fn evolve(
+        &self,
+        psi: &mut Vec<Complex<f64>>,
+        t0: f64,
+        tf: f64,
+        rtol: f64,
+        atol: f64,
+    ) -> Result<EvolutionStats, QuSpinError>
+}
+```
+
+The RHS kernel is `dψ/dt = -i·H(t)·ψ`, computed by calling
+`hamiltonian.dot(overwrite=true, t, psi, scratch)` and then
+`output[k] = Complex { re: scratch[k].im, im: -scratch[k].re }`.
+
+Define `EvolutionStats { steps: usize, rejected: usize }`.
+
+This path has **no new dependencies**.
+
+**4b — Path B: `differential-equations` bridge (`src/hamiltonian/schrodinger.rs`)**
+
+Add an optional Cargo feature `differential-equations` gating this module.
+
+```toml
+[features]
+differential-equations = ["dep:differential-equations", "dep:nalgebra", "dep:bytemuck"]
+```
+
+Add to `Cargo.toml` dependencies:
+```toml
+num-complex = { version = "0.4", features = ["bytemuck"] }
+bytemuck = { version = "1", optional = true }
+```
+
+Implement `SchrodingerEq<M, I, C, const N>` with `ODE<f64, SVector<f64, N>>`,
+using zero-copy `bytemuck::cast_slice` to reinterpret the interleaved
+`SVector<f64, N>` as `&[Complex<f64>]` (valid because `Complex<f64>` is
+`#[repr(C)]` with the same layout as `[f64; 2]`).
+
+This path is opt-in; expose it from `quspin-py` only after Path A is stable.
+
+---
+
 ## Part 5: Time evolution — `differential-equations` integration
 
 ### The Schrödinger equation

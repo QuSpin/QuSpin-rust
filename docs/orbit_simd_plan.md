@@ -165,8 +165,61 @@ variant is leaving performance on the table.
 |------|---------|--------|--------|
 | 1 | `orbit.rs` | Replace `Vec` with `SmallVec<[_; 64]>` in `iter_images` | ✅ Done |
 | 2 | `orbit.rs`, `traits.rs`, `spin.rs`, `sym.rs`, `build.rs` | Batch variants + branchless updates + callers | ✅ Done |
-| 3 | `bitbasis/transform.rs`, `LatticeElement` | Benes permutation backend | Pending |
+| 3 | `bitbasis/transform.rs`, `LatticeElement` | Benes permutation backend | ✅ Infrastructure done — cleanup pending |
 | 4 | `orbit.rs` | Explicit SIMD intrinsics if needed | Pending (post-profiling) |
+
+---
+
+## Step 3 — Current state (as of 2026-03-29)
+
+The Benes infrastructure landed ahead of the design doc being updated.  The
+production code path already uses the Benes backend end-to-end:
+
+- `BenesNetwork` / `gen_benes` — `bitbasis/benes.rs` ✅
+- `BenesPermDitLocations<B>` — `bitbasis/transform.rs` ✅
+- `BenesLatticeElement<B>` implementing `LatEl<B>` — `basis/lattice.rs` ✅
+- `SymBasis` stores `Vec<BenesLatticeElement<B>>` and calls
+  `BenesPermDitLocations::new` in `push_lattice` — `basis/sym.rs` ✅
+
+`LatticeElement` (the old `PermDitLocations` backend) survives only as a test
+fixture in `orbit.rs`; it is no longer used by any production type.
+
+### Remaining cleanup tasks for Step 3
+
+**3a — Migrate `orbit.rs` tests to `BenesLatticeElement`**
+
+The existing tests construct `LatticeElement` (naive backend).  Add a
+`benes_lat()` helper that mirrors `lat()` but wraps `BenesPermDitLocations`,
+then add or parameterise the batch cross-check tests to run through
+`BenesLatticeElement`.  This proves the production code path is covered.
+
+**3b — Remove `LatticeElement` from production code**
+
+Once 3a is done `LatticeElement`, its `impl LatticeElement` block, and
+`impl<B: BitInt> LatEl<B> for LatticeElement` can all be deleted from
+`lattice.rs`.  Remove the `PermDitLocations` import at the top of that file
+and drop the `LatticeElement` import from the `orbit.rs` test module.
+
+**3c — Update this document**
+
+Mark Step 3 as fully done in the summary table above.
+
+---
+
+## Step 4 — Pre-work: benchmarks
+
+Before writing explicit SIMD, gather data.  Create
+`crates/quspin-core/benches/orbit_batch.rs`:
+
+- Benchmark `check_refstate_batch` with a 32-site translation group
+  (32 lattice elements), batch sizes 1024–8192, `u32` states.
+- Repeat for `u64` states.
+- Inspect the generated assembly with
+  `RUSTFLAGS="-C target-cpu=native" cargo asm` and look for `vmovdqu`,
+  `vpcmpgtd`, `vpmaxud` to confirm AVX2 vectorisation.
+
+Only proceed to explicit intrinsics if profiling shows throughput is
+materially below what AVX2 should deliver.
 
 ---
 

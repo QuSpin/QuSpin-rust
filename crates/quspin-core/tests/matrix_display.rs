@@ -5,7 +5,7 @@ use num_complex::Complex;
 use quspin_core::basis::BasisSpace;
 use quspin_core::basis::seed::state_to_str;
 use quspin_core::basis::space::FullSpace;
-use quspin_core::hamiltonian::hardcore::hamiltonian::HardcoreHamiltonian;
+use quspin_core::hamiltonian::hardcore::hamiltonian::HardcoreOperator;
 use quspin_core::hamiltonian::hardcore::op::{HardcoreOp, OpEntry};
 use quspin_core::qmatrix::build::build_from_basis;
 use quspin_core::qmatrix::matrix::QMatrix;
@@ -38,7 +38,7 @@ fn fmt_complex(c: Complex<f64>) -> String {
     }
 }
 
-fn print_hamiltonian(ham: &HardcoreHamiltonian<u8>) {
+fn print_hamiltonian(ham: &HardcoreOperator<u8>) {
     println!("Hamiltonian (max_site={}):", ham.max_site());
     for term in ham.terms() {
         let ops: String = term
@@ -80,7 +80,7 @@ fn print_dense(mat: &QMatrix<f64, i64, u8>, coeff: &[f64]) {
     }
 }
 
-fn show(label: &str, ham: &HardcoreHamiltonian<u8>, basis: &FullSpace<u32>, coeff: &[f64]) {
+fn show(label: &str, ham: &HardcoreOperator<u8>, basis: &FullSpace<u32>, coeff: &[f64]) {
     let sep = "=".repeat(60);
     println!("\n{sep}");
     println!("{label}");
@@ -97,31 +97,31 @@ fn show(label: &str, ham: &HardcoreHamiltonian<u8>, basis: &FullSpace<u32>, coef
 // Hamiltonians
 // ---------------------------------------------------------------------------
 
-fn single_z(site: u32, _n_sites: usize) -> HardcoreHamiltonian<u8> {
-    HardcoreHamiltonian::new(vec![OpEntry::new(
+fn single_z(site: u32, _n_sites: usize) -> HardcoreOperator<u8> {
+    HardcoreOperator::new(vec![OpEntry::new(
         0u8,
         Complex::new(1.0, 0.0),
         smallvec![(HardcoreOp::Z, site)],
     )])
 }
 
-fn single_x(site: u32, _n_sites: usize) -> HardcoreHamiltonian<u8> {
-    HardcoreHamiltonian::new(vec![OpEntry::new(
+fn single_x(site: u32, _n_sites: usize) -> HardcoreOperator<u8> {
+    HardcoreOperator::new(vec![OpEntry::new(
         0u8,
         Complex::new(1.0, 0.0),
         smallvec![(HardcoreOp::X, site)],
     )])
 }
 
-fn two_body(op0: HardcoreOp, op1: HardcoreOp, _n_sites: usize) -> HardcoreHamiltonian<u8> {
-    HardcoreHamiltonian::new(vec![OpEntry::new(
+fn two_body(op0: HardcoreOp, op1: HardcoreOp, _n_sites: usize) -> HardcoreOperator<u8> {
+    HardcoreOperator::new(vec![OpEntry::new(
         0u8,
         Complex::new(1.0, 0.0),
         smallvec![(op0, 0), (op1, 1)],
     )])
 }
 
-fn heisenberg_chain(n_sites: usize) -> HardcoreHamiltonian<u8> {
+fn heisenberg_chain(n_sites: usize) -> HardcoreOperator<u8> {
     // H = Σ_i (X_i X_{i+1} + Y_i Y_{i+1} + Z_i Z_{i+1})
     // All bonds share cindex=0.
     let mut terms = Vec::new();
@@ -138,12 +138,12 @@ fn heisenberg_chain(n_sites: usize) -> HardcoreHamiltonian<u8> {
             ));
         }
     }
-    HardcoreHamiltonian::new(terms)
+    HardcoreOperator::new(terms)
 }
 
 /// H = J Σ_i ZZ_{i,i+1} + h Σ_i X_i
 /// cindex=0 → J (ZZ bonds), cindex=1 → h (X field)
-fn tfi_chain(n_sites: usize) -> HardcoreHamiltonian<u8> {
+fn tfi_chain(n_sites: usize) -> HardcoreOperator<u8> {
     let mut terms = Vec::new();
     for i in 0..(n_sites - 1) as u32 {
         terms.push(OpEntry::new(
@@ -159,7 +159,7 @@ fn tfi_chain(n_sites: usize) -> HardcoreHamiltonian<u8> {
             smallvec![(HardcoreOp::X, i)],
         ));
     }
-    HardcoreHamiltonian::new(terms)
+    HardcoreOperator::new(terms)
 }
 
 // ---------------------------------------------------------------------------

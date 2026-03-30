@@ -15,26 +15,26 @@ use std::ops::{Add, Sub};
 /// zeros.
 ///
 /// Mirrors `binary_op` from `qmatrix.hpp` (sequential single-thread branch).
-fn binary_op<V, I, C, Op>(
+fn binary_op<M, I, C, Op>(
     op: Op,
-    lhs: &QMatrix<V, I, C>,
-    rhs: &QMatrix<V, I, C>,
-) -> QMatrix<V, I, C>
+    lhs: &QMatrix<M, I, C>,
+    rhs: &QMatrix<M, I, C>,
+) -> QMatrix<M, I, C>
 where
-    V: Primitive + PartialEq,
+    M: Primitive + PartialEq,
     I: Index,
     C: CIndex,
-    Op: Fn(V, V) -> V,
+    Op: Fn(M, M) -> M,
 {
     assert_eq!(lhs.dim(), rhs.dim(), "QMatrix dimensions must match");
 
     let dim = lhs.dim();
     let mut indptr = Vec::with_capacity(dim + 1);
-    let mut data: Vec<Entry<V, I, C>> = Vec::new();
+    let mut data: Vec<Entry<M, I, C>> = Vec::new();
 
     indptr.push(I::from_usize(0));
 
-    let zero = V::default();
+    let zero = M::default();
 
     for r in 0..dim {
         let mut li = lhs.row(r).iter().peekable();
@@ -99,26 +99,26 @@ where
     QMatrix::from_csr(indptr, data)
 }
 
-impl<V, I, C> Add for QMatrix<V, I, C>
+impl<M, I, C> Add for QMatrix<M, I, C>
 where
-    V: Primitive + PartialEq + Add<Output = V>,
+    M: Primitive + PartialEq + Add<Output = M>,
     I: Index,
     C: CIndex,
 {
-    type Output = QMatrix<V, I, C>;
+    type Output = QMatrix<M, I, C>;
 
     fn add(self, rhs: Self) -> Self::Output {
         binary_op(|a, b| a + b, &self, &rhs)
     }
 }
 
-impl<V, I, C> Sub for QMatrix<V, I, C>
+impl<M, I, C> Sub for QMatrix<M, I, C>
 where
-    V: Primitive + PartialEq + Sub<Output = V>,
+    M: Primitive + PartialEq + Sub<Output = M>,
     I: Index,
     C: CIndex,
 {
-    type Output = QMatrix<V, I, C>;
+    type Output = QMatrix<M, I, C>;
 
     fn sub(self, rhs: Self) -> Self::Output {
         binary_op(|a, b| a - b, &self, &rhs)

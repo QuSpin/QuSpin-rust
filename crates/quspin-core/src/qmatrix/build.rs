@@ -4,7 +4,7 @@ use crate::basis::{
     sym::{NormInt, SymBasis},
 };
 use crate::bitbasis::{BitInt, BitStateOp};
-use crate::hamiltonian::Hamiltonian;
+use crate::hamiltonian::Operator;
 use crate::primitive::Primitive;
 use num_complex::Complex;
 use smallvec::SmallVec;
@@ -22,23 +22,23 @@ use smallvec::SmallVec;
 /// Mirrors `qmatrix::calculate_row` for `space` / `subspace` variants.
 ///
 /// # Type parameters
-/// - `H` — Hamiltonian type implementing `Hamiltonian<C>`
+/// - `H` — Operator type implementing `Operator<C>`
 /// - `B` — basis integer type
-/// - `V` — matrix element type
+/// - `M` — matrix element type
 /// - `I` — CSR index type
 /// - `C` — operator-string index type
-pub fn build_from_basis<H, B, V, I, C, S>(ham: &H, basis: &S) -> QMatrix<V, I, C>
+pub fn build_from_basis<H, B, M, I, C, S>(ham: &H, basis: &S) -> QMatrix<M, I, C>
 where
-    H: Hamiltonian<C>,
+    H: Operator<C>,
     B: BitInt,
-    V: Primitive,
+    M: Primitive,
     I: Index,
     C: CIndex + Copy + Ord,
     S: BasisSpace<B>,
 {
     let dim = basis.size();
     let mut indptr = Vec::with_capacity(dim + 1);
-    let mut data: Vec<Entry<V, I, C>> = Vec::new();
+    let mut data: Vec<Entry<M, I, C>> = Vec::new();
 
     indptr.push(I::from_usize(0));
 
@@ -51,14 +51,14 @@ where
                 return;
             };
             let col = I::from_usize(col_idx);
-            let value = V::from_complex(amp);
+            let value = M::from_complex(amp);
 
             // Merge with existing entry at same (col, cindex) if present.
             let existing = data[row_start..]
                 .iter_mut()
                 .find(|e| e.col == col && e.cindex == cindex);
             if let Some(e) = existing {
-                e.value = V::from_complex(e.value.to_complex() + amp);
+                e.value = M::from_complex(e.value.to_complex() + amp);
             } else {
                 data.push(Entry::new(value, col, cindex));
             }
@@ -85,22 +85,22 @@ where
 /// and the matrix element is scaled by the group character and norm ratio.
 ///
 /// Mirrors `qmatrix::calculate_row` for `symmetric_subspace`.
-pub fn build_from_symmetric<H, B, L, N, V, I, C>(
+pub fn build_from_symmetric<H, B, L, N, M, I, C>(
     ham: &H,
     basis: &SymBasis<B, L, N>,
-) -> QMatrix<V, I, C>
+) -> QMatrix<M, I, C>
 where
-    H: Hamiltonian<C>,
+    H: Operator<C>,
     B: BitInt,
     L: BitStateOp<B>,
     N: NormInt,
-    V: Primitive,
+    M: Primitive,
     I: Index,
     C: CIndex + Copy + Ord,
 {
     let dim = basis.size();
     let mut indptr = Vec::with_capacity(dim + 1);
-    let mut data: Vec<Entry<V, I, C>> = Vec::new();
+    let mut data: Vec<Entry<M, I, C>> = Vec::new();
 
     indptr.push(I::from_usize(0));
 
@@ -141,13 +141,13 @@ where
                 let scale = grp_char * (new_norm / norm).sqrt();
                 let full_amp = amp * scale;
                 let col = I::from_usize(col_idx);
-                let value = V::from_complex(full_amp);
+                let value = M::from_complex(full_amp);
 
                 let existing = data[row_start..]
                     .iter_mut()
                     .find(|e| e.col == col && e.cindex == *cindex);
                 if let Some(e) = existing {
-                    e.value = V::from_complex(e.value.to_complex() + full_amp);
+                    e.value = M::from_complex(e.value.to_complex() + full_amp);
                 } else {
                     data.push(Entry::new(value, col, *cindex));
                 }
@@ -171,17 +171,17 @@ where
 mod tests {
     use super::*;
     use crate::basis::space::{FullSpace, Subspace};
-    use crate::hamiltonian::HardcoreHamiltonian;
+    use crate::hamiltonian::HardcoreOperator;
     use num_complex::Complex;
     use smallvec::smallvec;
 
-    fn xx_ham() -> HardcoreHamiltonian<u8> {
+    fn xx_ham() -> HardcoreOperator<u8> {
         use crate::hamiltonian::hardcore::{HardcoreOp, OpEntry};
         // H = Σ_i X_i X_{i+1}, two-site chain
         // Term 0: X_0 X_1, cindex=0, coeff=1
         let ops0 = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops0)];
-        HardcoreHamiltonian::new(terms)
+        HardcoreOperator::new(terms)
     }
 
     #[test]
@@ -219,7 +219,7 @@ mod tests {
         use crate::hamiltonian::hardcore::{HardcoreOp, OpEntry};
         let ops = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)];
-        let ham = HardcoreHamiltonian::new(terms);
+        let ham = HardcoreOperator::new(terms);
 
         let mut sub = Subspace::<u32>::new(2, 2, false);
         // seed with |01⟩=1

@@ -1,12 +1,12 @@
 use crate::bitbasis::{BitInt, manip::DynamicDitManip};
-use crate::hamiltonian::Hamiltonian;
+use crate::hamiltonian::Operator;
 use num_complex::Complex;
 use smallvec::SmallVec;
 
 use super::op::BosonOpEntry;
 
 // ---------------------------------------------------------------------------
-// BosonHamiltonian
+// BosonOperator
 // ---------------------------------------------------------------------------
 
 /// A collection of operator strings forming a bosonic Hamiltonian.
@@ -20,7 +20,7 @@ use super::op::BosonOpEntry;
 /// Terms are stored sorted by `cindex` and a `DynamicDitManip` is stored
 /// to avoid re-construction on every `apply` call.
 #[derive(Clone, Debug)]
-pub struct BosonHamiltonian<C> {
+pub struct BosonOperator<C> {
     terms: Vec<BosonOpEntry<C>>,
     manip: DynamicDitManip,
     /// Maximum site index across all operator strings (inferred from terms).
@@ -29,7 +29,7 @@ pub struct BosonHamiltonian<C> {
     num_cindices: usize,
 }
 
-impl<C: Copy + Ord> BosonHamiltonian<C> {
+impl<C: Copy + Ord> BosonOperator<C> {
     /// Construct from a list of `BosonOpEntry` terms, the LHSS, and the number
     /// of distinct cindices.  Terms are sorted by `cindex`.
     pub fn new(mut terms: Vec<BosonOpEntry<C>>, lhss: usize) -> Self {
@@ -51,7 +51,7 @@ impl<C: Copy + Ord> BosonHamiltonian<C> {
             .map(|&(_, site)| site as usize)
             .max()
             .unwrap_or(0);
-        BosonHamiltonian {
+        BosonOperator {
             terms,
             manip: DynamicDitManip::new(lhss),
             max_site,
@@ -96,7 +96,7 @@ impl<C: Copy + Ord> BosonHamiltonian<C> {
     }
 }
 
-impl<C: Copy + Ord> Hamiltonian<C> for BosonHamiltonian<C> {
+impl<C: Copy + Ord> Operator<C> for BosonOperator<C> {
     fn max_site(&self) -> usize {
         self.max_site
     }
@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(amp, Complex::new(0.0, 0.0));
     }
 
-    // --- BosonHamiltonian::apply ---
+    // --- BosonOperator::apply ---
 
     #[test]
     fn hamiltonian_hop_connects_states() {
@@ -216,7 +216,7 @@ mod tests {
                 smallvec![(BosonOp::Minus, 0), (BosonOp::Plus, 1)],
             ),
         ];
-        let ham = BosonHamiltonian::new(terms, 3);
+        let ham = BosonOperator::new(terms, 3);
         let result = ham.apply_smallvec(state);
 
         // Only a_0 a†_1 |1,0⟩ is non-zero: gives |0,1⟩ with amp 1
@@ -239,7 +239,7 @@ mod tests {
             Complex::new(1.0, 0.0),
             smallvec![(BosonOp::N, 0)],
         )];
-        let ham = BosonHamiltonian::new(terms, 4);
+        let ham = BosonOperator::new(terms, 4);
         let result = ham.apply_smallvec(state);
 
         assert_eq!(result.len(), 1);

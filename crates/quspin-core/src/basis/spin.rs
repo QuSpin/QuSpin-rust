@@ -5,7 +5,7 @@ use super::space::{FullSpace, Subspace};
 use super::sym::SymBasis;
 use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
 use crate::error::QuSpinError;
-use crate::hamiltonian::{BondHamiltonianInner, SpinHamiltonianInner};
+use crate::hamiltonian::{BondOperatorInner, SpinOperatorInner};
 use crate::{with_dit_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut};
 use num_complex::Complex;
 
@@ -192,7 +192,7 @@ impl SpinBasis {
         }
     }
 
-    /// Build the subspace reachable from `seeds` using a [`SpinHamiltonianInner`].
+    /// Build the subspace reachable from `seeds` using a [`SpinOperatorInner`].
     ///
     /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
     ///
@@ -202,7 +202,7 @@ impl SpinBasis {
     /// - `ham.lhss() != self.lhss`
     pub fn build_spin(
         &mut self,
-        ham: &SpinHamiltonianInner,
+        ham: &SpinOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
         if self.space_kind == SpaceKind::Full {
@@ -240,10 +240,10 @@ impl SpinBasis {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
                         match ham {
-                            SpinHamiltonianInner::Ham8(h) => {
+                            SpinOperatorInner::Ham8(h) => {
                                 subspace.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
-                            SpinHamiltonianInner::Ham16(h) => {
+                            SpinOperatorInner::Ham16(h) => {
                                 subspace.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
                         }
@@ -255,10 +255,10 @@ impl SpinBasis {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
                         match ham {
-                            SpinHamiltonianInner::Ham8(h) => {
+                            SpinOperatorInner::Ham8(h) => {
                                 sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
-                            SpinHamiltonianInner::Ham16(h) => {
+                            SpinOperatorInner::Ham16(h) => {
                                 sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
                         }
@@ -270,10 +270,10 @@ impl SpinBasis {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
                         match ham {
-                            SpinHamiltonianInner::Ham8(h) => {
+                            SpinOperatorInner::Ham8(h) => {
                                 sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
-                            SpinHamiltonianInner::Ham16(h) => {
+                            SpinOperatorInner::Ham16(h) => {
                                 sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
                             }
                         }
@@ -286,7 +286,7 @@ impl SpinBasis {
         Ok(())
     }
 
-    /// Build the subspace reachable from `seeds` using a [`BondHamiltonianInner`].
+    /// Build the subspace reachable from `seeds` using a [`BondOperatorInner`].
     ///
     /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
     ///
@@ -296,10 +296,10 @@ impl SpinBasis {
     /// - `ham.lhss() != self.lhss`
     pub fn build_bond(
         &mut self,
-        ham: &BondHamiltonianInner,
+        ham: &BondOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        use crate::hamiltonian::Hamiltonian;
+        use crate::hamiltonian::Operator;
         use smallvec::SmallVec;
 
         if self.space_kind == SpaceKind::Full {
@@ -318,16 +318,16 @@ impl SpinBasis {
             )));
         }
 
-        // Helper closure factory: wraps BondHamiltonianInner::apply into
+        // Helper closure factory: wraps BondOperatorInner::apply into
         // the (amplitude, state, cindex) iterator expected by build().
         macro_rules! bond_apply_fn {
             ($ham_inner:expr, $state:expr) => {{
                 let mut out: SmallVec<[(Complex<f64>, _, u8); 8]> = SmallVec::new();
                 match $ham_inner {
-                    BondHamiltonianInner::Ham8(h) => {
+                    BondOperatorInner::Ham8(h) => {
                         h.apply($state, |c, amp, ns| out.push((amp, ns, c)));
                     }
-                    BondHamiltonianInner::Ham16(h) => {
+                    BondOperatorInner::Ham16(h) => {
                         h.apply($state, |c, amp, ns| out.push((amp, ns, c as u8)));
                     }
                 }
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn spin_basis_build_spin_half() {
-        use crate::hamiltonian::{SpinHamiltonian, SpinHamiltonianInner, SpinOp, SpinOpEntry};
+        use crate::hamiltonian::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
         use smallvec::smallvec;
 
         // H = S+_0 S-_1 + S-_0 S+_1  (hopping / XX+YY-type), lhss=2
@@ -459,7 +459,7 @@ mod tests {
                 smallvec![(SpinOp::Minus, i), (SpinOp::Plus, i + 1)],
             ));
         }
-        let ham = SpinHamiltonianInner::Ham8(SpinHamiltonian::new(terms, 2));
+        let ham = SpinOperatorInner::Ham8(SpinOperator::new(terms, 2));
 
         let mut basis = SpinBasis::new(n_sites, 2, SpaceKind::Sub).unwrap();
         // seed: lowest 2 bits set = 2-particle sector, state 0b0011
@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn spin_basis_build_spin_one_lhss3() {
-        use crate::hamiltonian::{SpinHamiltonian, SpinHamiltonianInner, SpinOp, SpinOpEntry};
+        use crate::hamiltonian::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
         use smallvec::smallvec;
 
         // H = S+_0 S-_1 + S-_0 S+_1  (spin-1 hopping), lhss=3
@@ -490,7 +490,7 @@ mod tests {
                 smallvec![(SpinOp::Minus, i), (SpinOp::Plus, i + 1)],
             ));
         }
-        let ham = SpinHamiltonianInner::Ham8(SpinHamiltonian::new(terms, 3));
+        let ham = SpinOperatorInner::Ham8(SpinOperator::new(terms, 3));
 
         let mut basis = SpinBasis::new(n_sites, 3, SpaceKind::Sub).unwrap();
         // seed: all sites in m=0 state (dit value 1)

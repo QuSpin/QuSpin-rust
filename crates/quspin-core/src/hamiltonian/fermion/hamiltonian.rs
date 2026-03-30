@@ -1,23 +1,23 @@
 use crate::bitbasis::BitInt;
-use crate::hamiltonian::Hamiltonian;
+use crate::hamiltonian::Operator;
 use num_complex::Complex;
 use smallvec::SmallVec;
 
 use super::op::FermionOpEntry;
 
 // ---------------------------------------------------------------------------
-// FermionHamiltonian
+// FermionOperator
 // ---------------------------------------------------------------------------
 
 /// A collection of fermionic operator strings forming a Hamiltonian.
 ///
-/// Mirrors the structure of `HardcoreHamiltonian<C>`, but each term carries
+/// Mirrors the structure of `HardcoreOperator<C>`, but each term carries
 /// Jordan-Wigner sign accumulation (handled inside `FermionOpEntry::apply`).
 ///
 /// The basis is a `HardcoreBasis` (LHSS=2); orbital labelling: site `2*i` =
 /// spin-down orbital `i`, site `2*i+1` = spin-up orbital `i`.
 #[derive(Clone, Debug)]
-pub struct FermionHamiltonian<C> {
+pub struct FermionOperator<C> {
     terms: Vec<FermionOpEntry<C>>,
     /// Maximum site index across all operator strings (inferred from terms).
     max_site: usize,
@@ -25,7 +25,7 @@ pub struct FermionHamiltonian<C> {
     num_cindices: usize,
 }
 
-impl<C: Copy + Ord> FermionHamiltonian<C> {
+impl<C: Copy + Ord> FermionOperator<C> {
     /// Construct from a list of `FermionOpEntry` terms.  Terms are sorted by
     /// `cindex`.  `max_site` is inferred from the largest site index appearing
     /// in any operator.
@@ -48,7 +48,7 @@ impl<C: Copy + Ord> FermionHamiltonian<C> {
             .map(|&(_, site)| site as usize)
             .max()
             .unwrap_or(0);
-        FermionHamiltonian {
+        FermionOperator {
             terms,
             max_site,
             num_cindices,
@@ -83,7 +83,7 @@ impl<C: Copy + Ord> FermionHamiltonian<C> {
     }
 }
 
-impl<C: Copy + Ord> Hamiltonian<C> for FermionHamiltonian<C> {
+impl<C: Copy + Ord> Operator<C> for FermionOperator<C> {
     fn max_site(&self) -> usize {
         self.max_site
     }
@@ -117,7 +117,7 @@ mod tests {
     use num_complex::Complex;
     use smallvec::smallvec;
 
-    fn hopping_ham() -> FermionHamiltonian<u8> {
+    fn hopping_ham() -> FermionOperator<u8> {
         // H = c†_0 c_1 + c†_1 c_0  (nearest-neighbour hopping, 2 sites)
         let ops01: SmallVec<[(FermionOp, u32); 4]> =
             smallvec![(FermionOp::Plus, 0), (FermionOp::Minus, 1)];
@@ -127,7 +127,7 @@ mod tests {
             FermionOpEntry::new(0u8, Complex::new(1.0, 0.0), ops01),
             FermionOpEntry::new(0u8, Complex::new(1.0, 0.0), ops10),
         ];
-        FermionHamiltonian::new(terms)
+        FermionOperator::new(terms)
     }
 
     #[test]
@@ -170,7 +170,7 @@ mod tests {
         // H = n̂_0, cindex=0
         let ops: SmallVec<[(FermionOp, u32); 4]> = smallvec![(FermionOp::N, 0)];
         let terms = vec![FermionOpEntry::new(0u8, Complex::new(1.0, 0.0), ops)];
-        let ham = FermionHamiltonian::new(terms);
+        let ham = FermionOperator::new(terms);
 
         // n̂_0 |00⟩ = 0
         let r0 = ham.apply_smallvec(0b00u32);

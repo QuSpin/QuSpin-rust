@@ -1,12 +1,12 @@
 use crate::bitbasis::BitInt;
-use crate::hamiltonian::Hamiltonian;
+use crate::hamiltonian::Operator;
 use num_complex::Complex;
 use smallvec::SmallVec;
 
 use super::op::OpEntry;
 
 // ---------------------------------------------------------------------------
-// HardcoreHamiltonian
+// HardcoreOperator
 // ---------------------------------------------------------------------------
 
 /// A collection of operator strings forming a Pauli Hamiltonian.
@@ -17,7 +17,7 @@ use super::op::OpEntry;
 ///
 /// Mirrors `pauli_hamiltonian<cindex_t>` from `operator.hpp`.
 #[derive(Clone, Debug)]
-pub struct HardcoreHamiltonian<C> {
+pub struct HardcoreOperator<C> {
     terms: Vec<OpEntry<C>>,
     /// Maximum site index across all operator strings (inferred from terms).
     max_site: usize,
@@ -25,7 +25,7 @@ pub struct HardcoreHamiltonian<C> {
     num_cindices: usize,
 }
 
-impl<C: Copy + Ord> HardcoreHamiltonian<C> {
+impl<C: Copy + Ord> HardcoreOperator<C> {
     /// Construct from a list of `OpEntry` terms.  Terms are sorted by `cindex`.
     /// `max_site` is inferred as the largest site index appearing in any op.
     pub fn new(mut terms: Vec<OpEntry<C>>) -> Self {
@@ -47,7 +47,7 @@ impl<C: Copy + Ord> HardcoreHamiltonian<C> {
             .map(|&(_, site)| site as usize)
             .max()
             .unwrap_or(0);
-        HardcoreHamiltonian {
+        HardcoreOperator {
             terms,
             max_site,
             num_cindices,
@@ -86,7 +86,7 @@ impl<C: Copy + Ord> HardcoreHamiltonian<C> {
     }
 }
 
-impl<C: Copy + Ord> Hamiltonian<C> for HardcoreHamiltonian<C> {
+impl<C: Copy + Ord> Operator<C> for HardcoreOperator<C> {
     fn max_site(&self) -> usize {
         self.max_site
     }
@@ -117,6 +117,7 @@ impl<C: Copy + Ord> Hamiltonian<C> for HardcoreHamiltonian<C> {
 mod tests {
     use super::*;
     use crate::hamiltonian::hardcore::op::{HardcoreOp, OpEntry};
+
     use num_complex::Complex;
     use smallvec::smallvec;
 
@@ -209,14 +210,14 @@ mod tests {
         assert!((amp - Complex::new(0.5, 0.0)).norm() < 1e-12);
     }
 
-    // --- HardcoreHamiltonian::apply ---
+    // --- HardcoreOperator::apply ---
 
     #[test]
     fn hamiltonian_single_x_term() {
         // H = 0.5 * X_0, cindex=0
         let ops: SmallVec<[(HardcoreOp, u32); 4]> = smallvec![(HardcoreOp::X, 0)];
         let terms = vec![OpEntry::<u8>::new(0, Complex::new(0.5, 0.0), ops)];
-        let ham = HardcoreHamiltonian::new(terms);
+        let ham = HardcoreOperator::new(terms);
 
         let state: u32 = 0;
         let result = ham.apply_smallvec(state);
@@ -232,7 +233,7 @@ mod tests {
         // H = P_0 applied to state |1⟩ (occupied): P gives amplitude 0, should be filtered
         let ops: SmallVec<[(HardcoreOp, u32); 4]> = smallvec![(HardcoreOp::P, 0)];
         let terms = vec![OpEntry::<u8>::new(0, Complex::new(1.0, 0.0), ops)];
-        let ham = HardcoreHamiltonian::new(terms);
+        let ham = HardcoreOperator::new(terms);
         let result = ham.apply_smallvec(1u32);
         assert!(result.is_empty());
     }

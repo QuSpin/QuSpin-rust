@@ -1,30 +1,30 @@
-use super::SpinHamiltonian;
+use super::SpinOperator;
 
-/// Type-erased `SpinHamiltonian`: either u8 or u16 cindex type.
-pub enum SpinHamiltonianInner {
-    Ham8(SpinHamiltonian<u8>),
-    Ham16(SpinHamiltonian<u16>),
+/// Type-erased `SpinOperator`: either u8 or u16 cindex type.
+pub enum SpinOperatorInner {
+    Ham8(SpinOperator<u8>),
+    Ham16(SpinOperator<u16>),
 }
 
-impl SpinHamiltonianInner {
+impl SpinOperatorInner {
     pub fn max_site(&self) -> usize {
         match self {
-            SpinHamiltonianInner::Ham8(h) => h.max_site(),
-            SpinHamiltonianInner::Ham16(h) => h.max_site(),
+            SpinOperatorInner::Ham8(h) => h.max_site(),
+            SpinOperatorInner::Ham16(h) => h.max_site(),
         }
     }
 
     pub fn num_cindices(&self) -> usize {
         match self {
-            SpinHamiltonianInner::Ham8(h) => h.num_cindices(),
-            SpinHamiltonianInner::Ham16(h) => h.num_cindices(),
+            SpinOperatorInner::Ham8(h) => h.num_cindices(),
+            SpinOperatorInner::Ham16(h) => h.num_cindices(),
         }
     }
 
     pub fn lhss(&self) -> usize {
         match self {
-            SpinHamiltonianInner::Ham8(h) => h.lhss(),
-            SpinHamiltonianInner::Ham16(h) => h.lhss(),
+            SpinOperatorInner::Ham8(h) => h.lhss(),
+            SpinOperatorInner::Ham16(h) => h.lhss(),
         }
     }
 }

@@ -171,69 +171,70 @@ impl_into_qmatrix_inner!(num_complex::Complex<f64>, u16, QMc64U16);
 // with_qmatrix! macro
 // ---------------------------------------------------------------------------
 
-/// Match on a `&QMatrixInner`, injecting type aliases `$V` and `$C` and
-/// binding `$mat` to the inner `QMatrix` reference.
+/// Match on a `&QMatrixInner`, injecting type aliases `$M` (stored element
+/// type) and `$C` (cindex type), and binding `$mat` to the inner `QMatrix`
+/// reference.
 #[macro_export]
 macro_rules! with_qmatrix {
-    ($inner:expr, $V:ident, $C:ident, $mat:ident, $body:block) => {
+    ($inner:expr, $M:ident, $C:ident, $mat:ident, $body:block) => {
         match $inner {
             $crate::qmatrix::dispatch::QMatrixInner::QMi8U8($mat) => {
-                type $V = i8;
+                type $M = i8;
                 type $C = u8;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMi8U16($mat) => {
-                type $V = i8;
+                type $M = i8;
                 type $C = u16;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMi16U8($mat) => {
-                type $V = i16;
+                type $M = i16;
                 type $C = u8;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMi16U16($mat) => {
-                type $V = i16;
+                type $M = i16;
                 type $C = u16;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMf32U8($mat) => {
-                type $V = f32;
+                type $M = f32;
                 type $C = u8;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMf32U16($mat) => {
-                type $V = f32;
+                type $M = f32;
                 type $C = u16;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMf64U8($mat) => {
-                type $V = f64;
+                type $M = f64;
                 type $C = u8;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMf64U16($mat) => {
-                type $V = f64;
+                type $M = f64;
                 type $C = u16;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMc32U8($mat) => {
-                type $V = ::num_complex::Complex<f32>;
+                type $M = ::num_complex::Complex<f32>;
                 type $C = u8;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMc32U16($mat) => {
-                type $V = ::num_complex::Complex<f32>;
+                type $M = ::num_complex::Complex<f32>;
                 type $C = u16;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMc64U8($mat) => {
-                type $V = ::num_complex::Complex<f64>;
+                type $M = ::num_complex::Complex<f64>;
                 type $C = u8;
                 $body
             }
             $crate::qmatrix::dispatch::QMatrixInner::QMc64U16($mat) => {
-                type $V = ::num_complex::Complex<f64>;
+                type $M = ::num_complex::Complex<f64>;
                 type $C = u16;
                 $body
             }

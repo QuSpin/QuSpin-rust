@@ -29,9 +29,9 @@ use crate::basis::hardcore::PyHardcoreBasis;
 use crate::dtype::{FromPyDescr, ValueDType};
 use crate::error::Error;
 use crate::hamiltonian::{PyBosonHamiltonian, PyFermionHamiltonian, PyHardcoreHamiltonian};
-use quspin_core::hamiltonian::boson::dispatch::BosonHamiltonianInner;
-use quspin_core::hamiltonian::fermion::dispatch::FermionHamiltonianInner;
-use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
+use quspin_core::hamiltonian::boson::dispatch::BosonOperatorInner;
+use quspin_core::hamiltonian::fermion::dispatch::FermionOperatorInner;
+use quspin_core::hamiltonian::hardcore::dispatch::HardcoreOperatorInner;
 use quspin_core::with_value_dtype;
 
 // ---------------------------------------------------------------------------
@@ -86,11 +86,11 @@ impl PyQMatrix {
             with_value_dtype!(v_dtype, V, {
                 with_sym_basis!(&basis.inner, B, sym_basis, {
                     match &ham.inner {
-                        HardcoreHamiltonianInner::Ham8(h) => {
+                        HardcoreOperatorInner::Ham8(h) => {
                             build_from_symmetric::<_, _, _, _, V, i64, u8>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
-                        HardcoreHamiltonianInner::Ham16(h) => {
+                        HardcoreOperatorInner::Ham16(h) => {
                             build_from_symmetric::<_, _, _, _, V, i64, u16>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
@@ -101,11 +101,11 @@ impl PyQMatrix {
             with_value_dtype!(v_dtype, V, {
                 with_plain_basis!(&basis.inner, B, plain_basis, {
                     match &ham.inner {
-                        HardcoreHamiltonianInner::Ham8(h) => {
+                        HardcoreOperatorInner::Ham8(h) => {
                             build_from_basis::<_, B, V, i64, u8, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }
-                        HardcoreHamiltonianInner::Ham16(h) => {
+                        HardcoreOperatorInner::Ham16(h) => {
                             build_from_basis::<_, B, V, i64, u16, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }
@@ -149,16 +149,16 @@ impl PyQMatrix {
         }
         let v_dtype = <ValueDType as FromPyDescr>::from_descr(py, dtype).map_err(Error::from)?;
 
-        use quspin_core::hamiltonian::bond::dispatch::BondHamiltonianInner;
+        use quspin_core::hamiltonian::bond::dispatch::BondOperatorInner;
         let mat_inner = if basis.inner.is_symmetric() {
             with_value_dtype!(v_dtype, V, {
                 with_sym_basis!(&basis.inner, B, sym_basis, {
                     match &ham.inner {
-                        BondHamiltonianInner::Ham8(h) => {
+                        BondOperatorInner::Ham8(h) => {
                             build_from_symmetric::<_, _, _, _, V, i64, u8>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
-                        BondHamiltonianInner::Ham16(h) => {
+                        BondOperatorInner::Ham16(h) => {
                             build_from_symmetric::<_, _, _, _, V, i64, u16>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
@@ -169,11 +169,11 @@ impl PyQMatrix {
             with_value_dtype!(v_dtype, V, {
                 with_plain_basis!(&basis.inner, B, plain_basis, {
                     match &ham.inner {
-                        BondHamiltonianInner::Ham8(h) => {
+                        BondOperatorInner::Ham8(h) => {
                             build_from_basis::<_, B, V, i64, u8, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }
-                        BondHamiltonianInner::Ham16(h) => {
+                        BondOperatorInner::Ham16(h) => {
                             build_from_basis::<_, B, V, i64, u16, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }
@@ -228,11 +228,11 @@ impl PyQMatrix {
             with_value_dtype!(v_dtype, V, {
                 with_dit_sym_basis!(&basis.inner, B, sym_basis, {
                     match &ham.inner {
-                        BosonHamiltonianInner::Ham8(h) => {
+                        BosonOperatorInner::Ham8(h) => {
                             build_from_symmetric::<_, _, _, _, V, i64, u8>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
-                        BosonHamiltonianInner::Ham16(h) => {
+                        BosonOperatorInner::Ham16(h) => {
                             build_from_symmetric::<_, _, _, _, V, i64, u16>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
@@ -243,11 +243,11 @@ impl PyQMatrix {
             with_value_dtype!(v_dtype, V, {
                 with_plain_basis!(&basis.inner, B, plain_basis, {
                     match &ham.inner {
-                        BosonHamiltonianInner::Ham8(h) => {
+                        BosonOperatorInner::Ham8(h) => {
                             build_from_basis::<_, B, V, i64, u8, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }
-                        BosonHamiltonianInner::Ham16(h) => {
+                        BosonOperatorInner::Ham16(h) => {
                             build_from_basis::<_, B, V, i64, u16, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }
@@ -296,11 +296,11 @@ impl PyQMatrix {
             with_value_dtype!(v_dtype, V, {
                 with_sym_basis!(&basis.inner, B, sym_basis, {
                     match &ham.inner {
-                        FermionHamiltonianInner::Ham8(h) => {
+                        FermionOperatorInner::Ham8(h) => {
                             build_from_symmetric::<_, _, _, _, V, i64, u8>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
-                        FermionHamiltonianInner::Ham16(h) => {
+                        FermionOperatorInner::Ham16(h) => {
                             build_from_symmetric::<_, _, _, _, V, i64, u16>(h, sym_basis)
                                 .into_qmatrix_inner()
                         }
@@ -311,11 +311,11 @@ impl PyQMatrix {
             with_value_dtype!(v_dtype, V, {
                 with_plain_basis!(&basis.inner, B, plain_basis, {
                     match &ham.inner {
-                        FermionHamiltonianInner::Ham8(h) => {
+                        FermionOperatorInner::Ham8(h) => {
                             build_from_basis::<_, B, V, i64, u8, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }
-                        FermionHamiltonianInner::Ham16(h) => {
+                        FermionOperatorInner::Ham16(h) => {
                             build_from_basis::<_, B, V, i64, u16, _>(h, plain_basis)
                                 .into_qmatrix_inner()
                         }

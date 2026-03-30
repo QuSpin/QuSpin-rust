@@ -2,6 +2,6 @@ pub mod dispatch;
 pub mod hamiltonian;
 pub mod op;
 
-pub use dispatch::BosonHamiltonianInner;
-pub use hamiltonian::BosonHamiltonian;
+pub use dispatch::BosonOperatorInner;
+pub use hamiltonian::BosonOperator;
 pub use op::{BosonOp, BosonOpEntry};

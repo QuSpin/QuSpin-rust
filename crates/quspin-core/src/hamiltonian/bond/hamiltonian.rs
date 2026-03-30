@@ -1,7 +1,7 @@
 use crate::bitbasis::BitInt;
 use crate::bitbasis::manip::{DitManip, DynamicDitManip};
 use crate::error::QuSpinError;
-use crate::hamiltonian::Hamiltonian;
+use crate::hamiltonian::Operator;
 use ndarray::Array2;
 use num_complex::Complex;
 
@@ -9,7 +9,7 @@ use num_complex::Complex;
 // BondTerm
 // ---------------------------------------------------------------------------
 
-/// One term in a `BondHamiltonian`: a dense two-site matrix applied to a list
+/// One term in a `BondOperator`: a dense two-site matrix applied to a list
 /// of site pairs.
 ///
 /// `matrix` is the (lhss² × lhss²) interaction matrix.
@@ -26,7 +26,7 @@ pub struct BondTerm<C> {
 }
 
 // ---------------------------------------------------------------------------
-// BondHamiltonian
+// BondOperator
 // ---------------------------------------------------------------------------
 
 /// A Hamiltonian built from dense two-site interaction matrices.
@@ -35,14 +35,14 @@ pub struct BondTerm<C> {
 /// applied to every listed pair of sites.  All terms share the same `lhss`
 /// (local Hilbert-space size).
 #[derive(Clone, Debug)]
-pub struct BondHamiltonian<C> {
+pub struct BondOperator<C> {
     terms: Vec<BondTerm<C>>,
     lhss: usize,
     max_site: usize,
     num_cindices: usize,
 }
 
-impl<C: Copy + Ord> BondHamiltonian<C> {
+impl<C: Copy + Ord> BondOperator<C> {
     /// Construct from a list of `BondTerm` entries.
     ///
     /// `lhss` is inferred from the shape of the first term's matrix:
@@ -106,7 +106,7 @@ impl<C: Copy + Ord> BondHamiltonian<C> {
             }
             count
         };
-        Ok(BondHamiltonian {
+        Ok(BondOperator {
             terms,
             lhss,
             max_site,
@@ -124,10 +124,10 @@ impl<C: Copy + Ord> BondHamiltonian<C> {
 }
 
 // ---------------------------------------------------------------------------
-// Hamiltonian<C> impl
+// Operator<C> impl
 // ---------------------------------------------------------------------------
 
-impl<C: Copy + Ord> Hamiltonian<C> for BondHamiltonian<C> {
+impl<C: Copy + Ord> Operator<C> for BondOperator<C> {
     fn max_site(&self) -> usize {
         self.max_site
     }
@@ -223,7 +223,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hamiltonian::hardcore::{HardcoreHamiltonian, HardcoreOp, OpEntry};
+    use crate::hamiltonian::hardcore::{HardcoreOp, HardcoreOperator, OpEntry};
     use ndarray::Array2;
     use num_complex::Complex;
     use smallvec::smallvec;
@@ -268,7 +268,7 @@ mod tests {
 
     /// Collect all `(cindex, amp, new_state)` contributions for `state`.
     fn collect_apply<C: Copy + Ord>(
-        ham: &BondHamiltonian<C>,
+        ham: &BondOperator<C>,
         state: u32,
     ) -> Vec<(C, Complex<f64>, u32)> {
         let mut out = vec![];
@@ -277,11 +277,11 @@ mod tests {
     }
 
     fn collect_apply_hardcore<C: Copy + Ord>(
-        ham: &HardcoreHamiltonian<C>,
+        ham: &HardcoreOperator<C>,
         state: u32,
     ) -> Vec<(C, Complex<f64>, u32)> {
         let mut out = vec![];
-        <HardcoreHamiltonian<C> as Hamiltonian<C>>::apply(ham, state, |c, amp, ns| {
+        <HardcoreOperator<C> as Operator<C>>::apply(ham, state, |c, amp, ns| {
             out.push((c, amp, ns))
         });
         out
@@ -298,7 +298,7 @@ mod tests {
             matrix: xx_matrix(),
             bonds: vec![(0, 1)],
         };
-        assert!(BondHamiltonian::new(vec![term]).is_ok());
+        assert!(BondOperator::new(vec![term]).is_ok());
     }
 
     #[test]
@@ -308,7 +308,7 @@ mod tests {
             matrix: Array2::zeros((3, 3)), // wrong: should be [4, 4] for lhss=2
             bonds: vec![(0, 1)],
         };
-        assert!(BondHamiltonian::new(vec![term]).is_err());
+        assert!(BondOperator::new(vec![term]).is_err());
     }
 
     #[test]
@@ -318,11 +318,11 @@ mod tests {
             matrix: Array2::zeros((1, 1)), // lhss=1 rejected before shape check
             bonds: vec![],
         };
-        assert!(BondHamiltonian::new(vec![term]).is_err());
+        assert!(BondOperator::new(vec![term]).is_err());
     }
 
     // ------------------------------------------------------------------
-    // XX bond: compare BondHamiltonian with HardcoreHamiltonian
+    // XX bond: compare BondOperator with HardcoreOperator
     // ------------------------------------------------------------------
 
     #[test]
@@ -332,12 +332,12 @@ mod tests {
             matrix: xx_matrix(),
             bonds: vec![(0, 1)],
         };
-        let bond_ham = BondHamiltonian::new(vec![term]).unwrap();
+        let bond_ham = BondOperator::new(vec![term]).unwrap();
 
         let ops: smallvec::SmallVec<[(HardcoreOp, u32); 4]> =
             smallvec![(HardcoreOp::X, 0), (HardcoreOp::X, 1)];
         let hardcore_ham =
-            HardcoreHamiltonian::new(vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)]);
+            HardcoreOperator::new(vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)]);
 
         for state in 0u32..4 {
             let mut bond_out = collect_apply(&bond_ham, state);
@@ -363,7 +363,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // ZZ bond: compare BondHamiltonian with HardcoreHamiltonian
+    // ZZ bond: compare BondOperator with HardcoreOperator
     // ------------------------------------------------------------------
 
     #[test]
@@ -373,12 +373,12 @@ mod tests {
             matrix: zz_matrix(),
             bonds: vec![(0, 1)],
         };
-        let bond_ham = BondHamiltonian::new(vec![term]).unwrap();
+        let bond_ham = BondOperator::new(vec![term]).unwrap();
 
         let ops: smallvec::SmallVec<[(HardcoreOp, u32); 4]> =
             smallvec![(HardcoreOp::Z, 0), (HardcoreOp::Z, 1)];
         let hardcore_ham =
-            HardcoreHamiltonian::new(vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)]);
+            HardcoreOperator::new(vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)]);
 
         for state in 0u32..4 {
             let mut bond_out = collect_apply(&bond_ham, state);
@@ -414,12 +414,12 @@ mod tests {
             matrix: zz_matrix(),
             bonds: vec![(0, 1)],
         };
-        let ham = BondHamiltonian::new(vec![t0, t1]).unwrap();
+        let ham = BondOperator::new(vec![t0, t1]).unwrap();
         assert_eq!(ham.num_cindices(), 2);
     }
 
     // ------------------------------------------------------------------
-    // Heisenberg chain: XX + YY + ZZ via BondHamiltonian vs HardcoreHamiltonian
+    // Heisenberg chain: XX + YY + ZZ via BondOperator vs HardcoreOperator
     // ------------------------------------------------------------------
 
     #[test]
@@ -432,7 +432,7 @@ mod tests {
             matrix: heisenberg_matrix(),
             bonds: bonds.clone(),
         };
-        let bond_ham = BondHamiltonian::new(vec![term]).unwrap();
+        let bond_ham = BondOperator::new(vec![term]).unwrap();
 
         let mut terms = vec![];
         for &(i, j) in &bonds {
@@ -444,7 +444,7 @@ mod tests {
                 terms.push(OpEntry::new(0u8, Complex::new(1.0, 0.0), ops_vec));
             }
         }
-        let hardcore_ham = HardcoreHamiltonian::new(terms);
+        let hardcore_ham = HardcoreOperator::new(terms);
 
         for state in 0u32..(1 << n_sites) {
             let mut bond_sums: std::collections::HashMap<u32, Complex<f64>> =
@@ -455,13 +455,9 @@ mod tests {
 
             let mut hardcore_sums: std::collections::HashMap<u32, Complex<f64>> =
                 std::collections::HashMap::new();
-            <HardcoreHamiltonian<u8> as Hamiltonian<u8>>::apply(
-                &hardcore_ham,
-                state,
-                |_c, amp, ns| {
-                    *hardcore_sums.entry(ns).or_insert(Complex::new(0.0, 0.0)) += amp;
-                },
-            );
+            <HardcoreOperator<u8> as Operator<u8>>::apply(&hardcore_ham, state, |_c, amp, ns| {
+                *hardcore_sums.entry(ns).or_insert(Complex::new(0.0, 0.0)) += amp;
+            });
 
             // Filter near-zero entries (XX+YY cancellations leave zero-amp keys).
             bond_sums.retain(|_, v| v.norm() > 1e-12);

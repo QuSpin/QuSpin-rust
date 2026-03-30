@@ -1,8 +1,8 @@
 /// Python-facing `PyBosonHamiltonian` pyclass.
 ///
-/// Wraps a `BosonHamiltonianInner` enum that selects between
-/// `BosonHamiltonian<u8>` (≤ 255 cindices / site indices) and
-/// `BosonHamiltonian<u16>` (larger).  The cindex type is chosen at
+/// Wraps a `BosonOperatorInner` enum that selects between
+/// `BosonOperator<u8>` (≤ 255 cindices / site indices) and
+/// `BosonOperator<u16>` (larger).  The cindex type is chosen at
 /// construction time based on the maximum cindex and site index seen in the
 /// input.
 ///
@@ -22,8 +22,8 @@
 /// - Each `coupling_list` element is `(coeff, site_0, site_1, ...)`.
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
-use quspin_core::hamiltonian::boson::dispatch::BosonHamiltonianInner;
-use quspin_core::hamiltonian::boson::{BosonHamiltonian, BosonOp, BosonOpEntry};
+use quspin_core::hamiltonian::boson::dispatch::BosonOperatorInner;
+use quspin_core::hamiltonian::boson::{BosonOp, BosonOpEntry, BosonOperator};
 
 use super::parse::parse_term;
 
@@ -33,7 +33,7 @@ use super::parse::parse_term;
 
 #[pyclass(name = "PyBosonHamiltonian")]
 pub struct PyBosonHamiltonian {
-    pub inner: BosonHamiltonianInner,
+    pub inner: BosonOperatorInner,
     /// Number of distinct cindex values (= length of the outer terms list).
     pub num_cindices: usize,
 }
@@ -92,13 +92,13 @@ impl PyBosonHamiltonian {
                 .into_iter()
                 .map(|r| BosonOpEntry::new(r.cindex as u16, r.coeff, r.ops))
                 .collect();
-            BosonHamiltonianInner::Ham16(BosonHamiltonian::new(entries, lhss))
+            BosonOperatorInner::Ham16(BosonOperator::new(entries, lhss))
         } else {
             let entries: Vec<BosonOpEntry<u8>> = raw
                 .into_iter()
                 .map(|r| BosonOpEntry::new(r.cindex as u8, r.coeff, r.ops))
                 .collect();
-            BosonHamiltonianInner::Ham8(BosonHamiltonian::new(entries, lhss))
+            BosonOperatorInner::Ham8(BosonOperator::new(entries, lhss))
         };
 
         Ok(PyBosonHamiltonian {

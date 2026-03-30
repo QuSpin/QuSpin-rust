@@ -8,7 +8,7 @@ use quspin_core::basis::{
     seed_from_bytes, seed_from_str,
     space::{FullSpace, Subspace},
 };
-use quspin_core::hamiltonian::hardcore::dispatch::HardcoreHamiltonianInner;
+use quspin_core::hamiltonian::hardcore::dispatch::HardcoreOperatorInner;
 
 // ---------------------------------------------------------------------------
 // PyHardcoreBasis
@@ -89,10 +89,10 @@ impl PyHardcoreBasis {
                 for s in &seed_list {
                     let seed = seed_from_bytes::<B>(s);
                     match &ham.inner {
-                        HardcoreHamiltonianInner::Ham8(h) => {
+                        HardcoreOperatorInner::Ham8(h) => {
                             basis.build(seed, |state| h.apply_smallvec(state).into_iter());
                         }
-                        HardcoreHamiltonianInner::Ham16(h) => {
+                        HardcoreOperatorInner::Ham16(h) => {
                             basis.build(seed, |state| h.apply_smallvec(state).into_iter());
                         }
                     }
