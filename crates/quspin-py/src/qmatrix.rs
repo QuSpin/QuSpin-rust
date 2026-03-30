@@ -31,7 +31,7 @@ use crate::error::Error;
 use crate::hamiltonian::{PyBosonHamiltonian, PyFermionHamiltonian, PyHardcoreHamiltonian};
 use quspin_core::hamiltonian::boson::dispatch::BosonOperatorInner;
 use quspin_core::hamiltonian::fermion::dispatch::FermionOperatorInner;
-use quspin_core::hamiltonian::hardcore::dispatch::HardcoreOperatorInner;
+use quspin_core::hamiltonian::pauli::dispatch::HardcoreOperatorInner;
 use quspin_core::with_value_dtype;
 
 // ---------------------------------------------------------------------------

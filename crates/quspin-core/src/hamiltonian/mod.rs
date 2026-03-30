@@ -2,15 +2,14 @@ pub mod bond;
 pub mod boson;
 pub mod fermion;
 pub mod ham;
-pub mod hardcore;
 pub mod inner;
+pub mod pauli;
 pub mod spin;
 
 pub use bond::{BondOperator, BondOperatorInner, BondTerm};
 pub use boson::{BosonOp, BosonOpEntry, BosonOperator, BosonOperatorInner};
 pub use fermion::{FermionOp, FermionOpEntry, FermionOperator, FermionOperatorInner};
 pub use ham::Hamiltonian;
-pub use hardcore::{HardcoreOp, HardcoreOperator, HardcoreOperatorInner, OpEntry};
 pub use inner::{HamiltonianInner, IntoHamiltonianInner};
 pub use spin::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
 

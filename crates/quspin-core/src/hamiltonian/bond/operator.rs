@@ -223,7 +223,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hamiltonian::hardcore::{HardcoreOp, HardcoreOperator, OpEntry};
+    use crate::hamiltonian::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
     use ndarray::Array2;
     use num_complex::Complex;
     use smallvec::smallvec;

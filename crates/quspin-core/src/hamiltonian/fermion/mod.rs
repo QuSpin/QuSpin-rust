@@ -1,7 +1,5 @@
 pub mod dispatch;
-pub mod hamiltonian;
-pub mod op;
+pub mod operator;
 
 pub use dispatch::FermionOperatorInner;
-pub use hamiltonian::FermionOperator;
-pub use op::{FermionOp, FermionOpEntry};
+pub use operator::{FermionOp, FermionOpEntry, FermionOperator};

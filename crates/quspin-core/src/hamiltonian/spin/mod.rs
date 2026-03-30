@@ -1,7 +1,5 @@
 pub mod dispatch;
-pub mod hamiltonian;
-pub mod op;
+pub mod operator;
 
 pub use dispatch::SpinOperatorInner;
-pub use hamiltonian::SpinOperator;
-pub use op::{SpinOp, SpinOpEntry};
+pub use operator::{SpinOp, SpinOpEntry, SpinOperator};

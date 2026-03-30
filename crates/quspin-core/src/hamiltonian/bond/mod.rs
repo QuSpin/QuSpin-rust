@@ -1,5 +1,5 @@
 pub mod dispatch;
-pub mod hamiltonian;
+pub mod operator;
 
 pub use dispatch::BondOperatorInner;
-pub use hamiltonian::{BondOperator, BondTerm};
+pub use operator::{BondOperator, BondTerm};
