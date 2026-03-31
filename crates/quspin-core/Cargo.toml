@@ -10,3 +10,6 @@ rayon = { workspace = true }
 ruint = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
+bytemuck = { workspace = true }
+ode_solvers = { workspace = true }
+nalgebra = { workspace = true }
