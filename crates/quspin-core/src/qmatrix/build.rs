@@ -1,4 +1,5 @@
 use super::{CIndex, Entry, Index, QMatrix};
+use crate::basis::dispatch::SpaceInner;
 use crate::basis::{
     BasisSpace,
     sym::{NormInt, SymBasis},
@@ -161,6 +162,107 @@ where
     }
 
     QMatrix::from_csr(indptr, data)
+}
+
+// ---------------------------------------------------------------------------
+// SpaceInner dispatch helpers
+// ---------------------------------------------------------------------------
+
+/// Build a `QMatrix<M, i64, C>` from an `Operator<C>` and a `SpaceInner`.
+///
+/// Dispatches over all 29 `SpaceInner` variants, calling
+/// `build_from_basis` for `Full*`/`Sub*` and `build_from_symmetric` for
+/// `Sym*`/`DitSym*`.
+///
+/// This function is used by the Python FFI layer to avoid duplicating the
+/// 29-arm match for every `(M, C)` combination.
+pub fn build_from_space<H, M, C>(ham: &H, space: &SpaceInner) -> QMatrix<M, i64, C>
+where
+    H: crate::operator::Operator<C>,
+    M: crate::primitive::Primitive,
+    C: CIndex + Copy + Ord,
+{
+    use crate::basis::dispatch::SpaceInner;
+    use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
+
+    type B128 = ruint::Uint<128, 2>;
+    type B256 = ruint::Uint<256, 4>;
+    type B512 = ruint::Uint<512, 8>;
+    type B1024 = ruint::Uint<1024, 16>;
+    type B2048 = ruint::Uint<2048, 32>;
+    type B4096 = ruint::Uint<4096, 64>;
+    type B8192 = ruint::Uint<8192, 128>;
+
+    match space {
+        // Non-symmetric
+        SpaceInner::Full32(b) => build_from_basis::<H, u32, M, i64, C, _>(ham, b),
+        SpaceInner::Full64(b) => build_from_basis::<H, u64, M, i64, C, _>(ham, b),
+        SpaceInner::Sub32(b) => build_from_basis::<H, u32, M, i64, C, _>(ham, b),
+        SpaceInner::Sub64(b) => build_from_basis::<H, u64, M, i64, C, _>(ham, b),
+        SpaceInner::Sub128(b) => build_from_basis::<H, B128, M, i64, C, _>(ham, b),
+        SpaceInner::Sub256(b) => build_from_basis::<H, B256, M, i64, C, _>(ham, b),
+        SpaceInner::Sub512(b) => build_from_basis::<H, B512, M, i64, C, _>(ham, b),
+        SpaceInner::Sub1024(b) => build_from_basis::<H, B1024, M, i64, C, _>(ham, b),
+        SpaceInner::Sub2048(b) => build_from_basis::<H, B2048, M, i64, C, _>(ham, b),
+        SpaceInner::Sub4096(b) => build_from_basis::<H, B4096, M, i64, C, _>(ham, b),
+        SpaceInner::Sub8192(b) => build_from_basis::<H, B8192, M, i64, C, _>(ham, b),
+        // LHSS=2 symmetric
+        SpaceInner::Sym32(b) => {
+            build_from_symmetric::<H, u32, PermDitMask<u32>, u8, M, i64, C>(ham, b)
+        }
+        SpaceInner::Sym64(b) => {
+            build_from_symmetric::<H, u64, PermDitMask<u64>, u16, M, i64, C>(ham, b)
+        }
+        SpaceInner::Sym128(b) => {
+            build_from_symmetric::<H, B128, PermDitMask<B128>, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::Sym256(b) => {
+            build_from_symmetric::<H, B256, PermDitMask<B256>, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::Sym512(b) => {
+            build_from_symmetric::<H, B512, PermDitMask<B512>, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::Sym1024(b) => {
+            build_from_symmetric::<H, B1024, PermDitMask<B1024>, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::Sym2048(b) => {
+            build_from_symmetric::<H, B2048, PermDitMask<B2048>, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::Sym4096(b) => {
+            build_from_symmetric::<H, B4096, PermDitMask<B4096>, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::Sym8192(b) => {
+            build_from_symmetric::<H, B8192, PermDitMask<B8192>, u32, M, i64, C>(ham, b)
+        }
+        // LHSS≥3 symmetric (dit)
+        SpaceInner::DitSym32(b) => {
+            build_from_symmetric::<H, u32, DynamicPermDitValues, u8, M, i64, C>(ham, b)
+        }
+        SpaceInner::DitSym64(b) => {
+            build_from_symmetric::<H, u64, DynamicPermDitValues, u16, M, i64, C>(ham, b)
+        }
+        SpaceInner::DitSym128(b) => {
+            build_from_symmetric::<H, B128, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::DitSym256(b) => {
+            build_from_symmetric::<H, B256, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::DitSym512(b) => {
+            build_from_symmetric::<H, B512, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::DitSym1024(b) => {
+            build_from_symmetric::<H, B1024, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::DitSym2048(b) => {
+            build_from_symmetric::<H, B2048, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::DitSym4096(b) => {
+            build_from_symmetric::<H, B4096, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::DitSym8192(b) => {
+            build_from_symmetric::<H, B8192, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

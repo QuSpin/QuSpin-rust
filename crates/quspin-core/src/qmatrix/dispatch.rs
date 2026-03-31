@@ -1,3 +1,4 @@
+use super::QMatrix;
 /// Type-erased `QMatrixInner`, `IntoQMatrixInner`, and the `with_qmatrix!` macro.
 ///
 /// 12 variants: 6 value types × 2 cindex types.  The index type `I` is fixed
@@ -5,9 +6,20 @@
 ///
 /// Naming convention: `QM` prefix, value type abbreviation, cindex type
 /// abbreviation.  For example `QMf64U8` is `QMatrix<f64, i64, u8>`.
-use super::QMatrix;
+use super::build::build_from_space;
+use crate::basis::dispatch::SpaceInner;
+use crate::dtype::ValueDType;
 use crate::error::QuSpinError;
+use crate::operator::bond::BondOperatorInner;
+use crate::operator::boson::BosonOperatorInner;
+use crate::operator::fermion::FermionOperatorInner;
+use crate::operator::pauli::HardcoreOperatorInner;
+use crate::primitive::Primitive;
+use crate::qmatrix::matrix::{CIndex, Index};
 use ndarray::{ArrayView2, ArrayViewMut2};
+
+/// Return type of `QMatrixInner::materialize`.
+type CsrTriple = (Vec<i64>, Vec<i64>, Vec<num_complex::Complex<f64>>);
 
 // ---------------------------------------------------------------------------
 // QMatrixInner
@@ -130,6 +142,52 @@ impl QMatrixInner {
         }
     }
 
+    /// Materialize as standard CSR: sum over cindices weighted by `coeff`.
+    ///
+    /// Returns `(indptr, indices, data)` where each is a `Vec` with i64/i64/Complex<f64>
+    /// element type respectively.  Entries at the same `(row, col)` are merged.
+    ///
+    /// If `drop_zeros` is true, entries whose magnitude is below a small tolerance
+    /// are omitted from the output.
+    pub fn materialize(
+        &self,
+        coeff: &[num_complex::Complex<f64>],
+        drop_zeros: bool,
+    ) -> Result<CsrTriple, QuSpinError> {
+        crate::with_qmatrix!(self, _M, _C, mat, {
+            if coeff.len() != mat.num_coeff() {
+                return Err(QuSpinError::ValueError(format!(
+                    "coeff length {} != num_coeff {}",
+                    coeff.len(),
+                    mat.num_coeff()
+                )));
+            }
+            let dim = mat.dim();
+            let mut indptr = Vec::with_capacity(dim + 1);
+            let mut indices: Vec<i64> = Vec::with_capacity(mat.nnz());
+            let mut data: Vec<num_complex::Complex<f64>> = Vec::with_capacity(mat.nnz());
+            indptr.push(0i64);
+            for r in 0..dim {
+                let row = mat.row(r);
+                let mut col_it = row.iter().peekable();
+                while let Some(first) = col_it.next() {
+                    let col = first.col;
+                    let mut acc = first.value.to_complex() * coeff[first.cindex.as_usize()];
+                    while col_it.peek().map(|e| e.col == col).unwrap_or(false) {
+                        let e = col_it.next().unwrap();
+                        acc += e.value.to_complex() * coeff[e.cindex.as_usize()];
+                    }
+                    if !drop_zeros || acc.norm() > 4.0 * f64::EPSILON {
+                        indices.push(col.as_usize() as i64);
+                        data.push(acc);
+                    }
+                }
+                indptr.push(indices.len() as i64);
+            }
+            Ok((indptr, indices, data))
+        })
+    }
+
     /// Element-wise subtraction.  Both operands must have the same dtype.
     pub fn try_sub(self, rhs: Self) -> Result<Self, QuSpinError> {
         macro_rules! sub_variant {
@@ -155,6 +213,82 @@ impl QMatrixInner {
             QMatrixInner::QMc32U16(l) => sub_variant!(l, rhs, QMc32U16),
             QMatrixInner::QMc64U8(l) => sub_variant!(l, rhs, QMc64U8),
             QMatrixInner::QMc64U16(l) => sub_variant!(l, rhs, QMc64U16),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Build helpers
+// ---------------------------------------------------------------------------
+
+/// Build a `QMatrixInner` from a concrete `Operator<u8>` and a `SpaceInner`,
+/// selecting the element type from `dtype`.
+macro_rules! dispatch_dtype_u8 {
+    ($h:expr, $space:expr, $dtype:expr) => {
+        match $dtype {
+            ValueDType::Int8 => QMatrixInner::QMi8U8(build_from_space($h, $space)),
+            ValueDType::Int16 => QMatrixInner::QMi16U8(build_from_space($h, $space)),
+            ValueDType::Float32 => QMatrixInner::QMf32U8(build_from_space($h, $space)),
+            ValueDType::Float64 => QMatrixInner::QMf64U8(build_from_space($h, $space)),
+            ValueDType::Complex64 => QMatrixInner::QMc32U8(build_from_space($h, $space)),
+            ValueDType::Complex128 => QMatrixInner::QMc64U8(build_from_space($h, $space)),
+        }
+    };
+}
+
+/// Build a `QMatrixInner` from a concrete `Operator<u16>` and a `SpaceInner`,
+/// selecting the element type from `dtype`.
+macro_rules! dispatch_dtype_u16 {
+    ($h:expr, $space:expr, $dtype:expr) => {
+        match $dtype {
+            ValueDType::Int8 => QMatrixInner::QMi8U16(build_from_space($h, $space)),
+            ValueDType::Int16 => QMatrixInner::QMi16U16(build_from_space($h, $space)),
+            ValueDType::Float32 => QMatrixInner::QMf32U16(build_from_space($h, $space)),
+            ValueDType::Float64 => QMatrixInner::QMf64U16(build_from_space($h, $space)),
+            ValueDType::Complex64 => QMatrixInner::QMc32U16(build_from_space($h, $space)),
+            ValueDType::Complex128 => QMatrixInner::QMc64U16(build_from_space($h, $space)),
+        }
+    };
+}
+
+impl QMatrixInner {
+    /// Build from a Pauli/hardcore operator and a basis space.
+    pub fn build_hardcore(
+        ham: &HardcoreOperatorInner,
+        space: &SpaceInner,
+        dtype: ValueDType,
+    ) -> Self {
+        match ham {
+            HardcoreOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
+            HardcoreOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
+        }
+    }
+
+    /// Build from a bond operator and a basis space.
+    pub fn build_bond(ham: &BondOperatorInner, space: &SpaceInner, dtype: ValueDType) -> Self {
+        match ham {
+            BondOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
+            BondOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
+        }
+    }
+
+    /// Build from a boson operator and a basis space.
+    pub fn build_boson(ham: &BosonOperatorInner, space: &SpaceInner, dtype: ValueDType) -> Self {
+        match ham {
+            BosonOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
+            BosonOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
+        }
+    }
+
+    /// Build from a fermion operator and a basis space.
+    pub fn build_fermion(
+        ham: &FermionOperatorInner,
+        space: &SpaceInner,
+        dtype: ValueDType,
+    ) -> Self {
+        match ham {
+            FermionOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
+            FermionOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
         }
     }
 }

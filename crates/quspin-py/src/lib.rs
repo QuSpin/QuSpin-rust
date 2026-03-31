@@ -9,6 +9,7 @@ pub mod qmatrix;
 use basis::{PyBosonBasis, PyFermionBasis, PySpinBasis};
 use operator::{PyBondOperator, PyBosonOperator, PyFermionOperator, PyPauliOperator};
 use pyo3::prelude::*;
+use qmatrix::PyQMatrix;
 
 #[pymodule]
 fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -21,5 +22,7 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBondOperator>()?;
     m.add_class::<PyBosonOperator>()?;
     m.add_class::<PyFermionOperator>()?;
+    // Matrix type
+    m.add_class::<PyQMatrix>()?;
     Ok(())
 }

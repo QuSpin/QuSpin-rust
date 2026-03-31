@@ -121,22 +121,22 @@ Rewrite `src/qmatrix.rs` to use the new basis and operator types.
 The `build_*` family is replaced by a single dispatch pattern: one `build`
 static method per operator kind that accepts the new `Py*Basis` types.
 
-- [ ] `PyQMatrix { inner: QMatrixInner }` struct
-- [ ] `PyQMatrix::build_pauli(op, basis, dtype)` — `PyPauliOperator` + `PySpinBasis` or `PyFermionBasis`
-- [ ] `PyQMatrix::build_bond(op, basis, dtype)` — `PyBondOperator` + `PySpinBasis`
-- [ ] `PyQMatrix::build_boson(op, basis, dtype)` — `PyBosonOperator` + `PyBosonBasis`
-- [ ] `PyQMatrix::build_fermion(op, basis, dtype)` — `PyFermionOperator` + `PyFermionBasis`
-- [ ] `dot(coeff, input, output, overwrite)` — 1-D arrays
-- [ ] `dot_many(coeff, input, output, overwrite)` — 2-D arrays `(dim, n_vecs)`
-- [ ] `dot_transpose(coeff, input, output, overwrite)`
-- [ ] `dot_transpose_many(coeff, input, output, overwrite)`
-- [ ] `to_csr(coeff, drop_zeros) -> (indptr, indices, data)`
-- [ ] `to_dense(coeff) -> ndarray`
-- [ ] `__add__`, `__sub__`
-- [ ] Properties: `dim`, `nnz`, `dtype`, `__repr__`
-- [ ] `cargo build -p quspin-py` passes
-- [ ] Write tests in `python/tests/test_qmatrix.py`
-- [ ] Commit: `feat(quspin-py): rewrite PyQMatrix with new basis/operator types`
+- [x] `PyQMatrix { inner: QMatrixInner }` struct
+- [x] `PyQMatrix::build_pauli(op, basis, dtype)` — `PyPauliOperator` + `PySpinBasis` or `PyFermionBasis`
+- [x] `PyQMatrix::build_bond(op, basis, dtype)` — `PyBondOperator` + `PySpinBasis`
+- [x] `PyQMatrix::build_boson(op, basis, dtype)` — `PyBosonOperator` + `PyBosonBasis`
+- [x] `PyQMatrix::build_fermion(op, basis, dtype)` — `PyFermionOperator` + `PyFermionBasis`
+- [ ] `dot(coeff, input, output, overwrite)` — 1-D arrays *(deferred to Step 7)*
+- [x] `dot_many(coeff, input, output, overwrite)` — 2-D arrays `(dim, n_vecs)`
+- [ ] `dot_transpose(coeff, input, output, overwrite)` *(deferred to Step 7)*
+- [x] `dot_transpose_many(coeff, input, output, overwrite)`
+- [x] `to_csr(coeff, drop_zeros) -> (indptr, indices, data)`
+- [ ] `to_dense(coeff) -> ndarray` *(deferred to Step 7)*
+- [x] `__add__`, `__sub__`
+- [x] Properties: `dim`, `nnz`, `dtype`, `__repr__`
+- [x] `cargo check -p quspin-py` passes
+- [ ] Write tests in `python/tests/test_qmatrix.py` *(Step 7)*
+- [x] Commit: `feat(quspin-py): rewrite PyQMatrix with new basis/operator types`
 
 ---
 
