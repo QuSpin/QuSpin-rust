@@ -1,19 +1,62 @@
 use crate::error::Error;
+use crate::operator::bond::PyBondOperator;
+use crate::operator::pauli::PyPauliOperator;
+use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 use quspin_core::basis::seed::seed_from_str;
 use quspin_core::basis::{SpaceKind, SpinBasis};
 
-/// Python-facing spin-½ (or spin-S) basis.
+/// Python-facing spin-½ / spin-S basis.
 ///
-/// LHSS is always 2 for the `full` constructor on this class.
-/// Use [`PyBosonBasis`] for LHSS ≥ 3.
-///
-/// `subspace` and `symmetric` constructors are added in Step 3 alongside
-/// the operator bindings they require.
+/// `subspace` and `symmetric` constructors accept either a `PauliOperator` or
+/// a `BondOperator` as the Hamiltonian used for BFS.
 #[pyclass(name = "SpinBasis", module = "quspin._rs")]
 pub struct PySpinBasis {
     pub inner: SpinBasis,
+}
+
+// Helper: convert a list of Python seed strings to `Vec<Vec<u8>>`.
+fn parse_seeds(seeds: &[String]) -> PyResult<Vec<Vec<u8>>> {
+    seeds
+        .iter()
+        .map(|s| seed_from_str(s).map_err(Error::from).map_err(PyErr::from))
+        .collect()
+}
+
+// Helper: apply lattice symmetry generators to a SpinBasis.
+fn apply_symmetries(
+    basis: &mut SpinBasis,
+    symmetries: &[(Vec<usize>, (f64, f64))],
+) -> PyResult<()> {
+    for (perm, (re, im)) in symmetries {
+        basis
+            .add_lattice(Complex::new(*re, *im), perm.clone())
+            .map_err(Error::from)?;
+    }
+    Ok(())
+}
+
+// Helper: dispatch BFS build to the right operator type.
+fn build_spin_basis(
+    basis: &mut SpinBasis,
+    ham: &Bound<'_, PyAny>,
+    byte_seeds: &[Vec<u8>],
+) -> PyResult<()> {
+    if let Ok(op) = ham.downcast::<PyPauliOperator>() {
+        basis
+            .build_hardcore(&op.borrow().inner, byte_seeds)
+            .map_err(Error::from)?;
+    } else if let Ok(op) = ham.downcast::<PyBondOperator>() {
+        basis
+            .build_bond(&op.borrow().inner, byte_seeds)
+            .map_err(Error::from)?;
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "ham must be a PauliOperator (lhss=2) or BondOperator",
+        ));
+    }
+    Ok(())
 }
 
 #[pymethods]
@@ -22,12 +65,61 @@ impl PySpinBasis {
     ///
     /// Args:
     ///     n_sites: number of lattice sites.
-    ///     lhss: local Hilbert-space size (default 2 for spin-½).
+    ///     lhss:    local Hilbert-space size (default 2 for spin-½).
     #[classmethod]
     #[pyo3(signature = (n_sites, lhss = 2))]
     fn full(_cls: &Bound<'_, PyType>, n_sites: usize, lhss: usize) -> PyResult<Self> {
         let inner = SpinBasis::new(n_sites, lhss, SpaceKind::Full).map_err(Error::from)?;
         Ok(PySpinBasis { inner })
+    }
+
+    /// Particle-number (or energy) sector subspace.
+    ///
+    /// Args:
+    ///     n_sites: number of lattice sites.
+    ///     ham:     `PauliOperator` or `BondOperator` used for BFS.
+    ///     seeds:   list of seed state strings (`'0'`/`'1'` chars per site).
+    ///     lhss:    local Hilbert-space size (default 2).
+    #[classmethod]
+    #[pyo3(signature = (n_sites, ham, seeds, lhss = 2))]
+    fn subspace(
+        _cls: &Bound<'_, PyType>,
+        n_sites: usize,
+        ham: &Bound<'_, PyAny>,
+        seeds: Vec<String>,
+        lhss: usize,
+    ) -> PyResult<Self> {
+        let byte_seeds = parse_seeds(&seeds)?;
+        let mut basis = SpinBasis::new(n_sites, lhss, SpaceKind::Sub).map_err(Error::from)?;
+        build_spin_basis(&mut basis, ham, &byte_seeds)?;
+        Ok(PySpinBasis { inner: basis })
+    }
+
+    /// Symmetry-reduced subspace.
+    ///
+    /// Args:
+    ///     n_sites:     number of lattice sites.
+    ///     ham:         `PauliOperator` (LHSS=2) or `BondOperator` used for BFS.
+    ///     seeds:       list of seed state strings.
+    ///     symmetries:  list of `(perm, (re, im))` tuples, where `perm` is a
+    ///                  site permutation (list of ints) and `(re, im)` is the
+    ///                  group character (complex number as a float pair).
+    ///     lhss:        local Hilbert-space size (default 2).
+    #[classmethod]
+    #[pyo3(signature = (n_sites, ham, seeds, symmetries, lhss = 2))]
+    fn symmetric(
+        _cls: &Bound<'_, PyType>,
+        n_sites: usize,
+        ham: &Bound<'_, PyAny>,
+        seeds: Vec<String>,
+        symmetries: Vec<(Vec<usize>, (f64, f64))>,
+        lhss: usize,
+    ) -> PyResult<Self> {
+        let byte_seeds = parse_seeds(&seeds)?;
+        let mut basis = SpinBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
+        apply_symmetries(&mut basis, &symmetries)?;
+        build_spin_basis(&mut basis, ham, &byte_seeds)?;
+        Ok(PySpinBasis { inner: basis })
     }
 
     // ------------------------------------------------------------------

@@ -99,16 +99,19 @@ Expose the four operator types (Pauli/hardcore, bond, boson, fermion) used as
 inputs to `PyQMatrix.build`. These replace the old `Py*Hamiltonian` operator
 classes (same concept, new implementations matching the current `quspin-core` API).
 
-- [ ] `src/operator/pauli.rs` — `PyPauliOperator` wrapping `HardcoreOperatorInner`
-  - Constructor: `PyPauliOperator(terms)` where `terms` is the nested list format from old tests
-  - Properties: `max_site`, `num_cindices`
-- [ ] `src/operator/bond.rs` — `PyBondOperator` + `PyBondTerm` wrapping `BondOperatorInner`
-- [ ] `src/operator/boson.rs` — `PyBosonOperator` wrapping `BosonOperatorInner`
-- [ ] `src/operator/fermion.rs` — `PyFermionOperator` wrapping `FermionOperatorInner`
-- [ ] `src/operator/mod.rs` wiring
-- [ ] `cargo build -p quspin-py` passes
-- [ ] Write tests in `python/tests/test_operators.py`
-- [ ] Commit: `feat(quspin-py): add operator bindings (Pauli, bond, boson, fermion)`
+- [x] `src/operator/pauli.rs` — `PyPauliOperator` wrapping `HardcoreOperatorInner`
+  - Constructor: `PauliOperator(terms)` where `terms = [(coeff, op_str, sites, cindex), ...]`
+  - Properties: `max_site`, `num_cindices`, `lhss`
+- [x] `src/operator/bond.rs` — `PyBondOperator` wrapping `BondOperatorInner`
+  - Constructor: `BondOperator(terms)` where `terms = [(matrix_ndarray, bonds, cindex), ...]`
+- [x] `src/operator/boson.rs` — `PyBosonOperator` wrapping `BosonOperatorInner`
+- [x] `src/operator/fermion.rs` — `PyFermionOperator` wrapping `FermionOperatorInner`
+- [x] `src/operator/mod.rs` wiring
+- [x] Added `SpinBasis::build_hardcore` to `quspin-core` so `PauliOperator` drives BFS for spin-½ bases
+- [x] Added `subspace`/`symmetric` constructors to `PySpinBasis`, `PyFermionBasis`, `PyBosonBasis`
+- [x] `cargo check -p quspin-py` passes, `cargo test -p quspin-core` passes
+- [ ] Write tests in `python/tests/test_operators.py` *(Step 7)*
+- [x] Commit: `feat(quspin-py): add operator bindings (Pauli, bond, boson, fermion)`
 
 ---
 
