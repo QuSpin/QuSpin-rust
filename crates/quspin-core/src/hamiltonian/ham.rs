@@ -1,6 +1,7 @@
 use crate::error::QuSpinError;
 use crate::primitive::Primitive;
 use crate::qmatrix::matrix::{CIndex, Index, QMatrix};
+use ndarray::{ArrayView2, ArrayViewMut2};
 use num_complex::Complex;
 use std::ops::{Add, Sub};
 use std::sync::Arc;
@@ -149,6 +150,32 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
         let coeffs = self.eval_coeffs(time);
         self.matrix
             .dot_transpose::<Complex<f64>>(overwrite, &coeffs, input, output)
+    }
+
+    /// Batch matrix–vector product over a `(dim, n_vecs)` array.
+    pub fn dot_many(
+        &self,
+        overwrite: bool,
+        time: f64,
+        input: ArrayView2<'_, Complex<f64>>,
+        output: ArrayViewMut2<'_, Complex<f64>>,
+    ) -> Result<(), QuSpinError> {
+        let coeffs = self.eval_coeffs(time);
+        self.matrix
+            .dot_many::<Complex<f64>>(overwrite, &coeffs, input, output)
+    }
+
+    /// Batch transpose matrix–vector product over a `(dim, n_vecs)` array.
+    pub fn dot_transpose_many(
+        &self,
+        overwrite: bool,
+        time: f64,
+        input: ArrayView2<'_, Complex<f64>>,
+        output: ArrayViewMut2<'_, Complex<f64>>,
+    ) -> Result<(), QuSpinError> {
+        let coeffs = self.eval_coeffs(time);
+        self.matrix
+            .dot_transpose_many::<Complex<f64>>(overwrite, &coeffs, input, output)
     }
 }
 

@@ -1,5 +1,6 @@
 use crate::error::QuSpinError;
 use crate::primitive::Primitive;
+use ndarray::{ArrayView2, ArrayViewMut2};
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
@@ -200,23 +201,23 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
         Ok(())
     }
 
-    fn check_dot_lens(
+    fn check_many_lens(
         &self,
         coeff_len: usize,
-        input_len: usize,
-        output_len: usize,
+        input_shape: &[usize],
+        output_shape: &[usize],
     ) -> Result<(), QuSpinError> {
         self.check_coeff_len(coeff_len)?;
-        if input_len != self.dim {
+        if input_shape[0] != self.dim {
             return Err(QuSpinError::ValueError(format!(
-                "input length {} != dim {}",
-                input_len, self.dim
+                "input first axis {} != dim {}",
+                input_shape[0], self.dim
             )));
         }
-        if output_len != self.dim {
+        if output_shape != input_shape {
             return Err(QuSpinError::ValueError(format!(
-                "output length {} != dim {}",
-                output_len, self.dim
+                "output shape {:?} != input shape {:?}",
+                output_shape, input_shape
             )));
         }
         Ok(())
@@ -455,17 +456,10 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
         input: &[V],
         output: &mut [V],
     ) -> Result<(), QuSpinError> {
-        self.check_dot_lens(coeff.len(), input.len(), output.len())?;
-
-        for (r, out) in output.iter_mut().enumerate() {
-            let mut acc = V::default();
-            for e in self.row(r) {
-                let entry_as_v = V::from_complex(e.value.to_complex());
-                acc += coeff[e.cindex.as_usize()] * entry_as_v * input[e.col.as_usize()];
-            }
-            *out = if overwrite { acc } else { *out + acc };
-        }
-        Ok(())
+        // Safety: from_shape((n, 1), slice) always succeeds when n == slice.len().
+        let input_view = ArrayView2::from_shape((input.len(), 1), input).unwrap();
+        let output_view = ArrayViewMut2::from_shape((output.len(), 1), output).unwrap();
+        self.dot_many(overwrite, coeff, input_view, output_view)
     }
 
     // ------------------------------------------------------------------
@@ -483,16 +477,76 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
         input: &[V],
         output: &mut [V],
     ) -> Result<(), QuSpinError> {
-        self.check_dot_lens(coeff.len(), input.len(), output.len())?;
+        let input_view = ArrayView2::from_shape((input.len(), 1), input).unwrap();
+        let output_view = ArrayViewMut2::from_shape((output.len(), 1), output).unwrap();
+        self.dot_transpose_many(overwrite, coeff, input_view, output_view)
+    }
+
+    // ------------------------------------------------------------------
+    // dot_many — batch matrix–matrix product over (dim, n_vecs) arrays
+    // ------------------------------------------------------------------
+
+    /// Batch matrix–vector product: `output[[r, k]] = Σ_{col} coeff[cindex] * value * input[[col, k]]`.
+    ///
+    /// Both `input` and `output` must have shape `(dim, n_vecs)`.
+    /// If `overwrite` is `true`, `output` is zeroed before accumulation.
+    ///
+    /// # Errors
+    /// Returns `ValueError` if any shape is inconsistent with `dim` or `num_coeff`.
+    pub fn dot_many<V: Primitive>(
+        &self,
+        overwrite: bool,
+        coeff: &[V],
+        input: ArrayView2<'_, V>,
+        mut output: ArrayViewMut2<'_, V>,
+    ) -> Result<(), QuSpinError> {
+        self.check_many_lens(coeff.len(), input.shape(), output.shape())?;
 
         if overwrite {
             output.fill(V::default());
         }
 
-        for (r, inp) in input.iter().enumerate() {
+        let n_vecs = input.ncols();
+        for r in 0..self.dim {
             for e in self.row(r) {
-                let entry_as_v = V::from_complex(e.value.to_complex());
-                output[e.col.as_usize()] += coeff[e.cindex.as_usize()] * entry_as_v * *inp;
+                let scale = coeff[e.cindex.as_usize()] * V::from_complex(e.value.to_complex());
+                let col = e.col.as_usize();
+                for k in 0..n_vecs {
+                    output[[r, k]] += scale * input[[col, k]];
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Batch transpose matrix–vector product: `output[[col, k]] += Σ_{r} coeff[cindex] * value * input[[r, k]]`.
+    ///
+    /// Both `input` and `output` must have shape `(dim, n_vecs)`.
+    /// Sequential to avoid data races on `output`.
+    ///
+    /// # Errors
+    /// Returns `ValueError` if any shape is inconsistent with `dim` or `num_coeff`.
+    pub fn dot_transpose_many<V: Primitive>(
+        &self,
+        overwrite: bool,
+        coeff: &[V],
+        input: ArrayView2<'_, V>,
+        mut output: ArrayViewMut2<'_, V>,
+    ) -> Result<(), QuSpinError> {
+        self.check_many_lens(coeff.len(), input.shape(), output.shape())?;
+
+        if overwrite {
+            output.fill(V::default());
+        }
+
+        let n_vecs = input.ncols();
+        for r in 0..self.dim {
+            for e in self.row(r) {
+                let scale = coeff[e.cindex.as_usize()] * V::from_complex(e.value.to_complex());
+                let col = e.col.as_usize();
+                for k in 0..n_vecs {
+                    output[[col, k]] += scale * input[[r, k]];
+                }
             }
         }
         Ok(())
@@ -506,6 +560,7 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ndarray::array;
     use num_complex::Complex;
 
     /// Build a 2×2 matrix [[2, 1], [3, 4]] with a single operator string.
@@ -808,5 +863,116 @@ mod tests {
     fn to_dense_wrong_coeff_errors() {
         let m = mat_2x2();
         assert!(m.to_dense(&[1.0f64, 2.0]).is_err());
+    }
+
+    // --- dot_many ---
+
+    #[test]
+    fn dot_many_single_vec_matches_dot() {
+        // dot_many with n_vecs=1 must agree with dot.
+        let m = mat_2x2();
+        let coeff = vec![1.0f64];
+        let input_vec = vec![1.0f64, 2.0];
+        let mut output_vec = vec![0.0f64; 2];
+        m.dot(true, &coeff, &input_vec, &mut output_vec).unwrap();
+
+        let input_mat = array![[1.0f64], [2.0]]; // shape (2, 1)
+        let mut output_mat = ndarray::Array2::zeros((2, 1));
+        m.dot_many(true, &coeff, input_mat.view(), output_mat.view_mut())
+            .unwrap();
+
+        for r in 0..2 {
+            assert!((output_mat[[r, 0]] - output_vec[r]).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn dot_many_two_vecs() {
+        // Apply [[2,1],[3,4]] to columns [1,2] and [0,1] independently.
+        // [1,2] → [4, 11],  [0,1] → [1, 4]
+        let m = mat_2x2();
+        let coeff = vec![1.0f64];
+        let input = array![[1.0f64, 0.0], [2.0, 1.0]]; // shape (2, 2)
+        let mut output = ndarray::Array2::zeros((2, 2));
+        m.dot_many(true, &coeff, input.view(), output.view_mut())
+            .unwrap();
+
+        assert!((output[[0, 0]] - 4.0).abs() < 1e-12);
+        assert!((output[[1, 0]] - 11.0).abs() < 1e-12);
+        assert!((output[[0, 1]] - 1.0).abs() < 1e-12);
+        assert!((output[[1, 1]] - 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn dot_many_accumulate() {
+        // overwrite=false: result is added to existing output.
+        let m = mat_2x2();
+        let coeff = vec![1.0f64];
+        let input = array![[1.0f64], [2.0]];
+        let mut output = ndarray::Array2::from_elem((2, 1), 1.0f64);
+        m.dot_many(false, &coeff, input.view(), output.view_mut())
+            .unwrap();
+        assert!((output[[0, 0]] - 5.0).abs() < 1e-12); // 1 + 4
+        assert!((output[[1, 0]] - 12.0).abs() < 1e-12); // 1 + 11
+    }
+
+    #[test]
+    fn dot_many_wrong_input_nrows_errors() {
+        let m = mat_2x2();
+        let input = ndarray::Array2::<f64>::zeros((3, 1)); // nrows=3, dim=2
+        let mut output = ndarray::Array2::zeros((3, 1));
+        assert!(
+            m.dot_many(true, &[1.0f64], input.view(), output.view_mut())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn dot_many_mismatched_output_shape_errors() {
+        let m = mat_2x2();
+        let input = ndarray::Array2::<f64>::zeros((2, 2));
+        let mut output = ndarray::Array2::zeros((2, 3)); // ncols differs
+        assert!(
+            m.dot_many(true, &[1.0f64], input.view(), output.view_mut())
+                .is_err()
+        );
+    }
+
+    // --- dot_transpose_many ---
+
+    #[test]
+    fn dot_transpose_many_single_vec_matches_dot_transpose() {
+        let m = mat_2x2();
+        let coeff = vec![1.0f64];
+        let input_vec = vec![1.0f64, 1.0];
+        let mut output_vec = vec![0.0f64; 2];
+        m.dot_transpose(true, &coeff, &input_vec, &mut output_vec)
+            .unwrap();
+
+        let input_mat = array![[1.0f64], [1.0]];
+        let mut output_mat = ndarray::Array2::zeros((2, 1));
+        m.dot_transpose_many(true, &coeff, input_mat.view(), output_mat.view_mut())
+            .unwrap();
+
+        for r in 0..2 {
+            assert!((output_mat[[r, 0]] - output_vec[r]).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn dot_transpose_many_two_vecs() {
+        // Transpose of [[2,1],[3,4]] applied to [1,1] → [5, 5]
+        //                                  and [1,0] → [2, 1]
+        let m = mat_2x2();
+        let coeff = vec![1.0f64];
+        let input = array![[1.0f64, 1.0], [1.0, 0.0]];
+        let mut output = ndarray::Array2::zeros((2, 2));
+        m.dot_transpose_many(true, &coeff, input.view(), output.view_mut())
+            .unwrap();
+
+        assert!((output[[0, 0]] - 5.0).abs() < 1e-12);
+        assert!((output[[1, 0]] - 5.0).abs() < 1e-12);
+        assert!((output[[0, 1]] - 2.0).abs() < 1e-12);
+        assert!((output[[1, 1]] - 1.0).abs() < 1e-12);
     }
 }
