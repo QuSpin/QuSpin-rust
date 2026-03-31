@@ -177,16 +177,19 @@ class BondOperator:
     """Dense two-site bond operator.
 
     Args:
-        terms: List of ``(matrix, bonds, cindex)`` tuples where:
-            - ``matrix``: 2-D complex128 array of shape ``(lhss^2, lhss^2)``
-            - ``bonds``: list of ``(site_i, site_j)`` pairs
-            - ``cindex``: coupling constant index
+        terms: List of ``(matrix, i, j)`` or ``(matrix, i, j, cindex)`` tuples where:
+            - ``matrix``: 2-D array of any supported dtype
+              (int8, int16, float32, float64, complex64, complex128),
+              shape ``(lhss^2, lhss^2)``; converted to complex128 internally.
+            - ``i``, ``j``: site indices for this bond
+            - ``cindex``: coupling constant index (default 0)
     """
 
     def __init__(
         self,
         terms: list[
-            tuple[npt.NDArray[Any], list[tuple[int, int]], int]
+            tuple[npt.NDArray[Any], int, int]
+            | tuple[npt.NDArray[Any], int, int, int]
         ],
     ) -> None: ...
     @property
