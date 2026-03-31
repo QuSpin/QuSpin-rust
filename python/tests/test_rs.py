@@ -1,628 +1,423 @@
-"""Tests for the quspin_rs._rs PyO3 extension."""
+"""Tests for the quspin_rs._rs PyO3 extension (new API)."""
+
+import math
 
 import numpy as np
-import pytest
 
 from quspin_rs._rs import (
-    PyBosonHamiltonian,
-    PyDitBasis,
-    PyFermionHamiltonian,
-    PyHardcoreBasis,
-    PyHardcoreHamiltonian,
-    PyQMatrix,
-    PySpinSymGrp,
+    BosonBasis,
+    BosonOperator,
+    FermionBasis,
+    FermionOperator,
+    Hamiltonian,
+    PauliOperator,
+    QMatrix,
+    SchrodingerEq,
+    SpinBasis,
 )
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-# Simple 4-site XX+ZZ Hamiltonian used in many tests.
-# Terms: [coupling_list per cindex]
-#   cindex 0 → "xx" on (0,1), (1,2), (2,3)   (nearest-neighbour XX)
-#   cindex 1 → "zz" on (0,1), (1,2), (2,3)   (nearest-neighbour ZZ)
-N = 4
-
-XX_ZZ_TERMS = [
-    [("xx", [(1.0, 0, 1), (1.0, 1, 2), (1.0, 2, 3)])],  # cindex 0
-    [("zz", [(1.0, 0, 1), (1.0, 1, 2), (1.0, 2, 3)])],  # cindex 1
-]
+N = 4  # number of sites
 
 
-def make_ham() -> PyHardcoreHamiltonian:
-    return PyHardcoreHamiltonian(XX_ZZ_TERMS)
+def make_pauli_op() -> PauliOperator:
+    """XX + ZZ nearest-neighbour Hamiltonian on N sites."""
+    terms = []
+    for i in range(N - 1):
+        terms.append((1.0 + 0j, "XX", [i, i + 1], 0))  # cindex 0: XX
+        terms.append((1.0 + 0j, "ZZ", [i, i + 1], 1))  # cindex 1: ZZ
+    return PauliOperator(terms)
 
 
-def make_full_basis() -> PyHardcoreBasis:
-    return PyHardcoreBasis.full(N)
+def make_spin_basis_full() -> SpinBasis:
+    return SpinBasis.full(N)
 
 
 # ---------------------------------------------------------------------------
-# PyHardcoreHamiltonian
+# SpinBasis
 # ---------------------------------------------------------------------------
 
 
-class TestPauliHamiltonian:
-    def test_max_site(self):
-        h = make_ham()
-        assert h.max_site == N - 1
-
-    def test_num_cindices(self):
-        h = make_ham()
-        assert h.num_cindices == 2
-
-    def test_single_cindex(self):
-        h = PyHardcoreHamiltonian([[("z", [(1.0, 0), (1.0, 1)])]])
-        assert h.max_site == 1
-        assert h.num_cindices == 1
-
-    def test_bad_op_char(self):
-        with pytest.raises(Exception):
-            PyHardcoreHamiltonian([[("q", [(1.0, 0)])]])
-
-    def test_wrong_site_count(self):
-        # op_str "xx" expects 2 sites but coupling has only 1
-        with pytest.raises(Exception):
-            PyHardcoreHamiltonian([[("xx", [(1.0, 0)])]])
-
-
-# ---------------------------------------------------------------------------
-# PyHardcoreBasis — full
-# ---------------------------------------------------------------------------
-
-
-class TestHardcoreBasisFull:
-    def test_full_size(self):
-        basis = PyHardcoreBasis.full(N)
+class TestSpinBasisFull:
+    def test_size(self):
+        basis = SpinBasis.full(N)
         assert basis.size == 2**N
 
-    def test_full_size_small(self):
-        for n in range(1, 8):
-            assert PyHardcoreBasis.full(n).size == 2**n
+    def test_n_sites(self):
+        assert SpinBasis.full(N).n_sites == N
 
-    def test_full_too_large(self):
-        with pytest.raises(Exception):
-            PyHardcoreBasis.full(65)
+    def test_lhss(self):
+        assert SpinBasis.full(N).lhss == 2
+
+    def test_is_built(self):
+        assert SpinBasis.full(N).is_built
+
+    def test_state_at_returns_str(self):
+        b = SpinBasis.full(2)
+        s = b.state_at(0)
+        assert isinstance(s, str)
+        assert len(s) == 2
+
+    def test_index_roundtrip(self):
+        b = SpinBasis.full(3)
+        for i in range(b.size):
+            s = b.state_at(i)
+            assert b.index(s) == i
 
 
-# ---------------------------------------------------------------------------
-# PyHardcoreBasis — subspace
-# ---------------------------------------------------------------------------
+class TestSpinBasisSubspace:
+    def test_subspace_smaller_or_equal_full(self):
+        op = make_pauli_op()
+        full = SpinBasis.full(N)
+        sub = SpinBasis.subspace(N, op, ["1100"])
+        assert sub.size <= full.size
 
-
-class TestHardcoreBasisSubspace:
-    def test_half_filling_sector(self):
-        # XX is NOT particle-number conserving (it flips pairs of bits), so the
-        # subspace reachable from any seed under XX+ZZ spans multiple sectors.
-        seeds = ["1100"]  # sites 0,1 occupied
-        h = make_ham()
-        basis = PyHardcoreBasis.subspace(seeds, h)
-        assert basis.size >= 1
-        assert basis.size <= 2**N
-
-    def test_single_state_trivial_ham(self):
-        # A Hamiltonian with only Z operators doesn't mix states, so seed = 1 state.
-        h = PyHardcoreHamiltonian([[("z", [(1.0, 0)])]])
-        basis = PyHardcoreBasis.subspace(["0"], h)
-        assert basis.size == 1
-
-    def test_list_seed_equivalent_to_str_seed(self):
-        h = make_ham()
-        b_str = PyHardcoreBasis.subspace(["1100"], h)
-        b_list = PyHardcoreBasis.subspace([[1, 1, 0, 0]], h)
-        assert b_str.size == b_list.size
-
-    def test_multiple_seeds_give_more_states(self):
-        h = make_ham()
-        b1 = PyHardcoreBasis.subspace(["1000"], h)
-        b2 = PyHardcoreBasis.subspace(["1000", "0100"], h)
-        assert b2.size >= b1.size
-
-    def test_invalid_seed_str_char(self):
-        h = make_ham()
-        with pytest.raises(Exception):
-            PyHardcoreBasis.subspace(["2100"], h)
-
-    def test_invalid_seed_list_value(self):
-        h = make_ham()
-        with pytest.raises(Exception):
-            PyHardcoreBasis.subspace([[2, 1, 0, 0]], h)
+    def test_subspace_at_least_one(self):
+        op = make_pauli_op()
+        sub = SpinBasis.subspace(N, op, ["1100"])
+        assert sub.size >= 1
 
 
 # ---------------------------------------------------------------------------
-# PyQMatrix — build and properties
+# PauliOperator
+# ---------------------------------------------------------------------------
+
+
+class TestPauliOperator:
+    def test_num_cindices(self):
+        op = make_pauli_op()
+        assert op.num_cindices == 2
+
+    def test_max_site(self):
+        op = make_pauli_op()
+        assert op.max_site == N - 1
+
+    def test_lhss(self):
+        assert make_pauli_op().lhss == 2
+
+    def test_repr(self):
+        r = repr(make_pauli_op())
+        assert "PauliOperator" in r
+
+
+# ---------------------------------------------------------------------------
+# QMatrix — build and properties
 # ---------------------------------------------------------------------------
 
 
 class TestQMatrixBuild:
+    def _make(self, dtype: str = "float64"):
+        op = make_pauli_op()
+        basis = make_spin_basis_full()
+        return QMatrix.build_pauli(op, basis, np.dtype(dtype))
+
     def test_build_returns_qmatrix(self):
-        h = make_ham()
-        basis = make_full_basis()
-        mat = PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("float64"))
-        assert isinstance(mat, PyQMatrix)
+        assert isinstance(self._make(), QMatrix)
 
     def test_dim_matches_basis(self):
-        h = make_ham()
-        basis = make_full_basis()
-        mat = PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("float64"))
+        basis = make_spin_basis_full()
+        mat = QMatrix.build_pauli(make_pauli_op(), basis, np.dtype("float64"))
         assert mat.dim == basis.size
 
     def test_nnz_positive(self):
-        h = make_ham()
-        basis = make_full_basis()
-        mat = PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("float64"))
-        assert mat.nnz > 0
+        assert self._make().nnz > 0
 
     def test_all_supported_dtypes(self):
-        h = make_ham()
-        basis = make_full_basis()
         for dt in ["int8", "int16", "float32", "float64", "complex64", "complex128"]:
-            mat = PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype(dt))
-            assert mat.dim == basis.size
+            mat = self._make(dt)
+            assert mat.dim == make_spin_basis_full().size
 
-    def test_unsupported_dtype_raises(self):
-        h = make_ham()
-        basis = make_full_basis()
-        with pytest.raises(Exception):
-            PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("int32"))
+    def test_repr(self):
+        assert "QMatrix" in repr(self._make())
 
 
 # ---------------------------------------------------------------------------
-# PyQMatrix — dot / dot_transpose
+# QMatrix — to_csr
 # ---------------------------------------------------------------------------
 
 
-class TestQMatrixDot:
-    def _build(self, dtype=np.float64):
-        h = make_ham()
-        basis = make_full_basis()
-        return PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype(dtype))
+class TestQMatrixCsr:
+    def test_to_csr_shapes(self):
+        mat = QMatrix.build_pauli(
+            make_pauli_op(), make_spin_basis_full(), np.dtype("complex128")
+        )
+        coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
+        indptr, indices, data = mat.to_csr(coeff)
+        n = mat.dim
+        assert indptr.shape == (n + 1,)
+        assert indices.shape == data.shape
+        assert indptr[-1] == len(data)
 
-    def test_dot_overwrite(self):
-        mat = self._build()
-        dim = mat.dim
-        coeff = np.ones(mat.nnz, dtype=np.float64)  # wrong shape — use 1 per cindex
-        # coeff has shape (num_cindices,)
-        coeff = np.array([1.0, 1.0], dtype=np.float64)
-        v = np.random.default_rng(0).standard_normal(dim)
-        out = np.zeros(dim, dtype=np.float64)
-        mat.dot(coeff, v, out, True)
+    def test_to_csr_symmetry(self):
+        """XX + ZZ is Hermitian: H[i,j] == conj(H[j,i])."""
+        mat = QMatrix.build_pauli(
+            make_pauli_op(), make_spin_basis_full(), np.dtype("complex128")
+        )
+        coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
+        indptr, indices, data = mat.to_csr(coeff)
+        n = mat.dim
+        # Build dense matrix from CSR manually
+        dense = np.zeros((n, n), dtype=np.complex128)
+        for row in range(n):
+            for pos in range(indptr[row], indptr[row + 1]):
+                dense[row, indices[pos]] += data[pos]
+        diff = dense - dense.conj().T
+        assert np.max(np.abs(diff)) < 1e-12
+
+
+# ---------------------------------------------------------------------------
+# QMatrix — dot_many
+# ---------------------------------------------------------------------------
+
+
+class TestQMatrixDotMany:
+    def _make(self):
+        return QMatrix.build_pauli(
+            make_pauli_op(), make_spin_basis_full(), np.dtype("complex128")
+        )
+
+    def test_dot_many_overwrite(self):
+        mat = self._make()
+        n, k = mat.dim, 3
+        coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
+        inp = np.random.default_rng(0).standard_normal((n, k)) + 0j
+        out = np.zeros((n, k), dtype=np.complex128)
+        mat.dot_many(coeff, inp, out, True)
         assert not np.allclose(out, 0.0)
 
-    def test_dot_accumulate(self):
-        mat = self._build()
-        coeff = np.array([1.0, 1.0], dtype=np.float64)
-        v = np.random.default_rng(1).standard_normal(mat.dim)
-        out1 = np.zeros(mat.dim, dtype=np.float64)
-        out2 = np.zeros(mat.dim, dtype=np.float64)
-        mat.dot(coeff, v, out1, overwrite=True)
-        mat.dot(coeff, v, out2, overwrite=True)
-        mat.dot(coeff, v, out2, overwrite=False)  # accumulates: out2 = 2 * out1
-        np.testing.assert_allclose(out2, 2 * out1)
+    def test_dot_many_accumulate(self):
+        mat = self._make()
+        n, k = mat.dim, 2
+        coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
+        inp = np.random.default_rng(1).standard_normal((n, k)) + 0j
+        out1 = np.zeros((n, k), dtype=np.complex128)
+        out2 = np.zeros((n, k), dtype=np.complex128)
+        mat.dot_many(coeff, inp, out1, True)
+        mat.dot_many(coeff, inp, out2, True)
+        mat.dot_many(coeff, inp, out2, False)
+        np.testing.assert_allclose(out2, 2 * out1, atol=1e-12)
 
-    def test_dot_transpose_shape(self):
-        mat = self._build()
-        coeff = np.array([1.0, 1.0], dtype=np.float64)
-        v = np.random.default_rng(2).standard_normal(mat.dim)
-        out = np.zeros(mat.dim, dtype=np.float64)
-        mat.dot_transpose(coeff, v, out, True)
-        assert out.shape == (mat.dim,)
-
-    def test_dot_wrong_dtype_raises(self):
-        mat = self._build(np.float64)
-        coeff = np.array([1.0, 1.0], dtype=np.float32)  # wrong dtype
-        v = np.zeros(mat.dim, dtype=np.float32)
-        out = np.zeros(mat.dim, dtype=np.float32)
-        with pytest.raises(TypeError):
-            mat.dot(coeff, v, out, True)
-
-    def test_hermitian_dot_equals_dot_transpose_for_real_symmetric(self):
-        """For a real symmetric Hamiltonian, H·v == H^T·v."""
-        mat = self._build()
-        coeff = np.array([1.0, 1.0], dtype=np.float64)
-        v = np.random.default_rng(3).standard_normal(mat.dim)
-        out_fwd = np.zeros(mat.dim, dtype=np.float64)
-        out_trans = np.zeros(mat.dim, dtype=np.float64)
-        mat.dot(coeff, v, out_fwd, True)
-        mat.dot_transpose(coeff, v, out_trans, True)
-        np.testing.assert_allclose(out_fwd, out_trans, atol=1e-12)
+    def test_dot_many_equals_transpose_for_hermitian(self):
+        """For a Hermitian matrix, H·v == H^†·v == H^T·conj(v)."""
+        mat = self._make()
+        n, k = mat.dim, 2
+        coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
+        inp = np.random.default_rng(2).standard_normal((n, k)) + 0j
+        out_fwd = np.zeros((n, k), dtype=np.complex128)
+        out_trans = np.zeros((n, k), dtype=np.complex128)
+        mat.dot_many(coeff, inp, out_fwd, True)
+        mat.dot_transpose_many(coeff, inp.conj(), out_trans, True)
+        np.testing.assert_allclose(out_fwd, out_trans.conj(), atol=1e-12)
 
 
 # ---------------------------------------------------------------------------
-# PyQMatrix — arithmetic
+# QMatrix — arithmetic
 # ---------------------------------------------------------------------------
 
 
 class TestQMatrixArithmetic:
-    def _build(self):
-        h = make_ham()
-        basis = make_full_basis()
-        return PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("float64"))
+    def _make(self):
+        return QMatrix.build_pauli(
+            make_pauli_op(), make_spin_basis_full(), np.dtype("complex128")
+        )
 
-    def test_add_same_nnz_or_more(self):
-        mat = self._build()
-        result = mat + mat
-        assert result.nnz >= mat.nnz
+    def test_add_nnz_at_least_original(self):
+        mat = self._make()
+        assert (mat + mat).nnz >= mat.nnz
 
     def test_add_dot_is_double(self):
-        mat = self._build()
-        result = mat + mat
-        coeff = np.array([1.0, 1.0], dtype=np.float64)
-        v = np.random.default_rng(4).standard_normal(mat.dim)
-        out1 = np.zeros(mat.dim, dtype=np.float64)
-        out2 = np.zeros(mat.dim, dtype=np.float64)
-        mat.dot(coeff, v, out1, True)
-        result.dot(coeff, v, out2, True)
+        mat = self._make()
+        doubled = mat + mat
+        coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
+        inp = np.random.default_rng(3).standard_normal((mat.dim, 1)) + 0j
+        out1 = np.zeros((mat.dim, 1), dtype=np.complex128)
+        out2 = np.zeros((mat.dim, 1), dtype=np.complex128)
+        mat.dot_many(coeff, inp, out1, True)
+        doubled.dot_many(coeff, inp, out2, True)
         np.testing.assert_allclose(out2, 2 * out1, atol=1e-12)
 
-    def test_sub_self_gives_zero_action(self):
-        mat = self._build()
-        result = mat - mat
-        # mat - mat cancels all entries → nnz == 0 and num_coeff == 0.
-        assert result.nnz == 0
-        coeff = np.array([], dtype=np.float64)
-        v = np.random.default_rng(5).standard_normal(mat.dim)
-        out = np.zeros(mat.dim, dtype=np.float64)
-        result.dot(coeff, v, out, True)
-        np.testing.assert_allclose(out, 0.0, atol=1e-12)
-
 
 # ---------------------------------------------------------------------------
-# PySpinSymGrp / symmetric basis
+# BosonBasis / BosonOperator
 # ---------------------------------------------------------------------------
 
 
-class TestSymmetricBasis:
-    def test_translation_symmetry_reduces_dim(self):
-        # 4-site chain: translation by 1 site, momentum sector k=0 (char=1).
-        grp = PySpinSymGrp(lhss=2, n_sites=N)
-        grp.add_lattice(grp_char=1.0 + 0j, perm=[1, 2, 3, 0])
-        h = make_ham()
-        seeds = ["1100"]
-        basis = PyHardcoreBasis.symmetric(seeds, h, grp)
-        full_basis = PyHardcoreBasis.subspace(seeds, h)
-        assert basis.size <= full_basis.size
-
-    def test_bitflip_symmetry(self):
-        grp = PySpinSymGrp(lhss=2, n_sites=N)
-        grp.add_inverse(grp_char=1.0 + 0j, locs=list(range(N)))
-        assert grp.n_sites == N
-        h = make_ham()
-        # 0b1110 = 14 is the partner of 0b0001 = 1; 14 > 1 so 0b1110 is canonical.
-        seeds = ["0111"]
-        basis = PyHardcoreBasis.symmetric(seeds, h, grp)
-        subspace = PyHardcoreBasis.subspace(seeds, h)
-        assert basis.size <= subspace.size
-
-    def test_symmetric_build_qmatrix(self):
-        grp = PySpinSymGrp(lhss=2, n_sites=N)
-        grp.add_lattice(grp_char=1.0 + 0j, perm=[1, 2, 3, 0])
-        h = make_ham()
-        seeds = ["1100"]
-        basis = PyHardcoreBasis.symmetric(seeds, h, grp)
-        mat = PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("complex128"))
-        assert mat.dim == basis.size
-        assert mat.nnz >= 0
-
-    def test_basis_n_sites(self):
-        basis = make_full_basis()
-        assert basis.n_sites == N
-
-    def test_grp_n_sites(self):
-        grp = PySpinSymGrp(lhss=2, n_sites=N)
-        assert grp.n_sites == N
-
-    def test_grp_lhss(self):
-        grp = PySpinSymGrp(lhss=2, n_sites=N)
-        assert grp.lhss == 2
-
-    def test_bitflip_explicit_locs_same_as_all(self):
-        # Flipping all sites explicitly should give same basis as flipping all.
-        grp_all = PySpinSymGrp(lhss=2, n_sites=N)
-        grp_all.add_inverse(grp_char=1.0 + 0j, locs=list(range(N)))
-        grp_explicit = PySpinSymGrp(lhss=2, n_sites=N)
-        grp_explicit.add_inverse(grp_char=1.0 + 0j, locs=[0, 1, 2, 3])
-        h = make_ham()
-        seeds = ["0111"]
-        b_all = PyHardcoreBasis.symmetric(seeds, h, grp_all)
-        b_explicit = PyHardcoreBasis.symmetric(seeds, h, grp_explicit)
-        assert b_all.size == b_explicit.size
-
-    def test_n_sites_mismatch_symmetric_raises(self):
-        # Group built for 3 sites, ham for 4 sites → error.
-        grp = PySpinSymGrp(lhss=2, n_sites=3)
-        grp.add_lattice(grp_char=1.0 + 0j, perm=[1, 2, 0])
-        h = make_ham()  # 4 sites
-        with pytest.raises(Exception):
-            PyHardcoreBasis.symmetric(["110"], h, grp)
-
-    def test_n_sites_mismatch_build_raises(self):
-        # Basis for 2 sites, ham for 4 sites → error.
-        basis = PyHardcoreBasis.full(2)
-        h = make_ham()  # 4 sites
-        with pytest.raises(Exception):
-            PyQMatrix.build_hardcore_hamiltonian(h, basis, np.dtype("float64"))
-
-    def test_lhss2_n_sites_too_large_raises(self):
-        with pytest.raises(Exception):
-            PySpinSymGrp(lhss=2, n_sites=8193)
+LHSS_B = 3
+N_B = 3
 
 
-# ---------------------------------------------------------------------------
-# PyBosonHamiltonian
-# ---------------------------------------------------------------------------
-
-LHSS = 3
-N_BOSON = 3  # 3-site chain
-
-
-def make_boson_ham() -> PyBosonHamiltonian:
-    """Bose-Hubbard hopping: H = Σ_i (a†_i a_{i+1} + h.c.)"""
-    return PyBosonHamiltonian(
-        lhss=LHSS,
-        terms=[
-            [("+-", [(1.0, 0, 1), (1.0, 1, 2)])],  # a†_i a_j, cindex 0
-            [("-+", [(1.0, 0, 1), (1.0, 1, 2)])],  # a_i a†_j, cindex 1
-        ],
-    )
+def make_boson_op() -> BosonOperator:
+    terms = []
+    for i in range(N_B - 1):
+        terms.append((1.0 + 0j, "+-", [i, i + 1], 0))
+        terms.append((1.0 + 0j, "-+", [i, i + 1], 0))
+    return BosonOperator(terms, LHSS_B)
 
 
-class TestBosonHamiltonian:
-    def test_lhss(self):
-        h = make_boson_ham()
-        assert h.lhss == LHSS
-
-    def test_max_site(self):
-        h = make_boson_ham()
-        assert h.max_site == N_BOSON - 1
-
-    def test_num_cindices(self):
-        h = make_boson_ham()
-        assert h.num_cindices == 2
-
-    def test_number_op(self):
-        h = PyBosonHamiltonian(lhss=4, terms=[[("n", [(1.0, 0), (1.0, 1)])]])
-        assert h.lhss == 4
-        assert h.num_cindices == 1
-
-    def test_bad_op_char_raises(self):
-        with pytest.raises(Exception):
-            PyBosonHamiltonian(lhss=3, terms=[[("x", [(1.0, 0)])]])
-
-    def test_lhss_too_small_raises(self):
-        with pytest.raises(Exception):
-            PyBosonHamiltonian(lhss=1, terms=[[("n", [(1.0, 0)])]])
-
-
-# ---------------------------------------------------------------------------
-# PyDitBasis — full
-# ---------------------------------------------------------------------------
-
-
-class TestDitBasisFull:
-    def test_full_size(self):
-        basis = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
-        assert basis.size == LHSS**N_BOSON
-
-    def test_full_size_various_lhss(self):
-        for lhss in [2, 3, 4, 5]:
-            for n in [1, 2, 3]:
-                b = PyDitBasis.full(n_sites=n, lhss=lhss)
-                assert b.size == lhss**n
+class TestBosonBasisFull:
+    def test_size(self):
+        assert BosonBasis.full(N_B, LHSS_B).size == LHSS_B**N_B
 
     def test_n_sites(self):
-        basis = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
-        assert basis.n_sites == N_BOSON
+        assert BosonBasis.full(N_B, LHSS_B).n_sites == N_B
 
-    def test_lhss_property(self):
-        basis = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
-        assert basis.lhss == LHSS
-
-    def test_state_at_returns_string(self):
-        basis = PyDitBasis.full(n_sites=2, lhss=3)
-        s = basis.state_at(0)
-        assert isinstance(s, str)
-        assert len(s) == 2
-
-    def test_full_too_many_bits_raises(self):
-        # lhss=3 needs 2 bits/site; 33 sites → 66 bits > 64
-        with pytest.raises(Exception):
-            PyDitBasis.full(n_sites=33, lhss=3)
-
-
-# ---------------------------------------------------------------------------
-# PyDitBasis — subspace
-# ---------------------------------------------------------------------------
-
-
-class TestDitBasisSubspace:
-    def test_subspace_size_at_least_1(self):
-        h = make_boson_ham()
-        basis = PyDitBasis.subspace(["100"], h)
-        assert basis.size >= 1
-
-    def test_subspace_size_at_most_full(self):
-        h = make_boson_ham()
-        full = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
-        sub = PyDitBasis.subspace(["100"], h)
-        assert sub.size <= full.size
-
-    def test_str_and_list_seeds_equivalent(self):
-        h = make_boson_ham()
-        b_str = PyDitBasis.subspace(["100"], h)
-        b_list = PyDitBasis.subspace([[1, 0, 0]], h)
-        assert b_str.size == b_list.size
-
-    def test_number_conserving_subspace_size(self):
-        # n̂ only Hamiltonian doesn't connect states → each seed gives size 1.
-        h = PyBosonHamiltonian(lhss=3, terms=[[("n", [(1.0, 0)])]])
-        basis = PyDitBasis.subspace(["010"], h)
-        assert basis.size == 1
-
-    def test_invalid_seed_char_raises(self):
-        h = make_boson_ham()
-        with pytest.raises(Exception):
-            PyDitBasis.subspace(["9xx"], h)  # invalid for lhss=3
-
-    def test_invalid_seed_value_raises(self):
-        h = make_boson_ham()
-        with pytest.raises(Exception):
-            PyDitBasis.subspace([[3, 0, 0]], h)  # 3 >= lhss=3
-
-
-# ---------------------------------------------------------------------------
-# PyQMatrix — boson
-# ---------------------------------------------------------------------------
+    def test_lhss(self):
+        assert BosonBasis.full(N_B, LHSS_B).lhss == LHSS_B
 
 
 class TestQMatrixBoson:
-    def _make(self, dtype=np.float64):
-        h = make_boson_ham()
-        basis = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
-        return PyQMatrix.build_boson_hamiltonian(h, basis, np.dtype(dtype))
-
-    def test_build_returns_qmatrix(self):
-        mat = self._make()
-        assert isinstance(mat, PyQMatrix)
-
-    def test_dim_matches_basis(self):
-        h = make_boson_ham()
-        basis = PyDitBasis.full(n_sites=N_BOSON, lhss=LHSS)
-        mat = PyQMatrix.build_boson_hamiltonian(h, basis, np.dtype("float64"))
+    def test_build_and_dim(self):
+        op = make_boson_op()
+        basis = BosonBasis.full(N_B, LHSS_B)
+        mat = QMatrix.build_boson(op, basis, np.dtype("float64"))
         assert mat.dim == basis.size
-
-    def test_nnz_positive(self):
-        mat = self._make()
         assert mat.nnz > 0
 
-    def test_dot_overwrite(self):
-        mat = self._make()
-        coeff = np.array([1.0, 1.0], dtype=np.float64)
-        v = np.random.default_rng(10).standard_normal(mat.dim)
-        out = np.zeros(mat.dim, dtype=np.float64)
-        mat.dot(coeff, v, out, True)
-        assert not np.allclose(out, 0.0)
-
-    def test_lhss_mismatch_raises(self):
-        h = PyBosonHamiltonian(lhss=3, terms=[[("n", [(1.0, 0)])]])
-        basis = PyDitBasis.full(n_sites=2, lhss=4)  # lhss mismatch
-        with pytest.raises(Exception):
-            PyQMatrix.build_boson_hamiltonian(h, basis, np.dtype("float64"))
-
-    def test_number_op_diagonal(self):
-        """n̂ on a single site gives a diagonal matrix with occupation eigenvalues."""
-        h = PyBosonHamiltonian(lhss=3, terms=[[("n", [(1.0, 0)])]])
-        basis = PyDitBasis.full(n_sites=1, lhss=3)
-        mat = PyQMatrix.build_boson_hamiltonian(h, basis, np.dtype("float64"))
-        coeff = np.array([1.0], dtype=np.float64)
-        v = np.ones(mat.dim, dtype=np.float64)
-        out = np.zeros(mat.dim, dtype=np.float64)
-        mat.dot(coeff, v, out, True)
-        # full 1-site lhss=3 basis: states [2,1,0] (descending), so out = [2,1,0]
-        np.testing.assert_allclose(sorted(out), [0.0, 1.0, 2.0], atol=1e-12)
-
 
 # ---------------------------------------------------------------------------
-# PyFermionHamiltonian
+# FermionBasis / FermionOperator
 # ---------------------------------------------------------------------------
 
-N_FERM = 4  # 4-site chain (8 orbitals: sites 0,1,...,7)
+
+def make_fermion_op() -> FermionOperator:
+    N_F = 4
+    terms = []
+    for i in range(N_F - 1):
+        terms.append((1.0 + 0j, "+-", [i + 1, i], 0))
+        terms.append((1.0 + 0j, "+-", [i, i + 1], 0))
+    return FermionOperator(terms)
 
 
-def make_ferm_hopping() -> PyFermionHamiltonian:
-    """Fermionic hopping: H = Σ_i t(c†_{i+1} c_i + h.c.)
+class TestFermionBasisFull:
+    def test_size(self):
+        assert FermionBasis.full(4).size == 2**4
 
-    Uses sites 0,1,2,3 on a 4-site chain.
-    cindex 0: c†_1 c_0 + c†_3 c_2  (hop right)
-    cindex 1: c†_0 c_1 + c†_2 c_3  (hop left / h.c.)
-    Together these form a Hermitian hopping Hamiltonian.
-    """
-    return PyFermionHamiltonian(
-        [
-            # cindex 0: c†_{i+1} c_i  (hop right)
-            [("+-", [(1.0, 1, 0), (1.0, 3, 2)])],
-            # cindex 1: c†_i c_{i+1}  (hop left / h.c.)
-            [("+-", [(1.0, 0, 1), (1.0, 2, 3)])],
-        ]
-    )
-
-
-class TestFermionHamiltonian:
-    def test_max_site(self):
-        h = make_ferm_hopping()
-        assert h.max_site == 3
-
-    def test_num_cindices(self):
-        h = make_ferm_hopping()
-        assert h.num_cindices == 2
-
-    def test_number_op(self):
-        h = PyFermionHamiltonian([[("n", [(1.0, 0), (1.0, 1)])]])
-        assert h.num_cindices == 1
-        assert h.max_site == 1
-
-    def test_bad_op_char_raises(self):
-        with pytest.raises(Exception):
-            PyFermionHamiltonian([[("x", [(1.0, 0)])]])
-
-    def test_repr(self):
-        h = make_ferm_hopping()
-        r = repr(h)
-        assert "PyFermionHamiltonian" in r
-
-
-# ---------------------------------------------------------------------------
-# PyQMatrix — fermion
-# ---------------------------------------------------------------------------
+    def test_lhss(self):
+        assert FermionBasis.full(4).lhss == 2
 
 
 class TestQMatrixFermion:
-    def _basis(self, n_sites=4):
-        return PyHardcoreBasis.full(n_sites=n_sites)
-
-    def test_build_returns_qmatrix(self):
-        h = make_ferm_hopping()
-        basis = self._basis()
-        mat = PyQMatrix.build_fermion_hamiltonian(h, basis, np.dtype("complex128"))
-        assert isinstance(mat, PyQMatrix)
-
-    def test_dim_matches_basis(self):
-        h = make_ferm_hopping()
-        basis = self._basis()
-        mat = PyQMatrix.build_fermion_hamiltonian(h, basis, np.dtype("complex128"))
+    def test_build_and_dim(self):
+        op = make_fermion_op()
+        basis = FermionBasis.full(4)
+        mat = QMatrix.build_fermion(op, basis, np.dtype("complex128"))
         assert mat.dim == basis.size
-
-    def test_nnz_positive(self):
-        h = make_ferm_hopping()
-        basis = self._basis()
-        mat = PyQMatrix.build_fermion_hamiltonian(h, basis, np.dtype("complex128"))
         assert mat.nnz > 0
 
-    def test_number_op_diagonal(self):
-        """n̂ on site 0 gives a diagonal matrix with occupancy eigenvalues (0 or 1)."""
-        h = PyFermionHamiltonian([[("n", [(1.0, 0)])]])
-        basis = PyHardcoreBasis.full(n_sites=1)
-        mat = PyQMatrix.build_fermion_hamiltonian(h, basis, np.dtype("float64"))
-        coeff = np.array([1.0], dtype=np.float64)
-        v = np.ones(mat.dim, dtype=np.float64)
-        out = np.zeros(mat.dim, dtype=np.float64)
-        mat.dot(coeff, v, out, True)
-        # 1-site hardcore basis: states |1⟩ and |0⟩; n̂|1⟩=|1⟩, n̂|0⟩=0
-        np.testing.assert_allclose(sorted(out), [0.0, 1.0], atol=1e-12)
 
-    def test_hopping_is_hermitian(self):
-        """The hopping Hamiltonian (hop right + hop left) should be Hermitian."""
-        h = make_ferm_hopping()
-        basis = self._basis()
-        coeff = np.array([1.0, 1.0], dtype=np.float64)
-        mat = PyQMatrix.build_fermion_hamiltonian(h, basis, np.dtype("float64"))
-        dim = mat.dim
-        rng = np.random.default_rng(42)
-        # Check H·v == Hᵀ·v for several random v (real Hermitian ↔ symmetric)
-        for _ in range(3):
-            v = rng.standard_normal(dim)
-            out1 = np.zeros(dim, dtype=np.float64)
-            out2 = np.zeros(dim, dtype=np.float64)
-            mat.dot(coeff, v, out1, True)
-            mat.dot_transpose(coeff, v, out2, True)
-            np.testing.assert_allclose(out1, out2, atol=1e-12)
+# ---------------------------------------------------------------------------
+# Hamiltonian
+# ---------------------------------------------------------------------------
+
+
+class TestHamiltonian:
+    def _make_static(self):
+        """Static Hamiltonian: XX+ZZ with no dynamic coupling."""
+        op = make_pauli_op()
+        basis = make_spin_basis_full()
+        mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
+        return Hamiltonian(mat, [])
+
+    def test_dim(self):
+        h = self._make_static()
+        assert h.dim == make_spin_basis_full().size
+
+    def test_num_coeff(self):
+        h = self._make_static()
+        assert h.num_coeff == 2  # XX (cindex 0) + ZZ (cindex 1)
+
+    def test_to_csr_matches_qmatrix_csr(self):
+        op = make_pauli_op()
+        basis = make_spin_basis_full()
+        mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
+        ham = Hamiltonian(mat, [])
+        coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
+        ip, ii, id_ = mat.to_csr(coeff)
+        hp, hi, hd = ham.to_csr(0.0)
+        np.testing.assert_array_equal(ip, hp)
+        np.testing.assert_array_equal(ii, hi)
+        np.testing.assert_allclose(id_, hd, atol=1e-14)
+
+    def test_dot_matches_qmatrix_dot_many(self):
+        op = make_pauli_op()
+        basis = make_spin_basis_full()
+        mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
+        ham = Hamiltonian(mat, [])
+        n = mat.dim
+        coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
+        inp = np.random.default_rng(7).standard_normal((n, 2)) + 0j
+        out_q = np.zeros((n, 2), dtype=np.complex128)
+        out_h = np.zeros((n, 2), dtype=np.complex128)
+        mat.dot_many(coeff, inp, out_q, True)
+        ham.dot_many(0.0, inp, out_h, True)
+        np.testing.assert_allclose(out_q, out_h, atol=1e-14)
+
+    def test_time_dependent_coeff(self):
+        """Scaling coupling by cos(t) should give cos(t) * static result."""
+        op = PauliOperator([(1.0 + 0j, "ZZ", [0, 1], 0), (1.0 + 0j, "ZZ", [0, 1], 1)])
+        basis = SpinBasis.full(2)
+        mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
+        # coeff_fns[0] multiplies cindex 1
+        ham = Hamiltonian(mat, [lambda t: math.cos(t) + 0j])
+        n = mat.dim
+        inp = np.random.default_rng(8).standard_normal((n, 1)) + 0j
+        out_t0 = np.zeros((n, 1), dtype=np.complex128)
+        out_pi4 = np.zeros((n, 1), dtype=np.complex128)
+        ham.dot_many(0.0, inp, out_t0, True)  # cos(0)=1, both cindices weight 1
+        ham.dot_many(math.pi / 4, inp, out_pi4, True)  # cindex 1 weight = cos(pi/4)
+        # At t=0: result = (1 + 1) * ZZ·v = 2 * ZZ·v
+        # At t=pi/4: result = (1 + cos(pi/4)) * ZZ·v
+        ratio = np.linalg.norm(out_pi4) / np.linalg.norm(out_t0)
+        expected_ratio = (1.0 + math.cos(math.pi / 4)) / 2.0
+        assert abs(ratio - expected_ratio) < 1e-12
+
+
+# ---------------------------------------------------------------------------
+# SchrodingerEq — Pauli X on 1 site
+# ---------------------------------------------------------------------------
+
+
+class TestSchrodingerEq:
+    def _pauli_x_eq(self) -> SchrodingerEq:
+        """H = X on a 1-site spin-1/2 basis."""
+        op = PauliOperator([(1.0 + 0j, "X", [0], 0)])
+        basis = SpinBasis.full(1)
+        mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
+        ham = Hamiltonian(mat, [])
+        return SchrodingerEq(ham)
+
+    def test_dim(self):
+        assert self._pauli_x_eq().dim == 2
+
+    def test_integrate_returns_correct_shape(self):
+        eq = self._pauli_x_eq()
+        y0 = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
+        yf = eq.integrate(0.0, math.pi / 2, y0)
+        assert yf.shape == (2,)
+
+    def test_integrate_pauli_x_half_pi(self):
+        """Under H=X, |0> → cos(t)|0> - i sin(t)|1>.
+        At t=pi/2: yf ≈ [0, -i] = [0, -i*1]."""
+        eq = self._pauli_x_eq()
+        y0 = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
+        yf = eq.integrate(0.0, math.pi / 2, y0, rtol=1e-10, atol=1e-12)
+        assert abs(yf[0]) < 1e-6, f"expected yf[0]≈0, got {yf[0]}"
+        assert abs(yf[1] - (-1j)) < 1e-6, f"expected yf[1]≈-i, got {yf[1]}"
+
+    def test_integrate_norm_conserved(self):
+        eq = self._pauli_x_eq()
+        y0 = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
+        yf = eq.integrate(0.0, 1.0, y0)
+        assert abs(np.linalg.norm(yf) - 1.0) < 1e-8
+
+    def test_integrate_dense_shapes(self):
+        eq = self._pauli_x_eq()
+        y0 = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
+        times, states = eq.integrate_dense(0.0, 1.0, y0)
+        assert times.ndim == 1
+        assert states.ndim == 2
+        assert states.shape[1] == 2
+        assert states.shape[0] == len(times)

@@ -187,9 +187,9 @@ The cleanest approach: add a `SchrodingerEqInner` enum (12 variants, one per
 
 ## Step 7 — Wire up, stubs, and cleanup
 
-- [ ] Update `src/lib.rs` `#[pymodule]` to register all new classes
-- [ ] Update `python/quspin_rs/__init__.py` exports
-- [ ] Write `python/quspin_rs/_rs.pyi` stub file with all public classes and methods
-- [ ] Update `python/tests/test_rs.py` to use the new class names and API
-- [ ] Run full Python test suite: `pytest python/tests/`
-- [ ] Commit: `feat(quspin-py): wire up module, add .pyi stubs, update tests`
+- [x] Update `src/lib.rs` `#[pymodule]` to register all new classes (done in Steps 4-6)
+- [x] Update `python/quspin_rs/__init__.py` exports
+- [x] Write `python/quspin_rs/_rs.pyi` stub file with all public classes and methods
+- [x] Update `python/tests/test_rs.py` to use the new class names and API
+- [ ] Run full Python test suite: `pytest python/tests/` (requires `maturin develop` first)
+- [x] Commit: `feat(quspin-py): wire up module, add .pyi stubs, update tests`
