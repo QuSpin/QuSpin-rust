@@ -263,10 +263,10 @@ class QMatrix:
     @staticmethod
     def build_bond(
         op: BondOperator,
-        basis: SpinBasis,
+        basis: SpinBasis | FermionBasis | BosonBasis,
         dtype: np.dtype[Any],
     ) -> QMatrix:
-        """Build from a BondOperator and a SpinBasis."""
+        """Build from a BondOperator and any basis type."""
         ...
 
     @staticmethod

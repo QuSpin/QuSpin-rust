@@ -73,7 +73,7 @@ impl PyQMatrix {
         Ok(PyQMatrix { inner: space })
     }
 
-    /// Build from a `BondOperator` and a `SpinBasis`.
+    /// Build from a `BondOperator` and any basis type.
     #[staticmethod]
     #[pyo3(signature = (op, basis, dtype))]
     fn build_bond(
@@ -85,9 +85,13 @@ impl PyQMatrix {
         let vdtype = dtype_from_py(py, dtype)?;
         let space = if let Ok(b) = basis.downcast::<PySpinBasis>() {
             QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner, vdtype)
+        } else if let Ok(b) = basis.downcast::<PyFermionBasis>() {
+            QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner, vdtype)
+        } else if let Ok(b) = basis.downcast::<PyBosonBasis>() {
+            QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner, vdtype)
         } else {
             return Err(pyo3::exceptions::PyTypeError::new_err(
-                "basis must be SpinBasis for build_bond",
+                "basis must be SpinBasis, FermionBasis, or BosonBasis for build_bond",
             ));
         };
         Ok(PyQMatrix { inner: space })
