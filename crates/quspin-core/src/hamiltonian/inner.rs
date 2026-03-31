@@ -5,8 +5,9 @@
 ///
 /// Naming convention: `HM` prefix, value type abbreviation, cindex type
 /// abbreviation.  For example `HMf64U8` is `Hamiltonian<f64, i64, u8>`.
-use super::ham::Hamiltonian;
+use super::ham::{CoeffFn, Hamiltonian};
 use crate::error::QuSpinError;
+use crate::qmatrix::QMatrixInner;
 use ndarray::{ArrayView2, ArrayViewMut2};
 use num_complex::Complex;
 
@@ -107,6 +108,21 @@ pub enum HamiltonianInner {
 }
 
 impl HamiltonianInner {
+    /// Build a `HamiltonianInner` from a type-erased `QMatrixInner` and a list
+    /// of `Send + Sync` coefficient functions (one per dynamic cindex).
+    ///
+    /// The matrix element type `M` and cindex type `C` are inferred from the
+    /// `QMatrixInner` variant; the function validates that `coeff_fns.len()`
+    /// equals `qmatrix.num_coeff() - 1`.
+    pub fn from_qmatrix_inner(
+        qmatrix: QMatrixInner,
+        coeff_fns: Vec<CoeffFn>,
+    ) -> Result<Self, QuSpinError> {
+        crate::with_qmatrix!(qmatrix, _M, _C, mat, {
+            Ok(Hamiltonian::new(mat, coeff_fns)?.into_hamiltonian_inner())
+        })
+    }
+
     pub fn dim(&self) -> usize {
         with_hamiltonian!(self, _M, _C, h, { h.dim() })
     }

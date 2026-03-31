@@ -4,7 +4,9 @@ use num_complex::Complex;
 use numpy::{Complex64, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use numpy::{PyArray1, PyArray2, ToPyArray};
 use pyo3::prelude::*;
-use quspin_core::qmatrix::QMatrixInner;
+use quspin_core::error::QuSpinError;
+use quspin_core::hamiltonian::{CoeffFn, HamiltonianInner};
+use std::sync::Arc;
 
 /// Return type of `PyHamiltonian::to_csr`.
 type CsrArrays<'py> = (
@@ -15,43 +17,16 @@ type CsrArrays<'py> = (
 
 /// Python-facing time-dependent Hamiltonian.
 ///
-/// Wraps a `QMatrixInner` (the sparse structure, with one operator string per
-/// cindex) together with a list of Python callables — one per time-dependent
-/// coupling constant (cindex 1, 2, ...).  Cindex 0 is the static part and is
-/// always multiplied by 1.
+/// Wraps a `HamiltonianInner` (from `quspin-core`) behind an `Arc` so that
+/// `PySchrodingerEq` can share the same allocation without cloning.
 ///
-/// When evaluating at time `t`, the full coefficient vector is assembled as:
-///   `coeffs = [1, f1(t), f2(t), ...]`
-/// and forwarded to the underlying `QMatrixInner`.
+/// Python coefficient functions are wrapped in closures that call
+/// `Python::with_gil`, making the underlying `HamiltonianInner` fully
+/// `Send + Sync`.  This lets the ODE integrator release the GIL for the
+/// bulk of its computation while still calling back into Python per step.
 #[pyclass(name = "Hamiltonian", module = "quspin._rs")]
 pub struct PyHamiltonian {
-    pub matrix: QMatrixInner,
-    /// Python callables `f(t: float) -> complex`, one per dynamic cindex.
-    pub coeff_fns: Vec<PyObject>,
-}
-
-// ---------------------------------------------------------------------------
-// Helper: evaluate Python coefficient functions at time t
-// ---------------------------------------------------------------------------
-
-pub(crate) fn eval_coeffs(
-    py: Python<'_>,
-    coeff_fns: &[PyObject],
-    time: f64,
-) -> PyResult<Vec<Complex<f64>>> {
-    let mut coeffs = Vec::with_capacity(1 + coeff_fns.len());
-    coeffs.push(Complex::new(1.0, 0.0)); // cindex 0: static
-    for f in coeff_fns {
-        let result = f.call1(py, (time,))?;
-        let c: Complex<f64> = if let Ok(z) = result.extract::<Complex<f64>>(py) {
-            z
-        } else {
-            let re: f64 = result.extract(py)?;
-            Complex::new(re, 0.0)
-        };
-        coeffs.push(c);
-    }
-    Ok(coeffs)
+    pub inner: Arc<HamiltonianInner>,
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +46,7 @@ impl PyHamiltonian {
     ///                `qmatrix.num_coeff - 1` (or 0 for a static Hamiltonian).
     #[new]
     #[pyo3(signature = (qmatrix, coeff_fns))]
-    fn new(qmatrix: &PyQMatrix, coeff_fns: Vec<PyObject>) -> PyResult<Self> {
+    fn new(_py: Python<'_>, qmatrix: &PyQMatrix, coeff_fns: Vec<PyObject>) -> PyResult<Self> {
         let expected = qmatrix.inner.num_coeff().saturating_sub(1);
         if coeff_fns.len() != expected {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
@@ -80,9 +55,34 @@ impl PyHamiltonian {
                 expected,
             )));
         }
+
+        // Wrap each Python callable in a `Send + Sync` closure that
+        // re-acquires the GIL via `Python::with_gil` (re-entrant).
+        let rust_fns: Vec<CoeffFn> = coeff_fns
+            .into_iter()
+            .map(|f| {
+                let arc_fn: CoeffFn = Arc::new(move |t: f64| {
+                    Python::with_gil(|py| {
+                        let result = f.call1(py, (t,)).expect("coeff_fn call failed");
+                        if let Ok(z) = result.extract::<Complex<f64>>(py) {
+                            z
+                        } else {
+                            let re: f64 = result
+                                .extract(py)
+                                .expect("coeff_fn: expected float or complex");
+                            Complex::new(re, 0.0)
+                        }
+                    })
+                });
+                arc_fn
+            })
+            .collect();
+
+        let inner = HamiltonianInner::from_qmatrix_inner(qmatrix.inner.clone(), rust_fns)
+            .map_err(Error::from)?;
+
         Ok(PyHamiltonian {
-            matrix: qmatrix.inner.clone(),
-            coeff_fns,
+            inner: Arc::new(inner),
         })
     }
 
@@ -92,25 +92,25 @@ impl PyHamiltonian {
 
     #[getter]
     fn dim(&self) -> usize {
-        self.matrix.dim()
+        self.inner.dim()
     }
 
     #[getter]
     fn num_coeff(&self) -> usize {
-        self.matrix.num_coeff()
+        self.inner.num_coeff()
     }
 
     #[getter]
     fn dtype(&self) -> &str {
-        self.matrix.dtype_name()
+        self.inner.dtype_name()
     }
 
     fn __repr__(&self) -> String {
         format!(
             "Hamiltonian(dim={}, num_coeff={}, dtype={})",
-            self.matrix.dim(),
-            self.matrix.num_coeff(),
-            self.matrix.dtype_name(),
+            self.inner.dim(),
+            self.inner.num_coeff(),
+            self.inner.dtype_name(),
         )
     }
 
@@ -119,6 +119,9 @@ impl PyHamiltonian {
     // ------------------------------------------------------------------
 
     /// Materialise the Hamiltonian at time `t` as scipy-compatible CSR arrays.
+    ///
+    /// The GIL is released during the sparse-matrix assembly; Python
+    /// coefficient callables re-acquire it briefly as needed.
     ///
     /// Returns:
     ///     (indptr, indices, data) with dtypes (int64, int64, complex128).
@@ -129,11 +132,9 @@ impl PyHamiltonian {
         time: f64,
         drop_zeros: bool,
     ) -> PyResult<CsrArrays<'py>> {
-        let coeffs = eval_coeffs(py, &self.coeff_fns, time)?;
-        let (indptr, indices, data) = self
-            .matrix
-            .materialize(&coeffs, drop_zeros)
-            .map_err(Error::from)?;
+        let inner = Arc::clone(&self.inner);
+        let result = py.allow_threads(move || inner.to_csr(time, drop_zeros));
+        let (indptr, indices, data) = result.map_err(Error::from)?;
         Ok((
             indptr.to_pyarray(py),
             indices.to_pyarray(py),
@@ -142,10 +143,10 @@ impl PyHamiltonian {
     }
 
     // ------------------------------------------------------------------
-    // 1-D matrix-vector products
+    // 1-D matrix-vector product
     // ------------------------------------------------------------------
 
-    /// Compute `output += H(t) @ input` (1-D, single vector).
+    /// Compute `output = H(t) @ input` (or `+= H(t) @ input` when `overwrite=False`).
     fn dot<'py>(
         &self,
         py: Python<'py>,
@@ -154,24 +155,31 @@ impl PyHamiltonian {
         output: &Bound<'py, PyArray1<Complex64>>,
         overwrite: bool,
     ) -> PyResult<()> {
-        let n = self.matrix.dim();
+        let n = self.inner.dim();
         if input.len() != n || unsafe { output.as_array().len() } != n {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "expected arrays of length {n}"
             )));
         }
-        let coeffs = eval_coeffs(py, &self.coeff_fns, time)?;
-        let in_slice = input
+        // Copy arrays to owned Vecs while holding the GIL.
+        let in_vec: Vec<Complex<f64>> = input
             .as_slice()
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let in_vec: Vec<Complex<f64>> = in_slice.iter().map(|c| Complex::new(c.re, c.im)).collect();
-        let mut out_vec: Vec<Complex<f64>> = {
-            let out_arr = unsafe { output.as_array() };
-            out_arr.iter().map(|c| Complex::new(c.re, c.im)).collect()
-        };
-        self.matrix
-            .dot(overwrite, &coeffs, &in_vec, &mut out_vec)
-            .map_err(Error::from)?;
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?
+            .iter()
+            .map(|c| Complex::new(c.re, c.im))
+            .collect();
+        let mut out_vec: Vec<Complex<f64>> = unsafe { output.as_array() }
+            .iter()
+            .map(|c| Complex::new(c.re, c.im))
+            .collect();
+
+        let inner = Arc::clone(&self.inner);
+        let result = py.allow_threads(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
+            inner.dot(overwrite, time, &in_vec, &mut out_vec)?;
+            Ok(out_vec)
+        });
+        let out_vec = result.map_err(Error::from)?;
+
         unsafe {
             let mut out_arr = output.as_array_mut();
             for (i, v) in out_arr.iter_mut().enumerate() {
@@ -185,7 +193,7 @@ impl PyHamiltonian {
     // Batch matrix-vector products
     // ------------------------------------------------------------------
 
-    /// Compute `output += H(t) @ input` column-wise.
+    /// Compute `output += H(t) @ input` column-wise (GIL released).
     ///
     /// Args:
     ///     time:      Evaluation time for the coefficient functions.
@@ -200,29 +208,35 @@ impl PyHamiltonian {
         output: &Bound<'py, PyArray2<Complex64>>,
         overwrite: bool,
     ) -> PyResult<()> {
-        let n = self.matrix.dim();
+        let n = self.inner.dim();
         if input.shape()[0] != n {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "input first dim must be {n}"
             )));
         }
-        let coeffs = eval_coeffs(py, &self.coeff_fns, time)?;
         let n_vecs = input.shape()[1];
-        let in_slice = input
+        let in_arr: Vec<Complex<f64>> = input
             .as_slice()
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let in_arr: Vec<Complex<f64>> = in_slice.iter().map(|c| Complex::new(c.re, c.im)).collect();
-        let in_view = ndarray::ArrayView2::from_shape((n, n_vecs), &in_arr)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let mut out_vec: Vec<Complex<f64>> = {
-            let out_arr = unsafe { output.as_array() };
-            out_arr.iter().map(|c| Complex::new(c.re, c.im)).collect()
-        };
-        let mut out_view = ndarray::ArrayViewMut2::from_shape((n, n_vecs), &mut out_vec)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        self.matrix
-            .dot_many(overwrite, &coeffs, in_view, out_view.view_mut())
-            .map_err(Error::from)?;
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?
+            .iter()
+            .map(|c| Complex::new(c.re, c.im))
+            .collect();
+        let mut out_vec: Vec<Complex<f64>> = unsafe { output.as_array() }
+            .iter()
+            .map(|c| Complex::new(c.re, c.im))
+            .collect();
+
+        let inner = Arc::clone(&self.inner);
+        let result = py.allow_threads(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
+            let in_view = ndarray::ArrayView2::from_shape((n, n_vecs), &in_arr)
+                .map_err(|e| QuSpinError::ValueError(e.to_string()))?;
+            let mut out_view = ndarray::ArrayViewMut2::from_shape((n, n_vecs), &mut out_vec)
+                .map_err(|e| QuSpinError::ValueError(e.to_string()))?;
+            inner.dot_many(overwrite, time, in_view, out_view.view_mut())?;
+            Ok(out_vec)
+        });
+        let out_vec = result.map_err(Error::from)?;
+
         unsafe {
             let mut out_arr = output.as_array_mut();
             for ((r, c), v) in out_arr.indexed_iter_mut() {
@@ -232,7 +246,7 @@ impl PyHamiltonian {
         Ok(())
     }
 
-    /// Transpose matrix-vector product (batch).
+    /// Transpose matrix-vector product (batch, GIL released).
     fn dot_transpose_many<'py>(
         &self,
         py: Python<'py>,
@@ -241,29 +255,35 @@ impl PyHamiltonian {
         output: &Bound<'py, PyArray2<Complex64>>,
         overwrite: bool,
     ) -> PyResult<()> {
-        let n = self.matrix.dim();
+        let n = self.inner.dim();
         if input.shape()[0] != n {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "input first dim must be {n}"
             )));
         }
-        let coeffs = eval_coeffs(py, &self.coeff_fns, time)?;
         let n_vecs = input.shape()[1];
-        let in_slice = input
+        let in_arr: Vec<Complex<f64>> = input
             .as_slice()
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let in_arr: Vec<Complex<f64>> = in_slice.iter().map(|c| Complex::new(c.re, c.im)).collect();
-        let in_view = ndarray::ArrayView2::from_shape((n, n_vecs), &in_arr)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let mut out_vec: Vec<Complex<f64>> = {
-            let out_arr = unsafe { output.as_array() };
-            out_arr.iter().map(|c| Complex::new(c.re, c.im)).collect()
-        };
-        let mut out_view = ndarray::ArrayViewMut2::from_shape((n, n_vecs), &mut out_vec)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        self.matrix
-            .dot_transpose_many(overwrite, &coeffs, in_view, out_view.view_mut())
-            .map_err(Error::from)?;
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?
+            .iter()
+            .map(|c| Complex::new(c.re, c.im))
+            .collect();
+        let mut out_vec: Vec<Complex<f64>> = unsafe { output.as_array() }
+            .iter()
+            .map(|c| Complex::new(c.re, c.im))
+            .collect();
+
+        let inner = Arc::clone(&self.inner);
+        let result = py.allow_threads(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
+            let in_view = ndarray::ArrayView2::from_shape((n, n_vecs), &in_arr)
+                .map_err(|e| QuSpinError::ValueError(e.to_string()))?;
+            let mut out_view = ndarray::ArrayViewMut2::from_shape((n, n_vecs), &mut out_vec)
+                .map_err(|e| QuSpinError::ValueError(e.to_string()))?;
+            inner.dot_transpose_many(overwrite, time, in_view, out_view.view_mut())?;
+            Ok(out_vec)
+        });
+        let out_vec = result.map_err(Error::from)?;
+
         unsafe {
             let mut out_arr = output.as_array_mut();
             for ((r, c), v) in out_arr.indexed_iter_mut() {

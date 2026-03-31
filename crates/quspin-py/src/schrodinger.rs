@@ -5,36 +5,39 @@ use numpy::{Complex64, PyArrayMethods};
 use numpy::{PyArray1, PyArray2, ToPyArray};
 use ode_solvers::System;
 use pyo3::prelude::*;
-use quspin_core::qmatrix::QMatrixInner;
+use quspin_core::hamiltonian::HamiltonianInner;
+use std::sync::Arc;
 
 /// Return type of `PySchrodingerEq::integrate_dense`.
 type DenseOutput<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray2<Complex64>>);
 
 // ---------------------------------------------------------------------------
-// Inline ODE system  (only lives during `integrate`, never stored)
+// ODE system — wraps `HamiltonianInner`, GIL-free during integration
 // ---------------------------------------------------------------------------
 
-struct SchrodingerSystem<'a, 'py> {
-    py: Python<'py>,
-    matrix: &'a QMatrixInner,
-    coeff_fns: &'a [PyObject],
+/// Implements `dy/dt = -i H(t) y` for the `ode_solvers` Dopri5 stepper.
+///
+/// State `y` is stored as interleaved real/imaginary floats so that
+/// `DVector<f64>` can be used directly.  `HamiltonianInner::dot` is called
+/// without holding the GIL; Python coefficient callables re-acquire it
+/// via `Python::with_gil` (re-entrant) as needed.
+struct SchrodingerSystem {
+    inner: Arc<HamiltonianInner>,
 }
 
-impl<'a, 'py> System<f64, DVector<f64>> for SchrodingerSystem<'a, 'py> {
+impl System<f64, DVector<f64>> for SchrodingerSystem {
     fn system(&self, t: f64, y: &DVector<f64>, dy: &mut DVector<f64>) {
-        // Evaluate Python coefficient functions at time t
-        let coeffs = crate::hamiltonian::eval_coeffs(self.py, self.coeff_fns, t)
-            .expect("SchrodingerEq: coefficient function call failed");
-
-        // Re-interpret interleaved real/imaginary as Complex<f64> slices
+        // Safety: `DVector<f64>` has exactly `2*dim` elements; each pair
+        // encodes one `Complex<f64>` in native endian — same layout as
+        // `[f64; 2]`.  `bytemuck::cast_slice` verifies alignment and size.
         let psi: &[Complex<f64>] = bytemuck::cast_slice(y.as_slice());
         let dpsi: &mut [Complex<f64>] = bytemuck::cast_slice_mut(dy.as_mut_slice());
 
-        self.matrix
-            .dot(true, &coeffs, psi, dpsi)
+        self.inner
+            .dot(true, t, psi, dpsi)
             .expect("SchrodingerEq: dot product failed");
 
-        // Apply -i: d|psi>/dt = -i*H|psi>  <->  -i*(a+ib) = b - ia
+        // d|ψ⟩/dt = −i H|ψ⟩  →  multiply by −i: (a+ib)·(−i) = b − ia
         for c in dpsi.iter_mut() {
             *c = Complex::new(c.im, -c.re);
         }
@@ -45,29 +48,24 @@ impl<'a, 'py> System<f64, DVector<f64>> for SchrodingerSystem<'a, 'py> {
 // PySchrodingerEq
 // ---------------------------------------------------------------------------
 
-/// Python-facing Schrödinger equation integrator.
+/// Python-facing Schrödinger equation integrator (Dopri5).
 ///
-/// Wraps a `Hamiltonian` and drives the `ode_solvers` Dopri5 integrator.
-/// The state vector is stored in interleaved real/imaginary format internally
-/// but exposed to Python as a complex128 1-D array.
+/// Shares the `Arc<HamiltonianInner>` from the `Hamiltonian` that was passed
+/// to the constructor — no data is copied.  The GIL is released for the
+/// entire duration of the ODE solve; Python coefficient callbacks re-acquire
+/// it briefly per evaluation step via `Python::with_gil`.
 #[pyclass(name = "SchrodingerEq", module = "quspin._rs")]
 pub struct PySchrodingerEq {
-    matrix: QMatrixInner,
-    coeff_fns: Vec<PyObject>,
+    inner: Arc<HamiltonianInner>,
 }
 
 #[pymethods]
 impl PySchrodingerEq {
     /// Construct from a `Hamiltonian`.
     #[new]
-    fn new(py: Python<'_>, hamiltonian: &PyHamiltonian) -> Self {
+    fn new(_py: Python<'_>, hamiltonian: &PyHamiltonian) -> Self {
         PySchrodingerEq {
-            matrix: hamiltonian.matrix.clone(),
-            coeff_fns: hamiltonian
-                .coeff_fns
-                .iter()
-                .map(|f| f.clone_ref(py))
-                .collect(),
+            inner: Arc::clone(&hamiltonian.inner),
         }
     }
 
@@ -77,14 +75,14 @@ impl PySchrodingerEq {
 
     #[getter]
     fn dim(&self) -> usize {
-        self.matrix.dim()
+        self.inner.dim()
     }
 
     fn __repr__(&self) -> String {
         format!(
             "SchrodingerEq(dim={}, dtype={})",
-            self.matrix.dim(),
-            self.matrix.dtype_name(),
+            self.inner.dim(),
+            self.inner.dtype_name(),
         )
     }
 
@@ -92,7 +90,9 @@ impl PySchrodingerEq {
     // Integration
     // ------------------------------------------------------------------
 
-    /// Integrate from `t0` to `t_end` starting from initial state `y0`.
+    /// Integrate from `t0` to `t_end` starting from `y0`; return final state.
+    ///
+    /// The GIL is released for the entire ODE solve.
     ///
     /// Args:
     ///     t0:    Initial time.
@@ -113,14 +113,14 @@ impl PySchrodingerEq {
         rtol: f64,
         atol: f64,
     ) -> PyResult<Bound<'py, PyArray1<Complex64>>> {
-        let n = self.matrix.dim();
+        let n = self.inner.dim();
         if unsafe { y0.as_array().len() } != n {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "y0 must have length {n}"
             )));
         }
 
-        // Pack initial state into interleaved real/imaginary DVector<f64>
+        // Pack initial state into interleaved-real/imaginary DVector<f64>.
         let mut packed = DVector::zeros(2 * n);
         {
             let arr = unsafe { y0.as_array() };
@@ -130,34 +130,33 @@ impl PySchrodingerEq {
             }
         }
 
-        // Build ODE system (borrows self without cloning PyObjects)
-        let system = SchrodingerSystem {
-            py,
-            matrix: &self.matrix,
-            coeff_fns: &self.coeff_fns,
-        };
+        let inner = Arc::clone(&self.inner);
 
-        // Run Dopri5 integrator
-        let h0 = (t_end - t0).abs() * 1e-4;
-        let mut stepper =
-            ode_solvers::dopri5::Dopri5::new(system, t0, t_end, h0, packed, rtol, atol);
-        stepper.integrate().map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("ODE integration failed: {e:?}"))
+        // Release the GIL for the entire ODE solve.
+        let yf_flat = py.allow_threads(move || -> Result<Vec<f64>, String> {
+            let system = SchrodingerSystem { inner };
+            let h0 = (t_end - t0).abs() * 1e-4;
+            let mut stepper =
+                ode_solvers::dopri5::Dopri5::new(system, t0, t_end, h0, packed, rtol, atol);
+            stepper.integrate().map_err(|e| format!("{e:?}"))?;
+            let yf = stepper
+                .y_out()
+                .last()
+                .ok_or_else(|| "no ODE output produced".to_string())?;
+            Ok(yf.as_slice().to_vec())
+        });
+
+        let yf_flat = yf_flat.map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("ODE integration failed: {e}"))
         })?;
-
-        // Extract final state
-        let yf = stepper
-            .y_out()
-            .last()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("no ODE output produced"))?;
         let result: Vec<Complex64> = (0..n)
-            .map(|k| Complex64::new(yf[2 * k], yf[2 * k + 1]))
+            .map(|k| Complex64::new(yf_flat[2 * k], yf_flat[2 * k + 1]))
             .collect();
         Ok(result.to_pyarray(py))
     }
 
     // ------------------------------------------------------------------
-    // Dense output: all time-points
+    // Dense output: all accepted time-steps
     // ------------------------------------------------------------------
 
     /// Integrate and return all accepted time-step outputs.
@@ -175,7 +174,7 @@ impl PySchrodingerEq {
         rtol: f64,
         atol: f64,
     ) -> PyResult<DenseOutput<'py>> {
-        let n = self.matrix.dim();
+        let n = self.inner.dim();
         if unsafe { y0.as_array().len() } != n {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "y0 must have length {n}"
@@ -191,37 +190,47 @@ impl PySchrodingerEq {
             }
         }
 
-        let system = SchrodingerSystem {
-            py,
-            matrix: &self.matrix,
-            coeff_fns: &self.coeff_fns,
-        };
+        let inner = Arc::clone(&self.inner);
 
-        let h0 = (t_end - t0).abs() * 1e-4;
-        let mut stepper =
-            ode_solvers::dopri5::Dopri5::new(system, t0, t_end, h0, packed, rtol, atol);
-        stepper.integrate().map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("ODE integration failed: {e:?}"))
+        // (times: Vec<f64>, states_flat: Vec<f64>) — flat row-major (n_steps × 2n)
+        let result = py.allow_threads(move || -> Result<(Vec<f64>, Vec<f64>), String> {
+            let system = SchrodingerSystem { inner };
+            let h0 = (t_end - t0).abs() * 1e-4;
+            let mut stepper =
+                ode_solvers::dopri5::Dopri5::new(system, t0, t_end, h0, packed, rtol, atol);
+            stepper.integrate().map_err(|e| format!("{e:?}"))?;
+            let times: Vec<f64> = stepper.x_out().to_vec();
+            let flat: Vec<f64> = stepper
+                .y_out()
+                .iter()
+                .flat_map(|yf| yf.as_slice().to_vec())
+                .collect();
+            Ok((times, flat))
+        });
+
+        let (times, states_flat) = result.map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("ODE integration failed: {e}"))
         })?;
 
-        let times: Vec<f64> = stepper.x_out().to_vec();
         let n_steps = times.len();
+        let times_arr = times.to_pyarray(py);
 
-        let rows: Vec<Vec<Complex64>> = stepper
-            .y_out()
-            .iter()
-            .map(|yf| {
+        // Build (n_steps, dim) complex128 array from flat interleaved buffer.
+        let rows: Vec<Vec<Complex64>> = (0..n_steps)
+            .map(|step| {
                 (0..n)
-                    .map(|k| Complex64::new(yf[2 * k], yf[2 * k + 1]))
+                    .map(|k| {
+                        Complex64::new(
+                            states_flat[step * 2 * n + 2 * k],
+                            states_flat[step * 2 * n + 2 * k + 1],
+                        )
+                    })
                     .collect()
             })
             .collect();
-
-        let times_arr = times.to_pyarray(py);
         let states_arr = PyArray2::from_vec2(py, &rows)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        let _ = n_steps;
         Ok((times_arr, states_arr))
     }
 }

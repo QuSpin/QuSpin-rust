@@ -10,7 +10,7 @@ use std::sync::Arc;
 // CoeffFn type alias
 // ---------------------------------------------------------------------------
 
-type CoeffFn = Arc<dyn Fn(f64) -> Complex<f64> + Send + Sync>;
+pub type CoeffFn = Arc<dyn Fn(f64) -> Complex<f64> + Send + Sync>;
 
 // ---------------------------------------------------------------------------
 // Hamiltonian<M, I, C>
