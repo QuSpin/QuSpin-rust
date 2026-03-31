@@ -8,17 +8,6 @@ pub mod qmatrix;
 use pyo3::prelude::*;
 
 #[pymodule]
-fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<basis::PySpinSymGrp>()?;
-    m.add_class::<basis::PyDitSymGrp>()?;
-    m.add_class::<basis::PyFermionicSymGrp>()?;
-    m.add_class::<hamiltonian::PyHardcoreHamiltonian>()?;
-    m.add_class::<hamiltonian::PyBondTerm>()?;
-    m.add_class::<hamiltonian::PyBondHamiltonian>()?;
-    m.add_class::<hamiltonian::PyBosonHamiltonian>()?;
-    m.add_class::<hamiltonian::PyFermionHamiltonian>()?;
-    m.add_class::<basis::PyHardcoreBasis>()?;
-    m.add_class::<basis::PyDitBasis>()?;
-    m.add_class::<qmatrix::PyQMatrix>()?;
+fn _rs(_m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }

@@ -28,19 +28,19 @@ The frozen crate references types that are marked for deletion
 (`SymGrpBase`, `DitSymGrp`, old `SpinSymGrp`, etc.) and will not compile
 once we remove them from `quspin-core`. Wipe the slate clean.
 
-- [ ] Delete `src/basis/hardcore.rs` (wraps old `PyHardcoreBasis` / `PySpinSymGrp`)
-- [ ] Delete `src/basis/dit.rs` (wraps old `PyDitBasis` / `PyDitSymGrp`)
-- [ ] Delete `src/basis/symmetry.rs` (wraps old `PyFermionicSymGrp`)
-- [ ] Delete `src/hamiltonian/hardcore.rs` (`PyHardcoreHamiltonian` — old operator type)
-- [ ] Delete `src/hamiltonian/bond.rs` (`PyBondHamiltonian` / `PyBondTerm`)
-- [ ] Delete `src/hamiltonian/boson.rs` (`PyBosonHamiltonian`)
-- [ ] Delete `src/hamiltonian/fermion.rs` (`PyFermionHamiltonian`)
-- [ ] Delete `src/hamiltonian/parse.rs` (parser helpers for the old operator types)
-- [ ] Replace `src/qmatrix.rs` with a stub (`pub struct PyQMatrix;`) so it compiles
-- [ ] Strip `src/lib.rs` down to an empty `#[pymodule]` that registers nothing
-- [ ] Strip `src/basis/mod.rs` and `src/hamiltonian/mod.rs` to empty `pub mod` declarations
-- [ ] `cargo build -p quspin-py` passes (may have unused-import warnings, that is fine)
-- [ ] Commit: `chore(quspin-py): delete all dead code ahead of rewrite`
+- [x] Delete `src/basis/hardcore.rs` (wraps old `PyHardcoreBasis` / `PySpinSymGrp`)
+- [x] Delete `src/basis/dit.rs` (wraps old `PyDitBasis` / `PyDitSymGrp`)
+- [x] Delete `src/basis/symmetry.rs` (wraps old `PyFermionicSymGrp`)
+- [x] Delete `src/hamiltonian/hardcore.rs` (`PyHardcoreHamiltonian` — old operator type)
+- [x] Delete `src/hamiltonian/bond.rs` (`PyBondHamiltonian` / `PyBondTerm`)
+- [x] Delete `src/hamiltonian/boson.rs` (`PyBosonHamiltonian`)
+- [x] Delete `src/hamiltonian/fermion.rs` (`PyFermionHamiltonian`)
+- [x] Delete `src/hamiltonian/parse.rs` (parser helpers for the old operator types)
+- [x] Replace `src/qmatrix.rs` with a stub (`pub struct PyQMatrix;`) so it compiles
+- [x] Strip `src/lib.rs` down to an empty `#[pymodule]` that registers nothing
+- [x] Strip `src/basis/mod.rs` and `src/hamiltonian/mod.rs` to empty `pub mod` declarations
+- [x] `cargo check -p quspin-py` passes
+- [x] Commit: `chore(quspin-py): delete all dead code ahead of rewrite`
 
 ---
 
