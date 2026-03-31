@@ -145,19 +145,19 @@ static method per operator kind that accepts the new `Py*Basis` types.
 Expose `HamiltonianInner` to Python. A `PyHamiltonian` is constructed from a
 `PyQMatrix` plus a list of Python callables (one per time-dependent operator string).
 
-- [ ] `src/hamiltonian.rs` — `PyHamiltonian { inner: HamiltonianInner }`
-- [ ] `PyHamiltonian::new(qmatrix, coeff_fns)` — wraps each Python callable in an
-  `Arc<dyn Fn(f64) -> Complex<f64>>` via a thin trampoline that acquires the GIL
-- [ ] `dot(time, input, output, overwrite)` — 1-D
-- [ ] `dot_many(time, input, output, overwrite)` — 2-D `(dim, n_vecs)`
-- [ ] `dot_transpose(time, input, output, overwrite)`
-- [ ] `dot_transpose_many(time, input, output, overwrite)`
-- [ ] `to_csr(time, drop_zeros) -> (indptr, indices, data)`
-- [ ] `to_dense(time) -> ndarray`
-- [ ] Properties: `dim`, `num_coeff`, `dtype`, `__repr__`
-- [ ] `cargo build -p quspin-py` passes
-- [ ] Write tests in `python/tests/test_hamiltonian.py`
-- [ ] Commit: `feat(quspin-py): add PyHamiltonian binding`
+- [x] `src/hamiltonian/mod.rs` — `PyHamiltonian { matrix: QMatrixInner, coeff_fns: Vec<PyObject> }`
+       (stores callables directly at Python boundary rather than wrapping in Arc; avoids Send+Sync issues)
+- [x] `PyHamiltonian::new(qmatrix, coeff_fns)` — validates length, clones `QMatrixInner`
+- [x] `dot(time, input, output, overwrite)` — 1-D
+- [x] `dot_many(time, input, output, overwrite)` — 2-D `(dim, n_vecs)`
+- [ ] `dot_transpose(time, input, output, overwrite)` *(deferred to Step 7)*
+- [x] `dot_transpose_many(time, input, output, overwrite)`
+- [x] `to_csr(time, drop_zeros) -> (indptr, indices, data)`
+- [ ] `to_dense(time) -> ndarray` *(deferred to Step 7)*
+- [x] Properties: `dim`, `num_coeff`, `dtype`, `__repr__`
+- [x] `cargo check -p quspin-py` passes
+- [ ] Write tests in `python/tests/test_hamiltonian.py` *(Step 7)*
+- [x] Commit: `feat(quspin-py): add PyHamiltonian binding`
 
 ---
 

@@ -61,6 +61,10 @@ impl QMatrixInner {
         }
     }
 
+    pub fn num_coeff(&self) -> usize {
+        crate::with_qmatrix!(self, _M, _C, mat, { mat.num_coeff() })
+    }
+
     pub fn nnz(&self) -> usize {
         match self {
             QMatrixInner::QMi8U8(m) => m.nnz(),
@@ -88,6 +92,30 @@ impl QMatrixInner {
             QMatrixInner::QMc32U8(_) | QMatrixInner::QMc32U16(_) => "complex64",
             QMatrixInner::QMc64U8(_) | QMatrixInner::QMc64U16(_) => "complex128",
         }
+    }
+
+    pub fn dot<V: crate::primitive::Primitive>(
+        &self,
+        overwrite: bool,
+        coeff: &[V],
+        input: &[V],
+        output: &mut [V],
+    ) -> Result<(), QuSpinError> {
+        crate::with_qmatrix!(self, _M, _C, mat, {
+            mat.dot(overwrite, coeff, input, output)
+        })
+    }
+
+    pub fn dot_transpose<V: crate::primitive::Primitive>(
+        &self,
+        overwrite: bool,
+        coeff: &[V],
+        input: &[V],
+        output: &mut [V],
+    ) -> Result<(), QuSpinError> {
+        crate::with_qmatrix!(self, _M, _C, mat, {
+            mat.dot_transpose(overwrite, coeff, input, output)
+        })
     }
 
     pub fn dot_many<V: crate::primitive::Primitive>(

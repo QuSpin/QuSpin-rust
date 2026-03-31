@@ -7,6 +7,7 @@ pub mod operator;
 pub mod qmatrix;
 
 use basis::{PyBosonBasis, PyFermionBasis, PySpinBasis};
+use hamiltonian::PyHamiltonian;
 use operator::{PyBondOperator, PyBosonOperator, PyFermionOperator, PyPauliOperator};
 use pyo3::prelude::*;
 use qmatrix::PyQMatrix;
@@ -22,7 +23,8 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBondOperator>()?;
     m.add_class::<PyBosonOperator>()?;
     m.add_class::<PyFermionOperator>()?;
-    // Matrix type
+    // Matrix and Hamiltonian types
     m.add_class::<PyQMatrix>()?;
+    m.add_class::<PyHamiltonian>()?;
     Ok(())
 }
