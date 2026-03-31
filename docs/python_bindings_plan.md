@@ -56,28 +56,28 @@ via three typed classes. Each class wraps `SpaceInner` and has:
 ### `PySpinBasis` (`src/basis/spin.rs`)
 Wraps `SpinBasis` → `SpaceInner`. LHSS is always 2.
 
-- [ ] `PySpinBasis::full(n_sites)` — calls `SpinBasis::new(n_sites, SpaceKind::Full, None)`
-- [ ] `PySpinBasis::subspace(seeds, ham)` — `SpaceKind::Sub` with seed list
-- [ ] `PySpinBasis::symmetric(seeds, ham, symmetries)` — `SpaceKind::Symm`
-- [ ] Properties: `n_sites`, `size`, `is_built`
-- [ ] Methods: `state_at`, `index`
+- [x] `PySpinBasis::full(n_sites, lhss=2)` — calls `SpinBasis::new(n_sites, lhss, SpaceKind::Full)`
+- [ ] `PySpinBasis::subspace(seeds, ham)` — `SpaceKind::Sub` with seed list *(Step 3)*
+- [ ] `PySpinBasis::symmetric(seeds, ham, symmetries)` — `SpaceKind::Symm` *(Step 3)*
+- [x] Properties: `n_sites`, `lhss`, `size`, `is_built`
+- [x] Methods: `state_at`, `index`
 
 ### `PyFermionBasis` (`src/basis/fermion.rs`)
 Wraps `FermionBasis` → `SpaceInner`. LHSS is always 2.
 
-- [ ] `PyFermionBasis::full(n_sites)`
-- [ ] `PyFermionBasis::subspace(seeds, ham)`
-- [ ] `PyFermionBasis::symmetric(seeds, ham, symmetries)`
-- [ ] Properties + methods (same as spin)
+- [x] `PyFermionBasis::full(n_sites)`
+- [ ] `PyFermionBasis::subspace(seeds, ham)` *(Step 3)*
+- [ ] `PyFermionBasis::symmetric(seeds, ham, symmetries)` *(Step 3)*
+- [x] Properties + methods (same as spin)
 
 ### `PyBosonBasis` (`src/basis/boson.rs`)
 Wraps `BosonBasis` → `SpaceInner`. LHSS is user-supplied (≥ 2).
 
-- [ ] `PyBosonBasis::full(n_sites, lhss)`
-- [ ] `PyBosonBasis::subspace(seeds, ham)`
-- [ ] `PyBosonBasis::symmetric(seeds, ham, symmetries)`
-- [ ] Properties: `n_sites`, `lhss`, `size`, `is_built`
-- [ ] Methods: `state_at`, `index`
+- [x] `PyBosonBasis::full(n_sites, lhss)`
+- [ ] `PyBosonBasis::subspace(seeds, ham)` *(Step 3)*
+- [ ] `PyBosonBasis::symmetric(seeds, ham, symmetries)` *(Step 3)*
+- [x] Properties: `n_sites`, `lhss`, `size`, `is_built`
+- [x] Methods: `state_at`, `index`
 
 ### Symmetry group helpers
 The symmetry API needs a small adapter so Python can build lattice / local / inverse
@@ -85,11 +85,11 @@ symmetry generators. Expose as plain Python-facing builder (not a pyclass):
 pass a list of `(perm, grp_char)` tuples for lattice symmetries and
 `(locs, grp_char)` tuples for inversion-like symmetries.
 
-- [ ] `src/basis/symmetry.rs` — helper types for building `SymmetryGrp` from Python lists
-- [ ] Wire `src/basis/mod.rs`
-- [ ] `cargo build -p quspin-py` passes
-- [ ] Write tests in `python/tests/test_basis.py` covering full/subspace/symmetric for all three basis types
-- [ ] Commit: `feat(quspin-py): add PySpinBasis, PyFermionBasis, PyBosonBasis`
+- [ ] `src/basis/symmetry.rs` — helper types for building `SymmetryGrp` from Python lists *(Step 3)*
+- [x] Wire `src/basis/mod.rs`
+- [x] `cargo check -p quspin-py` passes
+- [ ] Write tests in `python/tests/test_basis.py` covering full/subspace/symmetric for all three basis types *(Step 3 adds subspace/symmetric; full tests can be added now)*
+- [x] Commit: `feat(quspin-py): add PySpinBasis, PyFermionBasis, PyBosonBasis (full constructors)`
 
 ---
 
