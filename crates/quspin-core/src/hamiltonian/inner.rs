@@ -7,6 +7,7 @@
 /// abbreviation.  For example `HMf64U8` is `Hamiltonian<f64, i64, u8>`.
 use super::ham::Hamiltonian;
 use crate::error::QuSpinError;
+use ndarray::{ArrayView2, ArrayViewMut2};
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
@@ -239,6 +240,30 @@ impl HamiltonianInner {
     ) -> Result<(), QuSpinError> {
         with_hamiltonian!(self, _M, _C, h, {
             h.dot_transpose(overwrite, time, input, output)
+        })
+    }
+
+    pub fn dot_many(
+        &self,
+        overwrite: bool,
+        time: f64,
+        input: ArrayView2<'_, Complex<f64>>,
+        output: ArrayViewMut2<'_, Complex<f64>>,
+    ) -> Result<(), QuSpinError> {
+        with_hamiltonian!(self, _M, _C, h, {
+            h.dot_many(overwrite, time, input, output)
+        })
+    }
+
+    pub fn dot_transpose_many(
+        &self,
+        overwrite: bool,
+        time: f64,
+        input: ArrayView2<'_, Complex<f64>>,
+        output: ArrayViewMut2<'_, Complex<f64>>,
+    ) -> Result<(), QuSpinError> {
+        with_hamiltonian!(self, _M, _C, h, {
+            h.dot_transpose_many(overwrite, time, input, output)
         })
     }
 }

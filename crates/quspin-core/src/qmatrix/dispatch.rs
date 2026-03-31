@@ -7,6 +7,7 @@
 /// abbreviation.  For example `QMf64U8` is `QMatrix<f64, i64, u8>`.
 use super::QMatrix;
 use crate::error::QuSpinError;
+use ndarray::{ArrayView2, ArrayViewMut2};
 
 // ---------------------------------------------------------------------------
 // QMatrixInner
@@ -75,6 +76,30 @@ impl QMatrixInner {
             QMatrixInner::QMc32U8(_) | QMatrixInner::QMc32U16(_) => "complex64",
             QMatrixInner::QMc64U8(_) | QMatrixInner::QMc64U16(_) => "complex128",
         }
+    }
+
+    pub fn dot_many<V: crate::primitive::Primitive>(
+        &self,
+        overwrite: bool,
+        coeff: &[V],
+        input: ArrayView2<'_, V>,
+        output: ArrayViewMut2<'_, V>,
+    ) -> Result<(), QuSpinError> {
+        crate::with_qmatrix!(self, _M, _C, mat, {
+            mat.dot_many(overwrite, coeff, input, output)
+        })
+    }
+
+    pub fn dot_transpose_many<V: crate::primitive::Primitive>(
+        &self,
+        overwrite: bool,
+        coeff: &[V],
+        input: ArrayView2<'_, V>,
+        output: ArrayViewMut2<'_, V>,
+    ) -> Result<(), QuSpinError> {
+        crate::with_qmatrix!(self, _M, _C, mat, {
+            mat.dot_transpose_many(overwrite, coeff, input, output)
+        })
     }
 
     /// Element-wise addition.  Both operands must have the same dtype.
