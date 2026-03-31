@@ -5,12 +5,14 @@ pub mod hamiltonian;
 pub mod macros;
 pub mod operator;
 pub mod qmatrix;
+pub mod schrodinger;
 
 use basis::{PyBosonBasis, PyFermionBasis, PySpinBasis};
 use hamiltonian::PyHamiltonian;
 use operator::{PyBondOperator, PyBosonOperator, PyFermionOperator, PyPauliOperator};
 use pyo3::prelude::*;
 use qmatrix::PyQMatrix;
+use schrodinger::PySchrodingerEq;
 
 #[pymodule]
 fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -23,8 +25,9 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBondOperator>()?;
     m.add_class::<PyBosonOperator>()?;
     m.add_class::<PyFermionOperator>()?;
-    // Matrix and Hamiltonian types
+    // Matrix, Hamiltonian, and integrator types
     m.add_class::<PyQMatrix>()?;
     m.add_class::<PyHamiltonian>()?;
+    m.add_class::<PySchrodingerEq>()?;
     Ok(())
 }

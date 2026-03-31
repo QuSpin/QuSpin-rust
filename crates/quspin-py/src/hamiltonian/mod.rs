@@ -27,14 +27,18 @@ type CsrArrays<'py> = (
 pub struct PyHamiltonian {
     pub matrix: QMatrixInner,
     /// Python callables `f(t: float) -> complex`, one per dynamic cindex.
-    coeff_fns: Vec<PyObject>,
+    pub coeff_fns: Vec<PyObject>,
 }
 
 // ---------------------------------------------------------------------------
 // Helper: evaluate Python coefficient functions at time t
 // ---------------------------------------------------------------------------
 
-fn eval_coeffs(py: Python<'_>, coeff_fns: &[PyObject], time: f64) -> PyResult<Vec<Complex<f64>>> {
+pub(crate) fn eval_coeffs(
+    py: Python<'_>,
+    coeff_fns: &[PyObject],
+    time: f64,
+) -> PyResult<Vec<Complex<f64>>> {
     let mut coeffs = Vec::with_capacity(1 + coeff_fns.len());
     coeffs.push(Complex::new(1.0, 0.0)); // cindex 0: static
     for f in coeff_fns {

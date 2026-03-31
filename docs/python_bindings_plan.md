@@ -172,17 +172,16 @@ The cleanest approach: add a `SchrodingerEqInner` enum (12 variants, one per
 `HamiltonianInner` in a newtype that implements `System` by dispatching through
 `HamiltonianInner::dot`.
 
-- [ ] Add `SchrodingerEqInner` to `quspin-core` (or a dispatch-capable newtype)
-  that implements `System<f64, DVector<f64>>` via `HamiltonianInner::dot`
-- [ ] `src/schrodinger.rs` — `PySchrodingerEq { inner: SchrodingerEqInner }`
-- [ ] `PySchrodingerEq::new(hamiltonian: &PyHamiltonian)`
-- [ ] `PySchrodingerEq::integrate(t0, t_end, y0, rtol, atol) -> ndarray` —
-  runs Dopri5 and returns the final state
-- [ ] Properties: `dim`, `hamiltonian`
-- [ ] `cargo build -p quspin-py` passes
-- [ ] Write tests in `python/tests/test_schrodinger.py`
-  - Test: Pauli-X 1-site, |0⟩ → t=π/2 → matches -i|1⟩ (tol 1e-6)
-- [ ] Commit: `feat(quspin-py): add PySchrodingerEq binding`
+- [x] `src/schrodinger.rs` — `PySchrodingerEq { matrix: QMatrixInner, coeff_fns: Vec<PyObject> }`
+       (inline `SchrodingerSystem<'a,'py>` borrows from self during `integrate`; no SchrodingerEqInner needed)
+- [x] `PySchrodingerEq::new(py, hamiltonian: &PyHamiltonian)` — clones QMatrixInner + clone_ref each callable
+- [x] `PySchrodingerEq::integrate(t0, t_end, y0, rtol, atol) -> ndarray` — Dopri5, returns final state
+- [x] `PySchrodingerEq::integrate_dense(...)` → (times, states) 2-D array
+- [x] Properties: `dim`, `__repr__`
+- [x] `cargo check -p quspin-py` passes
+- [ ] Write tests in `python/tests/test_schrodinger.py` *(Step 7)*
+  - Test: Pauli-X 1-site, |0⟩ → t=pi/2 → matches -i|1⟩ (tol 1e-6)
+- [x] Commit: `feat(quspin-py): add PySchrodingerEq binding`
 
 ---
 

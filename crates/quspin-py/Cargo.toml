@@ -16,3 +16,6 @@ smallvec = { workspace = true }
 pyo3 = { workspace = true, features = ["extension-module", "abi3-py310", "num-complex"] }
 numpy = { workspace = true }
 paste = { workspace = true }
+nalgebra = { workspace = true }
+ode_solvers = { workspace = true }
+bytemuck = { workspace = true }
