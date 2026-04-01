@@ -177,6 +177,50 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
         self.matrix
             .dot_transpose_many::<Complex<f64>>(overwrite, &coeffs, input, output)
     }
+
+    // ------------------------------------------------------------------
+    // Matrix-exponential action
+    // ------------------------------------------------------------------
+
+    /// Compute `exp(a · H(time)) · f` in-place (single vector).
+    ///
+    /// Uses the adaptive partitioned Taylor method of Al-Mohy & Higham (2011).
+    /// The diagonal shift μ, scaling factor s, and Taylor order m_star are
+    /// chosen automatically based on the operator norm at `time`.
+    ///
+    /// # Arguments
+    /// - `time`  — evaluation time for the time-dependent coefficients
+    /// - `a`     — scalar factor (e.g. `-i·dt` for time evolution)
+    /// - `f`     — input/output vector (length = `self.dim()`)
+    ///
+    /// # Errors
+    /// Returns `ValueError` if `f.len() != self.dim()`.
+    pub fn expm_dot(
+        &self,
+        time: f64,
+        a: Complex<f64>,
+        f: &mut [Complex<f64>],
+    ) -> Result<(), QuSpinError> {
+        let coeffs = self.eval_coeffs(time);
+        crate::expm::expm_multiply_auto(&self.matrix, &coeffs, a, f)
+    }
+
+    /// Compute `exp(a · H(time)) · F` in-place for multiple column vectors.
+    ///
+    /// `f` has shape `(dim, n_vecs)`.  The matrix-exponential parameters are
+    /// computed once from the operator and reused for every column.
+    ///
+    /// # Errors
+    /// Returns `ValueError` if `f.nrows() != self.dim()`.
+    pub fn expm_dot_many(
+        &self,
+        time: f64,
+        a: Complex<f64>,
+        f: ArrayViewMut2<'_, Complex<f64>>,
+    ) -> Result<(), QuSpinError> {
+        let coeffs = self.eval_coeffs(time);
+        crate::expm::expm_multiply_many_auto(&self.matrix, &coeffs, a, f)
+    }
 }
 
 // ---------------------------------------------------------------------------
