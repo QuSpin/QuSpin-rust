@@ -315,11 +315,11 @@ class TestQMatrixFermion:
 
 class TestHamiltonian:
     def _make_static(self):
-        """Static Hamiltonian: XX+ZZ with no dynamic coupling."""
+        """Static Hamiltonian: XX+ZZ — cindex 1 (ZZ) has constant coefficient 1."""
         op = make_pauli_op()
         basis = make_spin_basis_full()
         mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
-        return Hamiltonian(mat, [])
+        return Hamiltonian(mat, [lambda t: 1.0 + 0j])
 
     def test_dim(self):
         h = self._make_static()
@@ -333,7 +333,7 @@ class TestHamiltonian:
         op = make_pauli_op()
         basis = make_spin_basis_full()
         mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
-        ham = Hamiltonian(mat, [])
+        ham = Hamiltonian(mat, [lambda t: 1.0 + 0j])
         coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
         ip, ii, id_ = mat.to_csr(coeff)
         hp, hi, hd = ham.to_csr(0.0)
@@ -345,7 +345,7 @@ class TestHamiltonian:
         op = make_pauli_op()
         basis = make_spin_basis_full()
         mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
-        ham = Hamiltonian(mat, [])
+        ham = Hamiltonian(mat, [lambda t: 1.0 + 0j])
         n = mat.dim
         coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
         inp = np.random.default_rng(7).standard_normal((n, 2)) + 0j
