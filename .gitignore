@@ -1,4 +1,9 @@
+*.dylib*
 /build*
+/target
+Cargo.lock
+*.so
+*.pyd
 /.vscode
 /cpm_modules
 .DS_Store
@@ -60,3 +65,21 @@ packagecache
 .mypy_cache
 __pycache__
 scratch/
+
+# Managed by ion
+.agents/skills/ion-cli
+.agents/skills/receiving-code-review
+.agents/skills/requesting-code-review
+.agents/skills/using-git-worktrees
+.agents/skills/brainstorming
+.agents/skills/dispatching-parallel-agents
+.agents/skills/executing-plans
+.agents/skills/finishing-a-development-branch
+.agents/skills/subagent-driven-development
+.agents/skills/systematic-debugging
+.agents/skills/test-driven-development
+.agents/skills/using-superpowers
+.agents/skills/verification-before-completion
+.agents/skills/writing-plans
+.agents/skills/writing-skills
+.claude/skills/ion-cli

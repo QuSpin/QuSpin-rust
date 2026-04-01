@@ -1,0 +1,94 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "quspin-rs"
+version = "0.1.0"
+description = "Rust implementation of the QuSpin quantum physics library"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[tool.maturin]
+manifest-path = "crates/quspin-py/Cargo.toml"
+module-name = "quspin_rs._rs"
+python-source = "python"
+python-packages = ["quspin_rs"]
+features = ["pyo3/extension-module"]
+
+[tool.uv]
+
+[dependency-groups]
+dev = [
+    "black>=26.0.0",
+    "coverage>=7.6.4",
+    "ipython>=8.29.0",
+    "isort>=5.13.2",
+    "maturin>=1.0.0",
+    "mypy>=1.13.0",
+    "numpy>=1.26.4",
+    "pre-commit>=4.0.1",
+    "pycobertura>=4.1.0",
+    "pyinstrument>=5.1.2",
+    "pyo3-stubgen>=0.3.0",
+    "pyright[nodejs]>=1.1.408",
+    "pytest>=8.3.3",
+    "pytest-xdist>=3.5.0",
+    "ruff>=0.7.3",
+    "rust-just>=1.36.0",
+]
+
+[tool.isort]
+profile = "black"
+combine_as_imports = true
+multi_line_output = 3
+src_paths = ["python/quspin_rs"]
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+target-version = "py310"
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+
+[tool.ruff.lint]
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.coverage.run]
+include = ["python/quspin_rs/*"]
+
+[tool.coverage.report]
+exclude_also = [
+    '@overload',
+    '@_wraps'
+]
+
+[tool.pytest.ini_options]
+testpaths = "python/tests/"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]

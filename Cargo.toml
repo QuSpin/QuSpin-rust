@@ -1,0 +1,24 @@
+[workspace]
+members = [
+    "crates/quspin-core",
+    "crates/quspin-py",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+num-complex = { version = "0.4", features = ["bytemuck"] }
+ndarray = "0.16"
+rayon = "1"
+ruint = "1"
+smallvec = { version = "1", features = ["union"] }
+thiserror = "2"
+pyo3 = "0.23"
+numpy = "0.23"
+paste = "1"
+nalgebra = "0.33"
+bytemuck = "1"
+ode_solvers = "0.6"

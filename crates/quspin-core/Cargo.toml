@@ -1,0 +1,15 @@
+[package]
+name = "quspin-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+num-complex = { workspace = true }
+ndarray = { workspace = true }
+rayon = { workspace = true }
+ruint = { workspace = true }
+smallvec = { workspace = true }
+thiserror = { workspace = true }
+bytemuck = { workspace = true }
+ode_solvers = { workspace = true }
+nalgebra = { workspace = true }
