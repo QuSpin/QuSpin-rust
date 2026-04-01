@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, rust-refactor]
+    branches: [main, rust-refactor]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 jobs:
   # ---------------------------------------------------------------------------
