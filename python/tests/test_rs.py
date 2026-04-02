@@ -3,6 +3,7 @@
 import math
 
 import numpy as np
+import pytest
 
 from quspin_rs._rs import (
     BosonBasis,
@@ -275,6 +276,25 @@ class TestQMatrixBoson:
         mat = QMatrix.build_boson(op, basis, np.dtype("float64"))
         assert mat.dim == basis.size
         assert mat.nnz > 0
+
+
+class TestBosonBasisLargeNSites:
+    """Regression test for issue #12: basis construction panics when n_sites >= 64."""
+
+    @staticmethod
+    def _make_boson_op(n: int, lhss: int) -> BosonOperator:
+        terms = []
+        for i in range(n - 1):
+            terms.append((1.0 + 0j, "+-", [i, i + 1], 0))
+            terms.append((1.0 + 0j, "-+", [i, i + 1], 0))
+        return BosonOperator(terms, lhss)
+
+    @pytest.mark.parametrize("N", [32, 63, 64, 65, 100, 128, 200])
+    def test_single_particle_basis(self, N: int):
+        nb = 1
+        seed = ("1" * nb) + ("0" * (N - nb))
+        basis = BosonBasis.subspace(N, 2, self._make_boson_op(N, 2), [seed])
+        assert basis.size == N
 
 
 # ---------------------------------------------------------------------------

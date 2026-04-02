@@ -118,18 +118,18 @@ class BosonBasis:
     def subspace(
         cls,
         n_sites: int,
+        lhss: int,
         ham: BosonOperator | BondOperator,
         seeds: list[str],
-        lhss: int,
     ) -> BosonBasis: ...
     @classmethod
     def symmetric(
         cls,
         n_sites: int,
+        lhss: int,
         ham: BosonOperator | BondOperator,
         seeds: list[str],
         symmetries: list[tuple[list[int], tuple[float, float]]],
-        lhss: int,
     ) -> BosonBasis: ...
     @property
     def n_sites(self) -> int: ...
