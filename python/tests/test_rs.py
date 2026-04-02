@@ -296,6 +296,13 @@ class TestBosonBasisLargeNSites:
         basis = BosonBasis.subspace(N, 2, self._make_boson_op(N, 2), [seed])
         assert basis.size == N
 
+    @pytest.mark.parametrize("N", [32, 63, 64, 65, 100, 128, 200])
+    def test_two_particle_basis(self, N: int):
+        nb = 2
+        seed = ("1" * nb) + ("0" * (N - nb))
+        basis = BosonBasis.subspace(N, 2, self._make_boson_op(N, 2), [seed])
+        assert basis.size == N * (N - 1) // 2
+
 
 # ---------------------------------------------------------------------------
 # FermionBasis / FermionOperator
