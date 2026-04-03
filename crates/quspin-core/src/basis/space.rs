@@ -195,7 +195,7 @@ impl<B: BitInt> Subspace<B> {
         }
         let max_size = self.lhss.saturating_pow(self.n_sites as u32);
         while let Some(state) = stack.pop()
-            && stack.len() < max_size
+            && self.states.len() < max_size
         {
             // Accumulate (net_amp, sum_of_magnitudes) per output state.
             // The sum of magnitudes sets the scale for the cancellation check.
