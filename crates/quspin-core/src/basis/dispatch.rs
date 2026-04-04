@@ -823,22 +823,29 @@ impl SpaceInner {
             SpaceInner::Sym4096(b) => build_mask_and_push!(b, B4096),
             #[cfg(feature = "large-int")]
             SpaceInner::Sym8192(b) => build_mask_and_push!(b, B8192),
-            _ => unreachable!("validated lhss=2 above"),
+            _ => {
+                return Err(QuSpinError::ValueError(
+                    "add_inv requires a Sym* variant (lhss=2)".into(),
+                ));
+            }
         }
         Ok(())
     }
 
-    /// Add a local dit-permutation symmetry element for LHSS≥3 bases.
+    /// Add a local dit-permutation symmetry element.
     ///
     /// `perm_vals[v] = w` maps local-state `v` to `w` at each site in `locs`.
-    /// Dispatches to the appropriate compiled path based on LHSS
-    /// (3 → `PermDitValues<3>`, 4 → `PermDitValues<4>`, ≥5 → `DynamicPermDitValues`).
+    /// Dispatches to the appropriate compiled path based on LHSS:
+    /// - 2 → delegates to [`add_inv`](Self::add_inv) (perm_vals must be `[1, 0]`)
+    /// - 3 → `PermDitValues<3>`
+    /// - 4 → `PermDitValues<4>`
+    /// - ≥5 → `DynamicPermDitValues`
     ///
     /// # Errors
     /// - Basis is not symmetric
     /// - Basis is already built
-    /// - `lhss < 3` (use [`add_inv`](Self::add_inv) for LHSS=2)
     /// - `perm_vals.len() != lhss`
+    /// - LHSS=2 with `perm_vals` other than `[1, 0]`
     pub fn add_local(
         &mut self,
         grp_char: Complex<f64>,
@@ -856,11 +863,6 @@ impl SpaceInner {
             ));
         }
         let lhss = self.lhss();
-        if lhss < 3 {
-            return Err(QuSpinError::ValueError(
-                "add_local requires lhss >= 3; use add_inv for lhss=2".into(),
-            ));
-        }
         if perm_vals.len() != lhss {
             return Err(QuSpinError::ValueError(format!(
                 "perm_vals.len()={} but lhss={lhss}",
@@ -868,6 +870,15 @@ impl SpaceInner {
             )));
         }
         match lhss {
+            2 => {
+                // For lhss=2, the only non-trivial local symmetry is bit-flip [1, 0].
+                if perm_vals != [1, 0] {
+                    return Err(QuSpinError::ValueError(format!(
+                        "add_local with lhss=2 only supports inversion perm_vals=[1,0], got {perm_vals:?}"
+                    )));
+                }
+                return self.add_inv(grp_char, &locs);
+            }
             3 => {
                 let arr: [u8; 3] = perm_vals.try_into().expect("length validated above");
                 match self {
@@ -903,7 +914,11 @@ impl SpaceInner {
                     SpaceInner::TritSym8192(b) => {
                         b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
                     }
-                    _ => unreachable!("validated lhss=3 above"),
+                    _ => {
+                        return Err(QuSpinError::ValueError(
+                            "add_local with lhss=3 requires a TritSym* variant".into(),
+                        ));
+                    }
                 }
             }
             4 => {
@@ -941,7 +956,11 @@ impl SpaceInner {
                     SpaceInner::QuatSym8192(b) => {
                         b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
                     }
-                    _ => unreachable!("validated lhss=4 above"),
+                    _ => {
+                        return Err(QuSpinError::ValueError(
+                            "add_local with lhss=4 requires a QuatSym* variant".into(),
+                        ));
+                    }
                 }
             }
             _ => match self {
@@ -977,7 +996,11 @@ impl SpaceInner {
                 SpaceInner::DitSym8192(b) => {
                     b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
                 }
-                _ => unreachable!("validated lhss>=5 and symmetric above"),
+                _ => {
+                    return Err(QuSpinError::ValueError(
+                        "add_local with lhss>=5 requires a DitSym* variant".into(),
+                    ));
+                }
             },
         }
         Ok(())
