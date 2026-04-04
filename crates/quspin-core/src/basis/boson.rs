@@ -128,33 +128,11 @@ impl BosonBasis {
     /// Add a lattice (site-permutation) symmetry element.
     ///
     /// Valid only for [`SpaceKind::Symm`] bases before a `build_*` method is called.
-    ///
-    /// # Errors
-    /// - Basis is not [`SpaceKind::Symm`]
-    /// - Basis is already built
-    /// - `perm.len() != n_sites`
     pub fn add_lattice(
         &mut self,
         grp_char: Complex<f64>,
         perm: Vec<usize>,
     ) -> Result<(), QuSpinError> {
-        if self.space_kind != SpaceKind::Symm {
-            return Err(QuSpinError::ValueError(
-                "add_lattice requires SpaceKind::Symm".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError(
-                "cannot add symmetry elements after basis is built".into(),
-            ));
-        }
-        if perm.len() != self.n_sites {
-            return Err(QuSpinError::ValueError(format!(
-                "perm.len()={} but n_sites={}",
-                perm.len(),
-                self.n_sites
-            )));
-        }
         self.inner.add_lattice(grp_char, &perm)
     }
 
