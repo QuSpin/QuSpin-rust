@@ -1,11 +1,13 @@
 use crate::basis::boson::PyBosonBasis;
 use crate::basis::fermion::PyFermionBasis;
+use crate::basis::generic::PyGenericBasis;
 use crate::basis::spin::PySpinBasis;
 use crate::dtype::FromPyDescr;
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::boson::PyBosonOperator;
 use crate::operator::fermion::PyFermionOperator;
+use crate::operator::monomial::PyMonomialOperator;
 use crate::operator::pauli::PyPauliOperator;
 use num_complex::Complex;
 use numpy::{
@@ -122,6 +124,20 @@ impl PyQMatrix {
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
         let inner = QMatrixInner::build_fermion(&op.inner, &basis.inner.inner, vdtype);
+        Ok(PyQMatrix { inner })
+    }
+
+    /// Build from a `MonomialOperator` and a `GenericBasis`.
+    #[staticmethod]
+    #[pyo3(signature = (op, basis, dtype))]
+    fn build_monomial(
+        py: Python<'_>,
+        op: &PyMonomialOperator,
+        basis: &PyGenericBasis,
+        dtype: &Bound<'_, PyArrayDescr>,
+    ) -> PyResult<Self> {
+        let vdtype = dtype_from_py(py, dtype)?;
+        let inner = QMatrixInner::build_monomial(&op.inner, &basis.inner.inner, vdtype);
         Ok(PyQMatrix { inner })
     }
 
