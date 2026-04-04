@@ -28,7 +28,7 @@ repos:
         entry: uv run --locked pyright python
         language: system
         pass_filenames: false
-        always_run: true
+        files: ^python/
       - id: cargo-fmt
         name: cargo fmt
         entry: cargo fmt --all --

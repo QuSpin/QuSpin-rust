@@ -46,6 +46,10 @@ Pre-commit hooks enforce all of these. Run `pre-commit run --all-files` or let t
 - **Rust:** `cargo fmt --all` and `cargo clippy -p quspin-core -p quspin-py --all-targets -- -D warnings`
 - **Python:** black (line-length 88), isort (black profile), ruff, pyright
 
+## Git
+
+- **Default branch:** `main`
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yaml`): cargo test + clippy on Rust, maturin develop + pytest on Python. Runs on push to main and PRs.
