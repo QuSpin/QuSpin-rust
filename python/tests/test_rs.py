@@ -4,6 +4,7 @@ import cmath
 import math
 
 import numpy as np
+import pytest
 
 from quspin_rs._rs import (
     BosonBasis,
@@ -26,11 +27,8 @@ N = 4  # number of sites
 
 def make_pauli_op() -> PauliOperator:
     """XX + ZZ nearest-neighbour Hamiltonian on N sites."""
-    terms = []
-    for i in range(N - 1):
-        terms.append((1.0 + 0j, "XX", [i, i + 1], 0))  # cindex 0: XX
-        terms.append((1.0 + 0j, "ZZ", [i, i + 1], 1))  # cindex 1: ZZ
-    return PauliOperator(terms)
+    bonds = [[1.0, i, i + 1] for i in range(N - 1)]
+    return PauliOperator([("XX", bonds), ("ZZ", bonds)])
 
 
 def make_spin_basis_full() -> SpinBasis:
@@ -251,11 +249,8 @@ N_B = 3
 
 
 def make_boson_op() -> BosonOperator:
-    terms = []
-    for i in range(N_B - 1):
-        terms.append((1.0 + 0j, "+-", [i, i + 1], 0))
-        terms.append((1.0 + 0j, "-+", [i, i + 1], 0))
-    return BosonOperator(terms, LHSS_B)
+    bonds = [[1.0, i, i + 1] for i in range(N_B - 1)]
+    return BosonOperator([("+-", bonds), ("-+", bonds)], LHSS_B)
 
 
 class TestBosonBasisFull:
@@ -278,6 +273,32 @@ class TestQMatrixBoson:
         assert mat.nnz > 0
 
 
+class TestBosonBasisLargeNSites:
+    """Regression test for issue #12: basis construction panics when n_sites >= 64."""
+
+    @staticmethod
+    def _make_boson_op(n: int, lhss: int) -> BosonOperator:
+        terms = [[1.0, i, i + 1] for i in range(n - 1)] + [
+            [1.0, i + 1, i] for i in range(n - 1)
+        ]
+
+        return BosonOperator([("+-", terms)], lhss)
+
+    @pytest.mark.parametrize("N", [32, 63, 64, 65, 100, 128, 200])
+    def test_single_particle_basis(self, N: int):
+        nb = 1
+        seed = ("1" * nb) + ("0" * (N - nb))
+        basis = BosonBasis.subspace(N, 2, self._make_boson_op(N, 2), [seed])
+        assert basis.size == N
+
+    @pytest.mark.parametrize("N", [32, 63, 64, 65, 100, 128, 200])
+    def test_two_particle_basis(self, N: int):
+        nb = 2
+        seed = ("1" * nb) + ("0" * (N - nb))
+        basis = BosonBasis.subspace(N, 2, self._make_boson_op(N, 2), [seed])
+        assert basis.size == N * (N - 1) // 2
+
+
 # ---------------------------------------------------------------------------
 # FermionBasis / FermionOperator
 # ---------------------------------------------------------------------------
@@ -285,11 +306,10 @@ class TestQMatrixBoson:
 
 def make_fermion_op() -> FermionOperator:
     N_F = 4
-    terms = []
-    for i in range(N_F - 1):
-        terms.append((1.0 + 0j, "+-", [i + 1, i], 0))
-        terms.append((1.0 + 0j, "+-", [i, i + 1], 0))
-    return FermionOperator(terms)
+    bonds = [[1.0, i + 1, i] for i in range(N_F - 1)] + [
+        [1.0, i, i + 1] for i in range(N_F - 1)
+    ]
+    return FermionOperator([("+-", bonds)])
 
 
 class TestFermionBasisFull:
@@ -358,7 +378,7 @@ class TestHamiltonian:
 
     def test_time_dependent_coeff(self):
         """Scaling coupling by cos(t) should give cos(t) * static result."""
-        op = PauliOperator([(1.0 + 0j, "ZZ", [0, 1], 0), (1.0 + 0j, "ZZ", [0, 1], 1)])
+        op = PauliOperator([("ZZ", [[1.0, 0, 1]]), ("ZZ", [[1.0, 0, 1]])])
         basis = SpinBasis.full(2)
         mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
         # coeff_fns[0] multiplies cindex 1
@@ -384,7 +404,7 @@ class TestHamiltonian:
 class TestSchrodingerEq:
     def _pauli_x_eq(self) -> SchrodingerEq:
         """H = X on a 1-site spin-1/2 basis."""
-        op = PauliOperator([(1.0 + 0j, "X", [0], 0)])
+        op = PauliOperator([("X", [[1.0, 0]])])
         basis = SpinBasis.full(1)
         mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
         ham = Hamiltonian(mat, [])
@@ -434,7 +454,7 @@ class TestHamiltonianExpm:
 
     def _diagonal_ham(self):
         """H = diag(1, -1) via Z on a 1-site spin-1/2 basis."""
-        op = PauliOperator([(1.0 + 0j, "Z", [0], 0)])
+        op = PauliOperator([("Z", [[1.0, 0]])])
         basis = SpinBasis.full(1)
         mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
         return Hamiltonian(mat, [])
@@ -479,7 +499,7 @@ class TestHamiltonianExpm:
 
     def test_expm_dot_offdiag_matches_numpy(self):
         """Compare expm_dot against numpy eigendecomposition on an XX Hamiltonian."""
-        op = PauliOperator([(1.0 + 0j, "XX", [0, 1], 0)])
+        op = PauliOperator([("XX", [[1.0, 0, 1]])])
         basis = SpinBasis.full(2)
         mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
         ham = Hamiltonian(mat, [])
