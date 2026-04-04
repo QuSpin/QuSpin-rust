@@ -1,9 +1,9 @@
 [[skill]]
 name = "brainstorming"
 source = "https://github.com/obra/superpowers.git"
-path = "skills/brainstorming"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
-checksum = "sha256:5a4ac2fb5a057c07d7d4f362a8385de541a1ec0c4d3ebbd0028a873b9519c933"
+path = "brainstorming"
+commit = "8ea39819eed74fe2a0338e71789f06b30e953041"
+checksum = "sha256:08b73a54591a22066297aaf3766716789534750f546d2e647565adc0f6c25e18"
 
 [[skill]]
 name = "dispatching-parallel-agents"
