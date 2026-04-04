@@ -29,7 +29,7 @@ N = 4  # number of sites
 def make_pauli_op() -> PauliOperator:
     """XX + ZZ nearest-neighbour Hamiltonian on N sites."""
     bonds = [[1.0, i, i + 1] for i in range(N - 1)]
-    return PauliOperator([("XX", bonds), ("ZZ", bonds)])
+    return PauliOperator([("XX", bonds)], [("ZZ", bonds)])
 
 
 def make_spin_basis_full() -> SpinBasis:
@@ -251,7 +251,7 @@ N_B = 3
 
 def make_boson_op() -> BosonOperator:
     bonds = [[1.0, i, i + 1] for i in range(N_B - 1)]
-    return BosonOperator([("+-", bonds), ("-+", bonds)], LHSS_B)
+    return BosonOperator([("+-", bonds)], [("-+", bonds)], lhss=LHSS_B)
 
 
 class TestBosonBasisFull:
@@ -283,7 +283,7 @@ class TestBosonBasisLargeNSites:
             [1.0, i + 1, i] for i in range(n - 1)
         ]
 
-        return BosonOperator([("+-", terms)], lhss)
+        return BosonOperator([("+-", terms)], lhss=lhss)
 
     @pytest.mark.parametrize("N", [32, 63, 64, 65, 100, 128, 200])
     def test_single_particle_basis(self, N: int):
@@ -379,7 +379,7 @@ class TestHamiltonian:
 
     def test_time_dependent_coeff(self):
         """Scaling coupling by cos(t) should give cos(t) * static result."""
-        op = PauliOperator([("ZZ", [[1.0, 0, 1]]), ("ZZ", [[1.0, 0, 1]])])
+        op = PauliOperator([("ZZ", [[1.0, 0, 1]])], [("ZZ", [[1.0, 0, 1]])])
         basis = SpinBasis.full(2)
         mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
         ham = Hamiltonian(mat, [Static(), lambda t: math.cos(t) + 0j])
@@ -540,7 +540,7 @@ def _make_pbc_hopping_op(L: int) -> PauliOperator:
     """Single-particle XX+YY hopping on L sites with periodic boundary conditions."""
     xx_bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
     yy_bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
-    return PauliOperator([("XX", xx_bonds), ("YY", yy_bonds)])
+    return PauliOperator([("XX", xx_bonds)], [("YY", yy_bonds)])
 
 
 def _translation_group(
