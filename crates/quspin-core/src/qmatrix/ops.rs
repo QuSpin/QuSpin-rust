@@ -1,5 +1,7 @@
+use super::matrix::PARALLEL_DIM_THRESHOLD;
 use super::{CIndex, Entry, Index, QMatrix};
 use crate::primitive::Primitive;
+use rayon::prelude::*;
 use std::ops::{Add, Sub};
 
 // ---------------------------------------------------------------------------
@@ -15,6 +17,74 @@ use std::ops::{Add, Sub};
 /// zeros.
 ///
 /// Mirrors `binary_op` from `qmatrix.hpp` (sequential single-thread branch).
+/// Merge a single row from `lhs` and `rhs` under `op`, returning the entries.
+fn merge_row<M, I, C, Op>(
+    op: &Op,
+    lhs_row: &[Entry<M, I, C>],
+    rhs_row: &[Entry<M, I, C>],
+) -> Vec<Entry<M, I, C>>
+where
+    M: Primitive + PartialEq,
+    I: Index,
+    C: CIndex,
+    Op: Fn(M, M) -> M,
+{
+    let zero = M::default();
+    let mut entries = Vec::new();
+    let mut li = lhs_row.iter().peekable();
+    let mut ri = rhs_row.iter().peekable();
+
+    while let (Some(le), Some(re)) = (li.peek(), ri.peek()) {
+        let result = if le.lt_col_cindex(re) {
+            let e = *le;
+            li.next();
+            let v = op(e.value, zero);
+            if v != zero {
+                Some(Entry::new(v, e.col, e.cindex))
+            } else {
+                None
+            }
+        } else if re.lt_col_cindex(le) {
+            let e = *re;
+            ri.next();
+            let v = op(zero, e.value);
+            if v != zero {
+                Some(Entry::new(v, e.col, e.cindex))
+            } else {
+                None
+            }
+        } else {
+            let le = *le;
+            let re = *re;
+            li.next();
+            ri.next();
+            let v = op(le.value, re.value);
+            if v != zero {
+                Some(Entry::new(v, le.col, le.cindex))
+            } else {
+                None
+            }
+        };
+        if let Some(e) = result {
+            entries.push(e);
+        }
+    }
+
+    for e in li {
+        let v = op(e.value, zero);
+        if v != zero {
+            entries.push(Entry::new(v, e.col, e.cindex));
+        }
+    }
+    for e in ri {
+        let v = op(zero, e.value);
+        if v != zero {
+            entries.push(Entry::new(v, e.col, e.cindex));
+        }
+    }
+    entries
+}
+
 fn binary_op<M, I, C, Op>(
     op: Op,
     lhs: &QMatrix<M, I, C>,
@@ -24,79 +94,38 @@ where
     M: Primitive + PartialEq,
     I: Index,
     C: CIndex,
-    Op: Fn(M, M) -> M,
+    Op: Fn(M, M) -> M + Sync,
 {
     assert_eq!(lhs.dim(), rhs.dim(), "QMatrix dimensions must match");
 
     let dim = lhs.dim();
-    let mut indptr = Vec::with_capacity(dim + 1);
-    let mut data: Vec<Entry<M, I, C>> = Vec::new();
 
-    indptr.push(I::from_usize(0));
+    if dim >= PARALLEL_DIM_THRESHOLD {
+        let rows: Vec<Vec<Entry<M, I, C>>> = (0..dim)
+            .into_par_iter()
+            .map(|r| merge_row(&op, lhs.row(r), rhs.row(r)))
+            .collect();
 
-    let zero = M::default();
-
-    for r in 0..dim {
-        let mut li = lhs.row(r).iter().peekable();
-        let mut ri = rhs.row(r).iter().peekable();
-
-        while let (Some(le), Some(re)) = (li.peek(), ri.peek()) {
-            let result = if le.lt_col_cindex(re) {
-                let e = *le;
-                li.next();
-                let v = op(e.value, zero);
-                if v != zero {
-                    Some(Entry::new(v, e.col, e.cindex))
-                } else {
-                    None
-                }
-            } else if re.lt_col_cindex(le) {
-                let e = *re;
-                ri.next();
-                let v = op(zero, e.value);
-                if v != zero {
-                    Some(Entry::new(v, e.col, e.cindex))
-                } else {
-                    None
-                }
-            } else {
-                // same (col, cindex)
-                let le = *le;
-                let re = *re;
-                li.next();
-                ri.next();
-                let v = op(le.value, re.value);
-                if v != zero {
-                    Some(Entry::new(v, le.col, le.cindex))
-                } else {
-                    None
-                }
-            };
-            if let Some(e) = result {
-                data.push(e);
-            }
+        let total_nnz: usize = rows.iter().map(|r| r.len()).sum();
+        let mut indptr = Vec::with_capacity(dim + 1);
+        let mut data = Vec::with_capacity(total_nnz);
+        indptr.push(I::from_usize(0));
+        for row in rows {
+            data.extend_from_slice(&row);
+            indptr.push(I::from_usize(data.len()));
         }
-
-        // Drain remaining lhs entries.
-        for e in li {
-            let v = op(e.value, zero);
-            if v != zero {
-                data.push(Entry::new(v, e.col, e.cindex));
-            }
+        QMatrix::from_csr(indptr, data)
+    } else {
+        let mut indptr = Vec::with_capacity(dim + 1);
+        let mut data: Vec<Entry<M, I, C>> = Vec::new();
+        indptr.push(I::from_usize(0));
+        for r in 0..dim {
+            let entries = merge_row(&op, lhs.row(r), rhs.row(r));
+            data.extend_from_slice(&entries);
+            indptr.push(I::from_usize(data.len()));
         }
-
-        // Drain remaining rhs entries.
-        for e in ri {
-            let v = op(zero, e.value);
-            if v != zero {
-                data.push(Entry::new(v, e.col, e.cindex));
-            }
-        }
-
-        indptr.push(I::from_usize(data.len()));
+        QMatrix::from_csr(indptr, data)
     }
-
-    QMatrix::from_csr(indptr, data)
 }
 
 impl<M, I, C> Add for QMatrix<M, I, C>
@@ -242,5 +271,27 @@ mod tests {
         for i in 0..2 {
             assert!((cv[i] - (av[i] + bv[i])).abs() < 1e-12);
         }
+    }
+
+    #[test]
+    fn binary_op_parallel_sub_cancellation() {
+        // Build two identical tridiagonal matrices with dim=300, subtract.
+        let dim = 300;
+        let mut indptr = Vec::with_capacity(dim + 1);
+        let mut data = Vec::new();
+        indptr.push(0i64);
+        for r in 0..dim {
+            if r > 0 {
+                data.push(Entry::new(1.0f64, (r - 1) as i64, 0u8));
+            }
+            if r + 1 < dim {
+                data.push(Entry::new(1.0f64, (r + 1) as i64, 0u8));
+            }
+            indptr.push(data.len() as i64);
+        }
+        let a = QMatrix::<f64, i64, u8>::from_csr(indptr.clone(), data.clone());
+        let b = QMatrix::<f64, i64, u8>::from_csr(indptr, data);
+        let c = a - b;
+        assert_eq!(c.nnz(), 0, "A - A should be zero matrix");
     }
 }
