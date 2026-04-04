@@ -98,7 +98,7 @@ mod tests {
         let op = HardcoreOperator::new(terms);
         let basis = FullSpace::<u32>::new(2, 1, false);
         let mat = build_from_basis::<_, u32, f64, i64, u8, _>(&op, &basis);
-        let ham = Hamiltonian::new(mat, vec![]).unwrap();
+        let ham = Hamiltonian::new(mat, vec![None]).unwrap();
         SchrodingerEq::new(ham)
     }
 
