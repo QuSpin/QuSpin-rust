@@ -529,3 +529,86 @@ class TestHamiltonianExpm:
         f = np.zeros((5, 2), dtype=np.complex128)
         with pytest.raises(Exception):
             ham.expm_dot_many(0.0, -1j, f)
+
+
+# ---------------------------------------------------------------------------
+# Symmetric basis — translation symmetry integration tests
+# ---------------------------------------------------------------------------
+
+
+def _make_pbc_hopping_op(L: int) -> PauliOperator:
+    """Single-particle XX+YY hopping on L sites with periodic boundary conditions."""
+    xx_bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
+    yy_bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
+    return PauliOperator([("XX", xx_bonds), ("YY", yy_bonds)])
+
+
+def _translation_group(
+    L: int, k: int = 0
+) -> list[tuple[list[int], tuple[float, float]]]:
+    """All L elements of the cyclic translation group on L sites.
+
+    Each element is (perm, (re, im)) where perm = T^n and the character is
+    exp(2*pi*i*k*n/L) for momentum sector k.
+    """
+    elements = []
+    for power in range(L):
+        perm = [(i + power) % L for i in range(L)]
+        angle = 2 * math.pi * k * power / L
+        elements.append((perm, (math.cos(angle), math.sin(angle))))
+    return elements
+
+
+class TestSymmetricBasisTranslation:
+    """For a single particle hopping on an L-site chain with PBC,
+    the single-particle subspace has L states. With k=0 translation
+    symmetry all L states collapse into a single orbit, so the
+    symmetric basis should have size 1."""
+
+    @pytest.mark.parametrize("L", [4, 6, 8, 10, 12, 16])
+    def test_single_particle_k0_small(self, L):
+        op = _make_pbc_hopping_op(L)
+        seed = "1" + "0" * (L - 1)
+        symmetries = _translation_group(L)
+        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        assert basis.size == 1
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("L", [33, 48, 64])
+    def test_single_particle_k0_u64(self, L):
+        """L > 32 forces u64 bit representation."""
+        op = _make_pbc_hopping_op(L)
+        seed = "1" + "0" * (L - 1)
+        symmetries = _translation_group(L)
+        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        assert basis.size == 1
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("L", [65, 80, 128])
+    def test_single_particle_k0_large_int(self, L):
+        """L > 64 forces multi-word integer representation (ruint)."""
+        op = _make_pbc_hopping_op(L)
+        seed = "1" + "0" * (L - 1)
+        symmetries = _translation_group(L)
+        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        assert basis.size == 1
+
+    @pytest.mark.parametrize(
+        "L,k",
+        [(4, 1), (4, 2), (4, 3), (6, 1), (6, 3), (8, 1), (8, 4), (12, 5), (16, 7)],
+    )
+    def test_single_particle_nonzero_k(self, L, k):
+        """Every momentum sector has exactly 1 state for a single particle."""
+        op = _make_pbc_hopping_op(L)
+        seed = "1" + "0" * (L - 1)
+        symmetries = _translation_group(L, k)
+        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        assert basis.size == 1
+
+    @pytest.mark.parametrize("L", [4, 6, 8])
+    def test_subspace_without_symmetry_has_L_states(self, L):
+        """Sanity check: without symmetry the subspace should have L states."""
+        op = _make_pbc_hopping_op(L)
+        seed = "1" + "0" * (L - 1)
+        basis = SpinBasis.subspace(L, op, [seed])
+        assert basis.size == L
