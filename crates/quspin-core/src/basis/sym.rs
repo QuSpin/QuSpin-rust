@@ -3,18 +3,13 @@
 /// Replaces the two-type hierarchy (`SymGrpBase<B,L>` + `SymmetricSubspace<G,N>`)
 /// with a single flat struct. `N` is an explicit type parameter — the B→N
 /// pairing is encoded in `SpaceInner` variant definitions, not a runtime enum.
+use super::bfs::bfs_wave;
 use super::lattice::{BenesLatticeElement, LatEl, LocalOpItem};
 use super::traits::BasisSpace;
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
 use num_complex::Complex;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
-
-/// See `space::AMP_CANCEL_TOL` for the rationale.
-const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
-
-/// Minimum frontier size before switching to parallel BFS.
-const PARALLEL_FRONTIER_THRESHOLD: usize = 256;
 
 /// Minimum batch size before switching to parallel orbit computation.
 const PARALLEL_BATCH_THRESHOLD: usize = 256;
@@ -241,15 +236,7 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         while !frontier.is_empty() {
             // Phase 1: discover raw candidate states via operator application.
             // Per-source amplitude accumulation and cancellation, then union.
-            let candidates: Vec<B> = if frontier.len() >= PARALLEL_FRONTIER_THRESHOLD {
-                Self::bfs_wave_parallel(&frontier, &op)
-                    .into_iter()
-                    .collect()
-            } else {
-                Self::bfs_wave_sequential(&frontier, &op)
-                    .into_iter()
-                    .collect()
-            };
+            let candidates: Vec<B> = bfs_wave(&frontier, &op).into_iter().collect();
 
             if candidates.is_empty() {
                 frontier.clear();
@@ -295,71 +282,6 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         }
 
         self.sort();
-    }
-
-    /// Process one BFS wave sequentially, returning the set of candidate
-    /// states that survived per-source amplitude cancellation.
-    fn bfs_wave_sequential<Op, I, Iter>(frontier: &[B], op: &Op) -> HashSet<B>
-    where
-        Op: Fn(B) -> Iter,
-        Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
-    {
-        let mut discovered = HashSet::new();
-        let mut contributions: HashMap<B, (Complex<f64>, f64)> = HashMap::new();
-
-        for &state in frontier {
-            contributions.clear();
-            for (amp, next_state, _cindex) in op(state) {
-                if next_state != state {
-                    let e = contributions.entry(next_state).or_default();
-                    e.0 += amp;
-                    e.1 += amp.norm();
-                }
-            }
-            for (&next_state, &(net_amp, scale)) in &contributions {
-                if net_amp.norm() > scale * AMP_CANCEL_TOL {
-                    discovered.insert(next_state);
-                }
-            }
-        }
-        discovered
-    }
-
-    /// Process one BFS wave in parallel, returning the set of candidate
-    /// states that survived per-source amplitude cancellation.
-    fn bfs_wave_parallel<Op, I, Iter>(frontier: &[B], op: &Op) -> HashSet<B>
-    where
-        Op: Fn(B) -> Iter + Sync,
-        Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
-    {
-        frontier
-            .par_iter()
-            .fold(
-                || HashSet::<B>::new(),
-                |mut discovered, &state| {
-                    let mut contributions: HashMap<B, (Complex<f64>, f64)> = HashMap::new();
-                    for (amp, next_state, _cindex) in op(state) {
-                        if next_state != state {
-                            let e = contributions.entry(next_state).or_default();
-                            e.0 += amp;
-                            e.1 += amp.norm();
-                        }
-                    }
-                    for (next_state, (net_amp, scale)) in &contributions {
-                        if net_amp.norm() > scale * AMP_CANCEL_TOL {
-                            discovered.insert(*next_state);
-                        }
-                    }
-                    discovered
-                },
-            )
-            .reduce(
-                || HashSet::new(),
-                |mut a, b| {
-                    a.extend(b);
-                    a
-                },
-            )
     }
 
     fn sort(&mut self) {
