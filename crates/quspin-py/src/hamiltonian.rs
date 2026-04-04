@@ -143,6 +143,28 @@ impl PyHamiltonian {
     }
 
     // ------------------------------------------------------------------
+    // Dense export
+    // ------------------------------------------------------------------
+
+    /// Materialise the Hamiltonian at time `t` as a dense complex128 matrix.
+    ///
+    /// Returns a 2-D array of shape `(dim, dim)` in row-major order.
+    fn to_dense<'py>(
+        &self,
+        py: Python<'py>,
+        time: f64,
+    ) -> PyResult<Bound<'py, PyArray2<Complex64>>> {
+        let n = self.inner.dim();
+        let inner = Arc::clone(&self.inner);
+        let result = py.allow_threads(move || inner.to_dense(time));
+        let data = result.map_err(Error::from)?;
+        let arr_data: Vec<Complex64> = data.iter().map(|c| Complex64::new(c.re, c.im)).collect();
+        let arr = ndarray::Array2::from_shape_vec((n, n), arr_data)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(arr.to_pyarray(py))
+    }
+
+    // ------------------------------------------------------------------
     // 1-D matrix-vector product
     // ------------------------------------------------------------------
 
@@ -241,6 +263,84 @@ impl PyHamiltonian {
             let mut out_arr = output.as_array_mut();
             for ((r, c), v) in out_arr.indexed_iter_mut() {
                 *v = Complex64::new(out_vec[r * n_vecs + c].re, out_vec[r * n_vecs + c].im);
+            }
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Matrix exponential
+    // ------------------------------------------------------------------
+
+    /// Compute `exp(a · H(time)) · f` in-place (GIL released).
+    fn expm_dot<'py>(
+        &self,
+        py: Python<'py>,
+        time: f64,
+        a: Complex<f64>,
+        f: &Bound<'py, PyArray1<Complex64>>,
+    ) -> PyResult<()> {
+        let n = self.inner.dim();
+        if unsafe { f.as_array().len() } != n {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "expected array of length {n}"
+            )));
+        }
+        let mut f_vec: Vec<Complex<f64>> = unsafe { f.as_array() }
+            .iter()
+            .map(|c| Complex::new(c.re, c.im))
+            .collect();
+        let inner = Arc::clone(&self.inner);
+        let result = py.allow_threads(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
+            inner.expm_dot(time, a, &mut f_vec)?;
+            Ok(f_vec)
+        });
+        let f_vec = result.map_err(Error::from)?;
+        unsafe {
+            let mut f_arr = f.as_array_mut();
+            for (i, v) in f_arr.iter_mut().enumerate() {
+                *v = Complex64::new(f_vec[i].re, f_vec[i].im);
+            }
+        }
+        Ok(())
+    }
+
+    /// Compute `exp(a · H(time)) · F` in-place for multiple column vectors (GIL released).
+    ///
+    /// Args:
+    ///     time: Evaluation time for the coefficient functions.
+    ///     a:    Scalar multiplier on the Hamiltonian.
+    ///     f:    2-D complex128 array of shape `(dim, n_vecs)` (modified in place).
+    fn expm_dot_many<'py>(
+        &self,
+        py: Python<'py>,
+        time: f64,
+        a: Complex<f64>,
+        f: &Bound<'py, PyArray2<Complex64>>,
+    ) -> PyResult<()> {
+        let n = self.inner.dim();
+        if unsafe { f.as_array().shape()[0] } != n {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "f first dim must be {n}"
+            )));
+        }
+        let n_vecs = unsafe { f.as_array().shape()[1] };
+        let mut f_vec: Vec<Complex<f64>> = unsafe { f.as_array() }
+            .iter()
+            .map(|c| Complex::new(c.re, c.im))
+            .collect();
+        let inner = Arc::clone(&self.inner);
+        let result = py.allow_threads(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
+            let mut f_view = ndarray::ArrayViewMut2::from_shape((n, n_vecs), &mut f_vec)
+                .map_err(|e| QuSpinError::ValueError(e.to_string()))?;
+            inner.expm_dot_many(time, a, f_view.view_mut())?;
+            Ok(f_vec)
+        });
+        let f_vec = result.map_err(Error::from)?;
+        unsafe {
+            let mut f_arr = f.as_array_mut();
+            for ((r, c), v) in f_arr.indexed_iter_mut() {
+                *v = Complex64::new(f_vec[r * n_vecs + c].re, f_vec[r * n_vecs + c].im);
             }
         }
         Ok(())

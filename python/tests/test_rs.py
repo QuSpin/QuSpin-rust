@@ -1,5 +1,6 @@
 """Tests for the quspin_rs._rs PyO3 extension (new API)."""
 
+import cmath
 import math
 
 import numpy as np

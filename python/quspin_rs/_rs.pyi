@@ -12,7 +12,6 @@ import numpy.typing as npt
 # Basis types
 # ---------------------------------------------------------------------------
 
-
 class SpinBasis:
     """Spin (or hardcore-boson) basis — LHSS = 2 by default.
 
@@ -75,7 +74,6 @@ class SpinBasis:
 
     def __repr__(self) -> str: ...
 
-
 class FermionBasis:
     """Fermionic basis — LHSS = 2."""
 
@@ -107,7 +105,6 @@ class FermionBasis:
     def state_at(self, i: int) -> str: ...
     def index(self, state: str) -> int | None: ...
     def __repr__(self) -> str: ...
-
 
 class BosonBasis:
     """Bosonic basis — LHSS user-supplied (>= 2)."""
@@ -143,11 +140,9 @@ class BosonBasis:
     def index(self, state: str) -> int | None: ...
     def __repr__(self) -> str: ...
 
-
 # ---------------------------------------------------------------------------
 # Operator types
 # ---------------------------------------------------------------------------
-
 
 class PauliOperator:
     """Pauli / hardcore-boson operator.
@@ -175,7 +170,6 @@ class PauliOperator:
     def lhss(self) -> int: ...
     def __repr__(self) -> str: ...
 
-
 class BondOperator:
     """Dense two-site bond operator.
 
@@ -188,9 +182,7 @@ class BondOperator:
 
     def __init__(
         self,
-        terms: list[
-            tuple[npt.NDArray[Any], list[tuple[int, int]], int]
-        ],
+        terms: list[tuple[npt.NDArray[Any], list[tuple[int, int]], int]],
     ) -> None: ...
     @property
     def max_site(self) -> int: ...
@@ -199,7 +191,6 @@ class BondOperator:
     @property
     def lhss(self) -> int: ...
     def __repr__(self) -> str: ...
-
 
 class BosonOperator:
     """Bosonic operator.
@@ -223,7 +214,6 @@ class BosonOperator:
     def lhss(self) -> int: ...
     def __repr__(self) -> str: ...
 
-
 class FermionOperator:
     """Fermionic operator.
 
@@ -245,11 +235,9 @@ class FermionOperator:
     def lhss(self) -> int: ...
     def __repr__(self) -> str: ...
 
-
 # ---------------------------------------------------------------------------
 # QMatrix
 # ---------------------------------------------------------------------------
-
 
 class QMatrix:
     """Sparse quantum matrix built from an operator + basis pair.
@@ -342,11 +330,9 @@ class QMatrix:
     ) -> None: ...
     def __repr__(self) -> str: ...
 
-
 # ---------------------------------------------------------------------------
 # Hamiltonian
 # ---------------------------------------------------------------------------
-
 
 class Hamiltonian:
     """Time-dependent Hamiltonian.
@@ -380,6 +366,12 @@ class Hamiltonian:
         npt.NDArray[np.int64],
         npt.NDArray[Any],
     ]: ...
+    def to_dense(
+        self,
+        time: float,
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]:
+        """Return the Hamiltonian at ``time`` as a dense ``(dim, dim)`` complex128 matrix."""
+        ...
     def dot(
         self,
         time: float,
@@ -401,13 +393,41 @@ class Hamiltonian:
         output: npt.NDArray[Any],
         overwrite: bool,
     ) -> None: ...
-    def __repr__(self) -> str: ...
+    def expm_dot(
+        self,
+        time: float,
+        a: complex,
+        f: npt.NDArray[Any],
+    ) -> None:
+        """Compute ``exp(a · H(time)) · f`` in-place.
 
+        Args:
+            time: Evaluation time for the coefficient functions.
+            a:    Scalar multiplier on the Hamiltonian exponent.
+            f:    1-D complex128 array of shape ``(dim,)`` (modified in place).
+        """
+        ...
+
+    def expm_dot_many(
+        self,
+        time: float,
+        a: complex,
+        f: npt.NDArray[Any],
+    ) -> None:
+        """Compute ``exp(a · H(time)) · F`` in-place for multiple column vectors.
+
+        Args:
+            time: Evaluation time for the coefficient functions.
+            a:    Scalar multiplier on the Hamiltonian exponent.
+            f:    2-D complex128 array of shape ``(dim, n_vecs)`` (modified in place).
+        """
+        ...
+
+    def __repr__(self) -> str: ...
 
 # ---------------------------------------------------------------------------
 # SchrodingerEq
 # ---------------------------------------------------------------------------
-
 
 class SchrodingerEq:
     """Schrödinger equation integrator (Dopri5).
