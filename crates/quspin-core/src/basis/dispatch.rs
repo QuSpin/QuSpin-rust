@@ -702,12 +702,28 @@ impl SpaceInner {
                 "cannot add symmetry elements after basis is built".into(),
             ));
         }
-        if perm.len() != self.n_sites() {
+        let n_sites = self.n_sites();
+        if perm.len() != n_sites {
             return Err(QuSpinError::ValueError(format!(
                 "perm.len()={} but n_sites={}",
                 perm.len(),
-                self.n_sites()
+                n_sites
             )));
+        }
+        // Validate perm is a valid permutation of 0..n_sites.
+        let mut seen = vec![false; n_sites];
+        for (i, &p) in perm.iter().enumerate() {
+            if p >= n_sites {
+                return Err(QuSpinError::ValueError(format!(
+                    "perm[{i}]={p} is out of range 0..{n_sites}"
+                )));
+            }
+            if seen[p] {
+                return Err(QuSpinError::ValueError(format!(
+                    "perm has duplicate target site {p}"
+                )));
+            }
+            seen[p] = true;
         }
         match self {
             SpaceInner::Sym32(b) => b.add_lattice(grp_char, perm),
@@ -796,6 +812,14 @@ impl SpaceInner {
                 self.lhss()
             )));
         }
+        let n_sites = self.n_sites();
+        for (i, &loc) in locs.iter().enumerate() {
+            if loc >= n_sites {
+                return Err(QuSpinError::ValueError(format!(
+                    "locs[{i}]={loc} is out of range 0..{n_sites}"
+                )));
+            }
+        }
         macro_rules! build_mask_and_push {
             ($basis:expr, $B:ty) => {{
                 let mask = locs.iter().fold(<$B>::from_u64(0), |acc, &site| {
@@ -868,6 +892,31 @@ impl SpaceInner {
                 "perm_vals.len()={} but lhss={lhss}",
                 perm_vals.len()
             )));
+        }
+        // Validate perm_vals is a permutation of 0..lhss.
+        let mut seen = vec![false; lhss];
+        for (i, &v) in perm_vals.iter().enumerate() {
+            let v = v as usize;
+            if v >= lhss {
+                return Err(QuSpinError::ValueError(format!(
+                    "perm_vals[{i}]={v} is out of range 0..{lhss}"
+                )));
+            }
+            if seen[v] {
+                return Err(QuSpinError::ValueError(format!(
+                    "perm_vals has duplicate value {v}"
+                )));
+            }
+            seen[v] = true;
+        }
+        // Validate locs are within n_sites.
+        let n_sites = self.n_sites();
+        for (i, &loc) in locs.iter().enumerate() {
+            if loc >= n_sites {
+                return Err(QuSpinError::ValueError(format!(
+                    "locs[{i}]={loc} is out of range 0..{n_sites}"
+                )));
+            }
         }
         match lhss {
             2 => {
