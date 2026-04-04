@@ -4,10 +4,13 @@ use super::seed::{dit_seed_from_bytes, seed_from_bytes};
 use super::space::{FullSpace, Subspace};
 use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
-use crate::bitbasis::GenLocalOp;
+use crate::bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 use crate::error::QuSpinError;
 use crate::operator::MonomialOperatorInner;
-use crate::{with_gen_sym_basis_mut, with_sub_basis_mut};
+use crate::{
+    with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
+    with_trit_sym_basis_mut,
+};
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
@@ -18,9 +21,9 @@ use num_complex::Complex;
 /// lattice (site-permutation) and local (dit-permutation) symmetries.
 ///
 /// Unlike [`BosonBasis`](super::boson::BosonBasis), the symmetric variant
-/// always uses the `GenSym*` path (holding `GenLocalOp<B>` local ops) rather
-/// than the LHSS=2-specific `Sym*` path, so that local symmetry generators
-/// can be added via [`add_local`](GenericBasis::add_local).
+/// uses the appropriate `Sym*`/`TritSym*`/`QuatSym*`/`DitSym*` path based
+/// on LHSS, so that local symmetry generators can be added via
+/// [`add_local`](GenericBasis::add_local).
 ///
 /// - [`SpaceKind::Full`]  — full Hilbert space; no build step required.
 /// - [`SpaceKind::Sub`]   — particle-number / energy subspace built by BFS.
@@ -78,19 +81,38 @@ impl GenericBasis {
                 ))),
                 { SpaceInner::from(Subspace::<B>::new_empty(lhss, n_sites, false)) }
             ),
-            SpaceKind::Symm => crate::select_b_for_n_sites!(
-                n_bits,
-                B,
-                return Err(QuSpinError::ValueError(format!(
-                    "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
-                     exceeding the 8192-bit maximum"
-                ))),
-                {
-                    SpaceInner::from(SymBasis::<B, GenLocalOp<B>, _>::new_empty(
-                        lhss, n_sites, false,
-                    ))
+            SpaceKind::Symm => {
+                macro_rules! overflow_err {
+                    () => {
+                        return Err(QuSpinError::ValueError(format!(
+                            "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
+                             exceeding the 8192-bit maximum"
+                        )))
+                    };
                 }
-            ),
+                match lhss {
+                    2 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
+                    3 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, PermDitValues<3>, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
+                    4 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, PermDitValues<4>, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
+                    _ => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, DynamicPermDitValues, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
+                }
+            }
         };
 
         Ok(GenericBasis {
@@ -109,34 +131,12 @@ impl GenericBasis {
     /// Add a lattice (site-permutation) symmetry element.
     ///
     /// Valid only for [`SpaceKind::Symm`] bases before building.
-    ///
-    /// # Errors
-    /// - Basis is not [`SpaceKind::Symm`]
-    /// - Basis is already built
-    /// - `perm.len() != n_sites`
     pub fn add_lattice(
         &mut self,
         grp_char: Complex<f64>,
         perm: Vec<usize>,
     ) -> Result<(), QuSpinError> {
-        if self.space_kind != SpaceKind::Symm {
-            return Err(QuSpinError::ValueError(
-                "add_lattice requires SpaceKind::Symm".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError(
-                "cannot add symmetry elements after basis is built".into(),
-            ));
-        }
-        if perm.len() != self.n_sites {
-            return Err(QuSpinError::ValueError(format!(
-                "perm.len()={} but n_sites={}",
-                perm.len(),
-                self.n_sites
-            )));
-        }
-        self.inner.push_lattice(grp_char, &perm)
+        self.inner.add_lattice(grp_char, &perm)
     }
 
     /// Add a local dit-permutation symmetry element.
@@ -156,24 +156,7 @@ impl GenericBasis {
         perm_vals: Vec<u8>,
         locs: Vec<usize>,
     ) -> Result<(), QuSpinError> {
-        if self.space_kind != SpaceKind::Symm {
-            return Err(QuSpinError::ValueError(
-                "add_local requires SpaceKind::Symm".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError(
-                "cannot add symmetry elements after basis is built".into(),
-            ));
-        }
-        if perm_vals.len() != self.lhss {
-            return Err(QuSpinError::ValueError(format!(
-                "perm_vals.len()={} but lhss={}",
-                perm_vals.len(),
-                self.lhss
-            )));
-        }
-        self.inner.push_gen_local(grp_char, perm_vals, locs)
+        self.inner.add_local(grp_char, perm_vals, locs)
     }
 
     /// Build the subspace reachable from `seeds` using a [`MonomialOperatorInner`].
@@ -246,8 +229,32 @@ impl GenericBasis {
                     }
                 });
             }
+            SpaceKind::Symm if self.lhss == 2 => {
+                with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed!(B, seed);
+                        sym_basis.build(s, |state| monomial_apply_fn!(ham, state).into_iter());
+                    }
+                });
+            }
+            SpaceKind::Symm if self.lhss == 3 => {
+                with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed!(B, seed);
+                        sym_basis.build(s, |state| monomial_apply_fn!(ham, state).into_iter());
+                    }
+                });
+            }
+            SpaceKind::Symm if self.lhss == 4 => {
+                with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed!(B, seed);
+                        sym_basis.build(s, |state| monomial_apply_fn!(ham, state).into_iter());
+                    }
+                });
+            }
             SpaceKind::Symm => {
-                with_gen_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                with_dit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
                         sym_basis.build(s, |state| monomial_apply_fn!(ham, state).into_iter());

@@ -23,7 +23,7 @@ use crate::basis::{
     sym::SymBasis,
 };
 use crate::bitbasis::manip::DynamicDitManip;
-use crate::bitbasis::{BitInt, DynamicPermDitValues, GenLocalOp, PermDitMask};
+use crate::bitbasis::{BitInt, DynamicPermDitValues, PermDitMask, PermDitValues};
 use crate::error::QuSpinError;
 use num_complex::Complex;
 
@@ -47,12 +47,13 @@ type B8192 = ruint::Uint<8192, 128>;
 /// Type-erased wrapper for all basis-space variants over all supported
 /// integer widths.
 ///
-/// 38 variants total:
+/// 47 variants total:
 /// - 2 `Full` variants (u32, u64)
 /// - 9 `Sub` variants (u32, u64, and 128–8192 bit ruint integers)
 /// - 9 `Sym` variants — LHSS=2 symmetric (hardcore bosons / spin-½ / fermions)
-/// - 9 `DitSym` variants — LHSS≥3 symmetric (bosons / higher spin)
-/// - 9 `GenSym` variants — any LHSS, `GenLocalOp<B>` local ops (GenericBasis)
+/// - 9 `TritSym` variants — LHSS=3 symmetric (`PermDitValues<3>`)
+/// - 9 `QuatSym` variants — LHSS=4 symmetric (`PermDitValues<4>`)
+/// - 9 `DitSym` variants — LHSS≥5 symmetric (bosons / higher spin)
 pub enum SpaceInner {
     // Full Hilbert spaces (small n_sites only).
     Full32(FullSpace<u32>),
@@ -90,7 +91,39 @@ pub enum SpaceInner {
     #[cfg(feature = "large-int")]
     Sym8192(SymBasis<B8192, PermDitMask<B8192>, u32>),
 
-    // LHSS≥3 symmetry-reduced subspaces (bosons / higher spin).
+    // LHSS=3 symmetry-reduced subspaces (PermDitValues<3>).
+    TritSym32(SymBasis<u32, PermDitValues<3>, u8>),
+    TritSym64(SymBasis<u64, PermDitValues<3>, u16>),
+    TritSym128(SymBasis<B128, PermDitValues<3>, u32>),
+    TritSym256(SymBasis<B256, PermDitValues<3>, u32>),
+    #[cfg(feature = "large-int")]
+    TritSym512(SymBasis<B512, PermDitValues<3>, u32>),
+    #[cfg(feature = "large-int")]
+    TritSym1024(SymBasis<B1024, PermDitValues<3>, u32>),
+    #[cfg(feature = "large-int")]
+    TritSym2048(SymBasis<B2048, PermDitValues<3>, u32>),
+    #[cfg(feature = "large-int")]
+    TritSym4096(SymBasis<B4096, PermDitValues<3>, u32>),
+    #[cfg(feature = "large-int")]
+    TritSym8192(SymBasis<B8192, PermDitValues<3>, u32>),
+
+    // LHSS=4 symmetry-reduced subspaces (PermDitValues<4>).
+    QuatSym32(SymBasis<u32, PermDitValues<4>, u8>),
+    QuatSym64(SymBasis<u64, PermDitValues<4>, u16>),
+    QuatSym128(SymBasis<B128, PermDitValues<4>, u32>),
+    QuatSym256(SymBasis<B256, PermDitValues<4>, u32>),
+    #[cfg(feature = "large-int")]
+    QuatSym512(SymBasis<B512, PermDitValues<4>, u32>),
+    #[cfg(feature = "large-int")]
+    QuatSym1024(SymBasis<B1024, PermDitValues<4>, u32>),
+    #[cfg(feature = "large-int")]
+    QuatSym2048(SymBasis<B2048, PermDitValues<4>, u32>),
+    #[cfg(feature = "large-int")]
+    QuatSym4096(SymBasis<B4096, PermDitValues<4>, u32>),
+    #[cfg(feature = "large-int")]
+    QuatSym8192(SymBasis<B8192, PermDitValues<4>, u32>),
+
+    // LHSS≥5 symmetry-reduced subspaces (bosons / higher spin).
     DitSym32(SymBasis<u32, DynamicPermDitValues, u8>),
     DitSym64(SymBasis<u64, DynamicPermDitValues, u16>),
     DitSym128(SymBasis<B128, DynamicPermDitValues, u32>),
@@ -105,22 +138,6 @@ pub enum SpaceInner {
     DitSym4096(SymBasis<B4096, DynamicPermDitValues, u32>),
     #[cfg(feature = "large-int")]
     DitSym8192(SymBasis<B8192, DynamicPermDitValues, u32>),
-
-    // Any-LHSS symmetry-reduced subspaces using GenLocalOp (GenericBasis).
-    GenSym32(SymBasis<u32, GenLocalOp<u32>, u8>),
-    GenSym64(SymBasis<u64, GenLocalOp<u64>, u16>),
-    GenSym128(SymBasis<B128, GenLocalOp<B128>, u32>),
-    GenSym256(SymBasis<B256, GenLocalOp<B256>, u32>),
-    #[cfg(feature = "large-int")]
-    GenSym512(SymBasis<B512, GenLocalOp<B512>, u32>),
-    #[cfg(feature = "large-int")]
-    GenSym1024(SymBasis<B1024, GenLocalOp<B1024>, u32>),
-    #[cfg(feature = "large-int")]
-    GenSym2048(SymBasis<B2048, GenLocalOp<B2048>, u32>),
-    #[cfg(feature = "large-int")]
-    GenSym4096(SymBasis<B4096, GenLocalOp<B4096>, u32>),
-    #[cfg(feature = "large-int")]
-    GenSym8192(SymBasis<B8192, GenLocalOp<B8192>, u32>),
 }
 
 /// Format a basis state as a string, using bit-encoding for LHSS=2 and
@@ -183,20 +200,34 @@ impl SpaceInner {
             SpaceInner::DitSym4096(b) => b.n_sites(),
             #[cfg(feature = "large-int")]
             SpaceInner::DitSym8192(b) => b.n_sites(),
-            SpaceInner::GenSym32(b) => b.n_sites(),
-            SpaceInner::GenSym64(b) => b.n_sites(),
-            SpaceInner::GenSym128(b) => b.n_sites(),
-            SpaceInner::GenSym256(b) => b.n_sites(),
+            SpaceInner::TritSym32(b) => b.n_sites(),
+            SpaceInner::TritSym64(b) => b.n_sites(),
+            SpaceInner::TritSym128(b) => b.n_sites(),
+            SpaceInner::TritSym256(b) => b.n_sites(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym512(b) => b.n_sites(),
+            SpaceInner::TritSym512(b) => b.n_sites(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym1024(b) => b.n_sites(),
+            SpaceInner::TritSym1024(b) => b.n_sites(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym2048(b) => b.n_sites(),
+            SpaceInner::TritSym2048(b) => b.n_sites(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym4096(b) => b.n_sites(),
+            SpaceInner::TritSym4096(b) => b.n_sites(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym8192(b) => b.n_sites(),
+            SpaceInner::TritSym8192(b) => b.n_sites(),
+            SpaceInner::QuatSym32(b) => b.n_sites(),
+            SpaceInner::QuatSym64(b) => b.n_sites(),
+            SpaceInner::QuatSym128(b) => b.n_sites(),
+            SpaceInner::QuatSym256(b) => b.n_sites(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym512(b) => b.n_sites(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym1024(b) => b.n_sites(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym2048(b) => b.n_sites(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym4096(b) => b.n_sites(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym8192(b) => b.n_sites(),
         }
     }
 
@@ -247,20 +278,34 @@ impl SpaceInner {
             SpaceInner::DitSym4096(b) => b.lhss(),
             #[cfg(feature = "large-int")]
             SpaceInner::DitSym8192(b) => b.lhss(),
-            SpaceInner::GenSym32(b) => b.lhss(),
-            SpaceInner::GenSym64(b) => b.lhss(),
-            SpaceInner::GenSym128(b) => b.lhss(),
-            SpaceInner::GenSym256(b) => b.lhss(),
+            SpaceInner::TritSym32(b) => b.lhss(),
+            SpaceInner::TritSym64(b) => b.lhss(),
+            SpaceInner::TritSym128(b) => b.lhss(),
+            SpaceInner::TritSym256(b) => b.lhss(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym512(b) => b.lhss(),
+            SpaceInner::TritSym512(b) => b.lhss(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym1024(b) => b.lhss(),
+            SpaceInner::TritSym1024(b) => b.lhss(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym2048(b) => b.lhss(),
+            SpaceInner::TritSym2048(b) => b.lhss(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym4096(b) => b.lhss(),
+            SpaceInner::TritSym4096(b) => b.lhss(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym8192(b) => b.lhss(),
+            SpaceInner::TritSym8192(b) => b.lhss(),
+            SpaceInner::QuatSym32(b) => b.lhss(),
+            SpaceInner::QuatSym64(b) => b.lhss(),
+            SpaceInner::QuatSym128(b) => b.lhss(),
+            SpaceInner::QuatSym256(b) => b.lhss(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym512(b) => b.lhss(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym1024(b) => b.lhss(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym2048(b) => b.lhss(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym4096(b) => b.lhss(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym8192(b) => b.lhss(),
         }
     }
 
@@ -311,20 +356,34 @@ impl SpaceInner {
             SpaceInner::DitSym4096(b) => b.size(),
             #[cfg(feature = "large-int")]
             SpaceInner::DitSym8192(b) => b.size(),
-            SpaceInner::GenSym32(b) => b.size(),
-            SpaceInner::GenSym64(b) => b.size(),
-            SpaceInner::GenSym128(b) => b.size(),
-            SpaceInner::GenSym256(b) => b.size(),
+            SpaceInner::TritSym32(b) => b.size(),
+            SpaceInner::TritSym64(b) => b.size(),
+            SpaceInner::TritSym128(b) => b.size(),
+            SpaceInner::TritSym256(b) => b.size(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym512(b) => b.size(),
+            SpaceInner::TritSym512(b) => b.size(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym1024(b) => b.size(),
+            SpaceInner::TritSym1024(b) => b.size(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym2048(b) => b.size(),
+            SpaceInner::TritSym2048(b) => b.size(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym4096(b) => b.size(),
+            SpaceInner::TritSym4096(b) => b.size(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym8192(b) => b.size(),
+            SpaceInner::TritSym8192(b) => b.size(),
+            SpaceInner::QuatSym32(b) => b.size(),
+            SpaceInner::QuatSym64(b) => b.size(),
+            SpaceInner::QuatSym128(b) => b.size(),
+            SpaceInner::QuatSym256(b) => b.size(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym512(b) => b.size(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym1024(b) => b.size(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym2048(b) => b.size(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym4096(b) => b.size(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym8192(b) => b.size(),
         }
     }
 
@@ -375,20 +434,34 @@ impl SpaceInner {
             SpaceInner::DitSym4096(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
             SpaceInner::DitSym8192(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
-            SpaceInner::GenSym32(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
-            SpaceInner::GenSym64(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
-            SpaceInner::GenSym128(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
-            SpaceInner::GenSym256(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::TritSym32(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::TritSym64(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::TritSym128(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::TritSym256(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym512(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::TritSym512(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym1024(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::TritSym1024(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym2048(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::TritSym2048(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym4096(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::TritSym4096(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym8192(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::TritSym8192(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::QuatSym32(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::QuatSym64(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::QuatSym128(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::QuatSym256(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym512(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym1024(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym2048(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym4096(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym8192(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
         }
     }
 
@@ -441,20 +514,34 @@ impl SpaceInner {
             SpaceInner::DitSym4096(b) => b.index(seed_from_bytes(bytes)),
             #[cfg(feature = "large-int")]
             SpaceInner::DitSym8192(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::GenSym32(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::GenSym64(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::GenSym128(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::GenSym256(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym32(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym64(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym128(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym256(b) => b.index(seed_from_bytes(bytes)),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym512(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym512(b) => b.index(seed_from_bytes(bytes)),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym1024(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym1024(b) => b.index(seed_from_bytes(bytes)),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym2048(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym2048(b) => b.index(seed_from_bytes(bytes)),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym4096(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym4096(b) => b.index(seed_from_bytes(bytes)),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym8192(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym8192(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::QuatSym32(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::QuatSym64(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::QuatSym128(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::QuatSym256(b) => b.index(seed_from_bytes(bytes)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym512(b) => b.index(seed_from_bytes(bytes)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym1024(b) => b.index(seed_from_bytes(bytes)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym2048(b) => b.index(seed_from_bytes(bytes)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym4096(b) => b.index(seed_from_bytes(bytes)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym8192(b) => b.index(seed_from_bytes(bytes)),
         }
     }
 
@@ -476,6 +563,14 @@ impl SpaceInner {
             | SpaceInner::Sym64(_)
             | SpaceInner::Sym128(_)
             | SpaceInner::Sym256(_)
+            | SpaceInner::TritSym32(_)
+            | SpaceInner::TritSym64(_)
+            | SpaceInner::TritSym128(_)
+            | SpaceInner::TritSym256(_)
+            | SpaceInner::QuatSym32(_)
+            | SpaceInner::QuatSym64(_)
+            | SpaceInner::QuatSym128(_)
+            | SpaceInner::QuatSym256(_)
             | SpaceInner::DitSym32(_)
             | SpaceInner::DitSym64(_)
             | SpaceInner::DitSym128(_)
@@ -486,21 +581,21 @@ impl SpaceInner {
             | SpaceInner::Sym2048(_)
             | SpaceInner::Sym4096(_)
             | SpaceInner::Sym8192(_)
+            | SpaceInner::TritSym512(_)
+            | SpaceInner::TritSym1024(_)
+            | SpaceInner::TritSym2048(_)
+            | SpaceInner::TritSym4096(_)
+            | SpaceInner::TritSym8192(_)
+            | SpaceInner::QuatSym512(_)
+            | SpaceInner::QuatSym1024(_)
+            | SpaceInner::QuatSym2048(_)
+            | SpaceInner::QuatSym4096(_)
+            | SpaceInner::QuatSym8192(_)
             | SpaceInner::DitSym512(_)
             | SpaceInner::DitSym1024(_)
             | SpaceInner::DitSym2048(_)
             | SpaceInner::DitSym4096(_)
             | SpaceInner::DitSym8192(_) => "symmetric",
-            SpaceInner::GenSym32(_)
-            | SpaceInner::GenSym64(_)
-            | SpaceInner::GenSym128(_)
-            | SpaceInner::GenSym256(_) => "symmetric",
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym512(_)
-            | SpaceInner::GenSym1024(_)
-            | SpaceInner::GenSym2048(_)
-            | SpaceInner::GenSym4096(_)
-            | SpaceInner::GenSym8192(_) => "symmetric",
         }
     }
 
@@ -554,169 +649,177 @@ impl SpaceInner {
             SpaceInner::DitSym4096(b) => b.is_built(),
             #[cfg(feature = "large-int")]
             SpaceInner::DitSym8192(b) => b.is_built(),
-            SpaceInner::GenSym32(b) => b.is_built(),
-            SpaceInner::GenSym64(b) => b.is_built(),
-            SpaceInner::GenSym128(b) => b.is_built(),
-            SpaceInner::GenSym256(b) => b.is_built(),
+            SpaceInner::TritSym32(b) => b.is_built(),
+            SpaceInner::TritSym64(b) => b.is_built(),
+            SpaceInner::TritSym128(b) => b.is_built(),
+            SpaceInner::TritSym256(b) => b.is_built(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym512(b) => b.is_built(),
+            SpaceInner::TritSym512(b) => b.is_built(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym1024(b) => b.is_built(),
+            SpaceInner::TritSym1024(b) => b.is_built(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym2048(b) => b.is_built(),
+            SpaceInner::TritSym2048(b) => b.is_built(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym4096(b) => b.is_built(),
+            SpaceInner::TritSym4096(b) => b.is_built(),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym8192(b) => b.is_built(),
+            SpaceInner::TritSym8192(b) => b.is_built(),
+            SpaceInner::QuatSym32(b) => b.is_built(),
+            SpaceInner::QuatSym64(b) => b.is_built(),
+            SpaceInner::QuatSym128(b) => b.is_built(),
+            SpaceInner::QuatSym256(b) => b.is_built(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym512(b) => b.is_built(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym1024(b) => b.is_built(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym2048(b) => b.is_built(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym4096(b) => b.is_built(),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym8192(b) => b.is_built(),
         }
     }
 
     /// Add a lattice (site-permutation) symmetry element.
     ///
-    /// Valid only on `Sym*` and `DitSym*` variants; errors on `Full*` / `Sub*`.
-    pub fn push_lattice(
+    /// # Errors
+    /// - Basis is not symmetric (`Sym*`, `TritSym*`, `QuatSym*`, or `DitSym*`)
+    /// - Basis is already built
+    /// - `perm.len() != n_sites`
+    pub fn add_lattice(
         &mut self,
         grp_char: Complex<f64>,
         perm: &[usize],
     ) -> Result<(), QuSpinError> {
-        match self {
-            SpaceInner::Sym32(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::Sym64(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::Sym128(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::Sym256(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::Sym512(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::Sym1024(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::Sym2048(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::Sym4096(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::Sym8192(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::DitSym32(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::DitSym64(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::DitSym128(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::DitSym256(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::DitSym512(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::DitSym1024(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::DitSym2048(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::DitSym4096(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::DitSym8192(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::GenSym32(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::GenSym64(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::GenSym128(b) => b.push_lattice(grp_char, perm),
-            SpaceInner::GenSym256(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym512(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym1024(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym2048(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym4096(b) => b.push_lattice(grp_char, perm),
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym8192(b) => b.push_lattice(grp_char, perm),
-            _ => {
-                return Err(QuSpinError::ValueError(
-                    "push_lattice requires a symmetric (Sym*, DitSym*, or GenSym*) basis".into(),
-                ));
+        if !self.is_symmetric() {
+            return Err(QuSpinError::ValueError(
+                "add_lattice requires a symmetric (Sym*, TritSym*, QuatSym*, or DitSym*) basis"
+                    .into(),
+            ));
+        }
+        if self.is_built() {
+            return Err(QuSpinError::ValueError(
+                "cannot add symmetry elements after basis is built".into(),
+            ));
+        }
+        let n_sites = self.n_sites();
+        if perm.len() != n_sites {
+            return Err(QuSpinError::ValueError(format!(
+                "perm.len()={} but n_sites={}",
+                perm.len(),
+                n_sites
+            )));
+        }
+        // Validate perm is a valid permutation of 0..n_sites.
+        let mut seen = vec![false; n_sites];
+        for (i, &p) in perm.iter().enumerate() {
+            if p >= n_sites {
+                return Err(QuSpinError::ValueError(format!(
+                    "perm[{i}]={p} is out of range 0..{n_sites}"
+                )));
             }
+            if seen[p] {
+                return Err(QuSpinError::ValueError(format!(
+                    "perm has duplicate target site {p}"
+                )));
+            }
+            seen[p] = true;
+        }
+        match self {
+            SpaceInner::Sym32(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::Sym64(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::Sym128(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::Sym256(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sym512(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sym1024(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sym2048(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sym4096(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sym8192(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::DitSym32(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::DitSym64(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::DitSym128(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::DitSym256(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::DitSym512(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::DitSym1024(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::DitSym2048(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::DitSym4096(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::DitSym8192(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::TritSym32(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::TritSym64(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::TritSym128(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::TritSym256(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::TritSym512(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::TritSym1024(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::TritSym2048(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::TritSym4096(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::TritSym8192(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::QuatSym32(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::QuatSym64(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::QuatSym128(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::QuatSym256(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym512(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym1024(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym2048(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym4096(b) => b.add_lattice(grp_char, perm),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym8192(b) => b.add_lattice(grp_char, perm),
+            _ => unreachable!("non-symmetric variants ruled out above"),
         }
         Ok(())
     }
 
-    /// Add a local `GenLocalOp<B>` symmetry element for `GenSym*` bases.
+    /// Add an inversion (XOR bit-flip) symmetry element for LHSS=2 (`Sym*`) bases.
     ///
-    /// `perm_vals` is a permutation of `{0,...,lhss-1}` (single-site local states).
-    /// `locs` lists the sites to apply the permutation to; pass `None` to apply to all sites.
+    /// Flips the local state at each site in `locs` (`v → 1 − v`).
     ///
-    /// Errors on non-`GenSym*` variants.
-    pub fn push_gen_local(
-        &mut self,
-        grp_char: Complex<f64>,
-        perm_vals: Vec<u8>,
-        locs: Vec<usize>,
-    ) -> Result<(), QuSpinError> {
-        macro_rules! build_and_push {
-            ($basis:expr, $B:ty) => {{
-                let lhss = $basis.lhss;
-                let local_op = match lhss {
-                    2 => {
-                        let mask = locs.iter().fold(<$B>::from_u64(0), |acc, &site| {
-                            if site < <$B>::BITS as usize {
-                                acc | (<$B>::from_u64(1) << site)
-                            } else {
-                                acc
-                            }
-                        });
-                        GenLocalOp::Lhss2(PermDitMask::new(mask))
-                    }
-                    3 => {
-                        let arr: [u8; 3] = perm_vals
-                            .iter()
-                            .copied()
-                            .chain(std::iter::repeat(0))
-                            .take(3)
-                            .collect::<Vec<_>>()
-                            .try_into()
-                            .unwrap();
-                        GenLocalOp::Lhss3(crate::bitbasis::PermDitValues::<3>::new(arr, locs))
-                    }
-                    4 => {
-                        let arr: [u8; 4] = perm_vals
-                            .iter()
-                            .copied()
-                            .chain(std::iter::repeat(0))
-                            .take(4)
-                            .collect::<Vec<_>>()
-                            .try_into()
-                            .unwrap();
-                        GenLocalOp::Lhss4(crate::bitbasis::PermDitValues::<4>::new(arr, locs))
-                    }
-                    _ => GenLocalOp::Dynamic(DynamicPermDitValues::new(lhss, perm_vals, locs)),
-                };
-                $basis.push_local(grp_char, local_op);
-            }};
+    /// # Errors
+    /// - Basis is not symmetric
+    /// - Basis is already built
+    /// - `lhss != 2`
+    pub fn add_inv(&mut self, grp_char: Complex<f64>, locs: &[usize]) -> Result<(), QuSpinError> {
+        if !self.is_symmetric() {
+            return Err(QuSpinError::ValueError(
+                "add_inv requires a symmetric basis".into(),
+            ));
         }
-        match self {
-            SpaceInner::GenSym32(b) => build_and_push!(b, u32),
-            SpaceInner::GenSym64(b) => build_and_push!(b, u64),
-            SpaceInner::GenSym128(b) => build_and_push!(b, B128),
-            SpaceInner::GenSym256(b) => build_and_push!(b, B256),
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym512(b) => build_and_push!(b, B512),
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym1024(b) => build_and_push!(b, B1024),
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym2048(b) => build_and_push!(b, B2048),
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym4096(b) => build_and_push!(b, B4096),
-            #[cfg(feature = "large-int")]
-            SpaceInner::GenSym8192(b) => build_and_push!(b, B8192),
-            _ => {
-                return Err(QuSpinError::ValueError(
-                    "push_gen_local requires a GenSym* basis".into(),
-                ));
+        if self.is_built() {
+            return Err(QuSpinError::ValueError(
+                "cannot add symmetry elements after basis is built".into(),
+            ));
+        }
+        if self.lhss() != 2 {
+            return Err(QuSpinError::ValueError(format!(
+                "add_inv requires lhss=2, got lhss={}",
+                self.lhss()
+            )));
+        }
+        let n_sites = self.n_sites();
+        for (i, &loc) in locs.iter().enumerate() {
+            if loc >= n_sites {
+                return Err(QuSpinError::ValueError(format!(
+                    "locs[{i}]={loc} is out of range 0..{n_sites}"
+                )));
             }
         }
-        Ok(())
-    }
-
-    /// Add a local XOR-mask symmetry element for LHSS=2 (`Sym*`) bases.
-    ///
-    /// `locs` is the list of site indices to include in the mask.
-    /// Errors on `DitSym*`, `Full*`, and `Sub*` variants.
-    pub fn push_local_mask(
-        &mut self,
-        grp_char: Complex<f64>,
-        locs: &[usize],
-    ) -> Result<(), QuSpinError> {
         macro_rules! build_mask_and_push {
             ($basis:expr, $B:ty) => {{
                 let mask = locs.iter().fold(<$B>::from_u64(0), |acc, &site| {
@@ -726,7 +829,7 @@ impl SpaceInner {
                         acc
                     }
                 });
-                $basis.push_local(grp_char, PermDitMask::new(mask));
+                $basis.add_local(grp_char, PermDitMask::new(mask));
             }};
         }
         match self {
@@ -746,48 +849,208 @@ impl SpaceInner {
             SpaceInner::Sym8192(b) => build_mask_and_push!(b, B8192),
             _ => {
                 return Err(QuSpinError::ValueError(
-                    "push_local_mask requires an LHSS=2 (Sym*) basis".into(),
+                    "add_inv requires a Sym* variant (lhss=2)".into(),
                 ));
             }
         }
         Ok(())
     }
 
-    /// Add a local value-permutation symmetry element for LHSS≥3 (`DitSym*`) bases.
+    /// Add a local dit-permutation symmetry element.
     ///
-    /// `perm[v] = w` maps local occupation `v` to `w` at each site in `locs`.
-    /// Errors on `Sym*`, `Full*`, and `Sub*` variants.
-    pub fn push_local_perm(
+    /// `perm_vals[v] = w` maps local-state `v` to `w` at each site in `locs`.
+    /// Dispatches to the appropriate compiled path based on LHSS:
+    /// - 2 → delegates to [`add_inv`](Self::add_inv) (perm_vals must be `[1, 0]`)
+    /// - 3 → `PermDitValues<3>`
+    /// - 4 → `PermDitValues<4>`
+    /// - ≥5 → `DynamicPermDitValues`
+    ///
+    /// # Errors
+    /// - Basis is not symmetric
+    /// - Basis is already built
+    /// - `perm_vals.len() != lhss`
+    /// - LHSS=2 with `perm_vals` other than `[1, 0]`
+    pub fn add_local(
         &mut self,
         grp_char: Complex<f64>,
-        perm: Vec<u8>,
+        perm_vals: Vec<u8>,
         locs: Vec<usize>,
     ) -> Result<(), QuSpinError> {
-        macro_rules! push_perm {
-            ($basis:expr) => {
-                $basis.push_local(grp_char, DynamicPermDitValues::new($basis.lhss, perm, locs))
-            };
+        if !self.is_symmetric() {
+            return Err(QuSpinError::ValueError(
+                "add_local requires a symmetric basis".into(),
+            ));
         }
-        match self {
-            SpaceInner::DitSym32(b) => push_perm!(b),
-            SpaceInner::DitSym64(b) => push_perm!(b),
-            SpaceInner::DitSym128(b) => push_perm!(b),
-            SpaceInner::DitSym256(b) => push_perm!(b),
-            #[cfg(feature = "large-int")]
-            SpaceInner::DitSym512(b) => push_perm!(b),
-            #[cfg(feature = "large-int")]
-            SpaceInner::DitSym1024(b) => push_perm!(b),
-            #[cfg(feature = "large-int")]
-            SpaceInner::DitSym2048(b) => push_perm!(b),
-            #[cfg(feature = "large-int")]
-            SpaceInner::DitSym4096(b) => push_perm!(b),
-            #[cfg(feature = "large-int")]
-            SpaceInner::DitSym8192(b) => push_perm!(b),
-            _ => {
-                return Err(QuSpinError::ValueError(
-                    "push_local_perm requires a symmetric basis".into(),
-                ));
+        if self.is_built() {
+            return Err(QuSpinError::ValueError(
+                "cannot add symmetry elements after basis is built".into(),
+            ));
+        }
+        let lhss = self.lhss();
+        if perm_vals.len() != lhss {
+            return Err(QuSpinError::ValueError(format!(
+                "perm_vals.len()={} but lhss={lhss}",
+                perm_vals.len()
+            )));
+        }
+        // Validate perm_vals is a permutation of 0..lhss.
+        let mut seen = vec![false; lhss];
+        for (i, &v) in perm_vals.iter().enumerate() {
+            let v = v as usize;
+            if v >= lhss {
+                return Err(QuSpinError::ValueError(format!(
+                    "perm_vals[{i}]={v} is out of range 0..{lhss}"
+                )));
             }
+            if seen[v] {
+                return Err(QuSpinError::ValueError(format!(
+                    "perm_vals has duplicate value {v}"
+                )));
+            }
+            seen[v] = true;
+        }
+        // Validate locs are within n_sites.
+        let n_sites = self.n_sites();
+        for (i, &loc) in locs.iter().enumerate() {
+            if loc >= n_sites {
+                return Err(QuSpinError::ValueError(format!(
+                    "locs[{i}]={loc} is out of range 0..{n_sites}"
+                )));
+            }
+        }
+        match lhss {
+            2 => {
+                // For lhss=2, the only non-trivial local symmetry is bit-flip [1, 0].
+                if perm_vals != [1, 0] {
+                    return Err(QuSpinError::ValueError(format!(
+                        "add_local with lhss=2 only supports inversion perm_vals=[1,0], got {perm_vals:?}"
+                    )));
+                }
+                return self.add_inv(grp_char, &locs);
+            }
+            3 => {
+                let arr: [u8; 3] = perm_vals.try_into().expect("length validated above");
+                match self {
+                    SpaceInner::TritSym32(b) => {
+                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
+                    }
+                    SpaceInner::TritSym64(b) => {
+                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
+                    }
+                    SpaceInner::TritSym128(b) => {
+                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
+                    }
+                    SpaceInner::TritSym256(b) => {
+                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
+                    }
+                    #[cfg(feature = "large-int")]
+                    SpaceInner::TritSym512(b) => {
+                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
+                    }
+                    #[cfg(feature = "large-int")]
+                    SpaceInner::TritSym1024(b) => {
+                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
+                    }
+                    #[cfg(feature = "large-int")]
+                    SpaceInner::TritSym2048(b) => {
+                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
+                    }
+                    #[cfg(feature = "large-int")]
+                    SpaceInner::TritSym4096(b) => {
+                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
+                    }
+                    #[cfg(feature = "large-int")]
+                    SpaceInner::TritSym8192(b) => {
+                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
+                    }
+                    _ => {
+                        return Err(QuSpinError::ValueError(
+                            "add_local with lhss=3 requires a TritSym* variant".into(),
+                        ));
+                    }
+                }
+            }
+            4 => {
+                let arr: [u8; 4] = perm_vals.try_into().expect("length validated above");
+                match self {
+                    SpaceInner::QuatSym32(b) => {
+                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
+                    }
+                    SpaceInner::QuatSym64(b) => {
+                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
+                    }
+                    SpaceInner::QuatSym128(b) => {
+                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
+                    }
+                    SpaceInner::QuatSym256(b) => {
+                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
+                    }
+                    #[cfg(feature = "large-int")]
+                    SpaceInner::QuatSym512(b) => {
+                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
+                    }
+                    #[cfg(feature = "large-int")]
+                    SpaceInner::QuatSym1024(b) => {
+                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
+                    }
+                    #[cfg(feature = "large-int")]
+                    SpaceInner::QuatSym2048(b) => {
+                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
+                    }
+                    #[cfg(feature = "large-int")]
+                    SpaceInner::QuatSym4096(b) => {
+                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
+                    }
+                    #[cfg(feature = "large-int")]
+                    SpaceInner::QuatSym8192(b) => {
+                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
+                    }
+                    _ => {
+                        return Err(QuSpinError::ValueError(
+                            "add_local with lhss=4 requires a QuatSym* variant".into(),
+                        ));
+                    }
+                }
+            }
+            _ => match self {
+                SpaceInner::DitSym32(b) => {
+                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
+                }
+                SpaceInner::DitSym64(b) => {
+                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
+                }
+                SpaceInner::DitSym128(b) => {
+                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
+                }
+                SpaceInner::DitSym256(b) => {
+                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
+                }
+                #[cfg(feature = "large-int")]
+                SpaceInner::DitSym512(b) => {
+                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
+                }
+                #[cfg(feature = "large-int")]
+                SpaceInner::DitSym1024(b) => {
+                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
+                }
+                #[cfg(feature = "large-int")]
+                SpaceInner::DitSym2048(b) => {
+                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
+                }
+                #[cfg(feature = "large-int")]
+                SpaceInner::DitSym4096(b) => {
+                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
+                }
+                #[cfg(feature = "large-int")]
+                SpaceInner::DitSym8192(b) => {
+                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
+                }
+                _ => {
+                    return Err(QuSpinError::ValueError(
+                        "add_local with lhss>=5 requires a DitSym* variant".into(),
+                    ));
+                }
+            },
         }
         Ok(())
     }
@@ -894,31 +1157,57 @@ impl_from_basis_spaces!(B4096, u32, Sub4096, Sym4096, DitSym4096);
 #[cfg(feature = "large-int")]
 impl_from_basis_spaces!(B8192, u32, Sub8192, Sym8192, DitSym8192);
 
-macro_rules! impl_from_gen_sym_spaces {
-    ($B:ty, $N:ty, $gen_sym_variant:ident) => {
-        impl From<SymBasis<$B, GenLocalOp<$B>, $N>> for SpaceInner {
+macro_rules! impl_from_trit_sym_spaces {
+    ($B:ty, $N:ty, $trit_sym_variant:ident) => {
+        impl From<SymBasis<$B, PermDitValues<3>, $N>> for SpaceInner {
             #[inline]
-            fn from(b: SymBasis<$B, GenLocalOp<$B>, $N>) -> Self {
-                SpaceInner::$gen_sym_variant(b)
+            fn from(b: SymBasis<$B, PermDitValues<3>, $N>) -> Self {
+                SpaceInner::$trit_sym_variant(b)
             }
         }
     };
 }
 
-impl_from_gen_sym_spaces!(u32, u8, GenSym32);
-impl_from_gen_sym_spaces!(u64, u16, GenSym64);
-impl_from_gen_sym_spaces!(B128, u32, GenSym128);
-impl_from_gen_sym_spaces!(B256, u32, GenSym256);
+impl_from_trit_sym_spaces!(u32, u8, TritSym32);
+impl_from_trit_sym_spaces!(u64, u16, TritSym64);
+impl_from_trit_sym_spaces!(B128, u32, TritSym128);
+impl_from_trit_sym_spaces!(B256, u32, TritSym256);
 #[cfg(feature = "large-int")]
-impl_from_gen_sym_spaces!(B512, u32, GenSym512);
+impl_from_trit_sym_spaces!(B512, u32, TritSym512);
 #[cfg(feature = "large-int")]
-impl_from_gen_sym_spaces!(B1024, u32, GenSym1024);
+impl_from_trit_sym_spaces!(B1024, u32, TritSym1024);
 #[cfg(feature = "large-int")]
-impl_from_gen_sym_spaces!(B2048, u32, GenSym2048);
+impl_from_trit_sym_spaces!(B2048, u32, TritSym2048);
 #[cfg(feature = "large-int")]
-impl_from_gen_sym_spaces!(B4096, u32, GenSym4096);
+impl_from_trit_sym_spaces!(B4096, u32, TritSym4096);
 #[cfg(feature = "large-int")]
-impl_from_gen_sym_spaces!(B8192, u32, GenSym8192);
+impl_from_trit_sym_spaces!(B8192, u32, TritSym8192);
+
+macro_rules! impl_from_quat_sym_spaces {
+    ($B:ty, $N:ty, $quat_sym_variant:ident) => {
+        impl From<SymBasis<$B, PermDitValues<4>, $N>> for SpaceInner {
+            #[inline]
+            fn from(b: SymBasis<$B, PermDitValues<4>, $N>) -> Self {
+                SpaceInner::$quat_sym_variant(b)
+            }
+        }
+    };
+}
+
+impl_from_quat_sym_spaces!(u32, u8, QuatSym32);
+impl_from_quat_sym_spaces!(u64, u16, QuatSym64);
+impl_from_quat_sym_spaces!(B128, u32, QuatSym128);
+impl_from_quat_sym_spaces!(B256, u32, QuatSym256);
+#[cfg(feature = "large-int")]
+impl_from_quat_sym_spaces!(B512, u32, QuatSym512);
+#[cfg(feature = "large-int")]
+impl_from_quat_sym_spaces!(B1024, u32, QuatSym1024);
+#[cfg(feature = "large-int")]
+impl_from_quat_sym_spaces!(B2048, u32, QuatSym2048);
+#[cfg(feature = "large-int")]
+impl_from_quat_sym_spaces!(B4096, u32, QuatSym4096);
+#[cfg(feature = "large-int")]
+impl_from_quat_sym_spaces!(B8192, u32, QuatSym8192);
 
 // ---------------------------------------------------------------------------
 // Dispatch macros
@@ -927,7 +1216,7 @@ impl_from_gen_sym_spaces!(B8192, u32, GenSym8192);
 /// Match on a [`SpaceInner`] reference, injecting a type alias `$B` for
 /// the concrete `BitInt` type and binding `$basis` to the inner basis reference.
 ///
-/// Covers all 38 variants (Full*, Sub*, Sym*, DitSym*, GenSym*).
+/// Covers all 47 variants (Full*, Sub*, Sym*, TritSym*, QuatSym*, DitSym*).
 #[macro_export]
 macro_rules! with_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
@@ -1063,44 +1352,85 @@ macro_rules! with_basis {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::GenSym32($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::GenSym64($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::GenSym128($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::GenSym256($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym512($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym1024($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym2048($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym4096($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym8192($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym8192($basis) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
+            $crate::basis::dispatch::SpaceInner::QuatSym32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::basis::dispatch::SpaceInner::QuatSym64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::basis::dispatch::SpaceInner::QuatSym128($basis) => {
+                type $B = ::ruint::Uint<128, 2>;
+                $body
+            }
+            $crate::basis::dispatch::SpaceInner::QuatSym256($basis) => {
+                type $B = ::ruint::Uint<256, 4>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym512($basis) => {
+                type $B = ::ruint::Uint<512, 8>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym1024($basis) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym2048($basis) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym4096($basis) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -1375,106 +1705,206 @@ macro_rules! with_dit_sym_basis_mut {
     };
 }
 
-/// Like `with_basis!` but restricted to `GenSym*` (any-LHSS GenericBasis) variants.
-///
-/// Panics if called on any non-`GenSym*` variant.
+/// Like `with_basis!` but restricted to `TritSym*` (LHSS=3) variants.
 #[macro_export]
-macro_rules! with_gen_sym_basis {
+macro_rules! with_trit_sym_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::GenSym32($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::GenSym64($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::GenSym128($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::GenSym256($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym512($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym1024($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym2048($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym4096($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym8192($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            _ => unreachable!("with_gen_sym_basis! called on a non-GenSym variant"),
+            _ => unreachable!("with_trit_sym_basis! called on a non-TritSym variant"),
         }
     };
 }
 
-/// Like `with_gen_sym_basis!` but binds `$basis` as `&mut`.
+/// Like `with_trit_sym_basis!` but binds `$basis` as `&mut`.
 #[macro_export]
-macro_rules! with_gen_sym_basis_mut {
+macro_rules! with_trit_sym_basis_mut {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::GenSym32($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::GenSym64($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::GenSym128($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::GenSym256($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym512($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym1024($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym2048($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym4096($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::GenSym8192($basis) => {
+            $crate::basis::dispatch::SpaceInner::TritSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            _ => unreachable!("with_gen_sym_basis_mut! called on a non-GenSym variant"),
+            _ => unreachable!("with_trit_sym_basis_mut! called on a non-TritSym variant"),
+        }
+    };
+}
+
+/// Like `with_basis!` but restricted to `QuatSym*` (LHSS=4) variants.
+#[macro_export]
+macro_rules! with_quat_sym_basis {
+    ($inner:expr, $B:ident, $basis:ident, $body:block) => {
+        match $inner {
+            $crate::basis::dispatch::SpaceInner::QuatSym32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::basis::dispatch::SpaceInner::QuatSym64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::basis::dispatch::SpaceInner::QuatSym128($basis) => {
+                type $B = ::ruint::Uint<128, 2>;
+                $body
+            }
+            $crate::basis::dispatch::SpaceInner::QuatSym256($basis) => {
+                type $B = ::ruint::Uint<256, 4>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym512($basis) => {
+                type $B = ::ruint::Uint<512, 8>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym1024($basis) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym2048($basis) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym4096($basis) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym8192($basis) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
+            _ => unreachable!("with_quat_sym_basis! called on a non-QuatSym variant"),
+        }
+    };
+}
+
+/// Like `with_quat_sym_basis!` but binds `$basis` as `&mut`.
+#[macro_export]
+macro_rules! with_quat_sym_basis_mut {
+    ($inner:expr, $B:ident, $basis:ident, $body:block) => {
+        match $inner {
+            $crate::basis::dispatch::SpaceInner::QuatSym32($basis) => {
+                type $B = u32;
+                $body
+            }
+            $crate::basis::dispatch::SpaceInner::QuatSym64($basis) => {
+                type $B = u64;
+                $body
+            }
+            $crate::basis::dispatch::SpaceInner::QuatSym128($basis) => {
+                type $B = ::ruint::Uint<128, 2>;
+                $body
+            }
+            $crate::basis::dispatch::SpaceInner::QuatSym256($basis) => {
+                type $B = ::ruint::Uint<256, 4>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym512($basis) => {
+                type $B = ::ruint::Uint<512, 8>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym1024($basis) => {
+                type $B = ::ruint::Uint<1024, 16>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym2048($basis) => {
+                type $B = ::ruint::Uint<2048, 32>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym4096($basis) => {
+                type $B = ::ruint::Uint<4096, 64>;
+                $body
+            }
+            #[cfg(feature = "large-int")]
+            $crate::basis::dispatch::SpaceInner::QuatSym8192($basis) => {
+                type $B = ::ruint::Uint<8192, 128>;
+                $body
+            }
+            _ => unreachable!("with_quat_sym_basis_mut! called on a non-QuatSym variant"),
         }
     };
 }

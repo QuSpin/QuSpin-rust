@@ -3,11 +3,14 @@ use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
 use super::space::{FullSpace, Subspace};
 use super::sym::SymBasis;
-use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
+use crate::bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 use crate::error::QuSpinError;
 use crate::operator::pauli::HardcoreOperatorInner;
 use crate::operator::{BondOperatorInner, SpinOperatorInner};
-use crate::{with_dit_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut};
+use crate::{
+    with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
+    with_trit_sym_basis_mut,
+};
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
@@ -89,34 +92,35 @@ impl SpinBasis {
                 { SpaceInner::from(Subspace::<B>::new_empty(lhss, n_sites, false)) }
             ),
             SpaceKind::Symm => {
-                if lhss == 2 {
-                    crate::select_b_for_n_sites!(
-                        n_bits,
-                        B,
+                macro_rules! overflow_err {
+                    () => {
                         return Err(QuSpinError::ValueError(format!(
                             "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
                              exceeding the 8192-bit maximum"
-                        ))),
-                        {
-                            SpaceInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
-                                lhss, n_sites, false,
-                            ))
-                        }
-                    )
-                } else {
-                    crate::select_b_for_n_sites!(
-                        n_bits,
-                        B,
-                        return Err(QuSpinError::ValueError(format!(
-                            "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
-                             exceeding the 8192-bit maximum"
-                        ))),
-                        {
-                            SpaceInner::from(SymBasis::<B, DynamicPermDitValues, _>::new_empty(
-                                lhss, n_sites, false,
-                            ))
-                        }
-                    )
+                        )))
+                    };
+                }
+                match lhss {
+                    2 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
+                    3 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, PermDitValues<3>, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
+                    4 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, PermDitValues<4>, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
+                    _ => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, DynamicPermDitValues, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
                 }
             }
         };
@@ -143,24 +147,7 @@ impl SpinBasis {
         grp_char: Complex<f64>,
         perm: Vec<usize>,
     ) -> Result<(), QuSpinError> {
-        if self.space_kind != SpaceKind::Symm {
-            return Err(QuSpinError::ValueError(
-                "add_lattice requires SpaceKind::Symm".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError(
-                "cannot add symmetry elements after basis is built".into(),
-            ));
-        }
-        if perm.len() != self.n_sites {
-            return Err(QuSpinError::ValueError(format!(
-                "perm.len()={} but n_sites={}",
-                perm.len(),
-                self.n_sites
-            )));
-        }
-        self.inner.push_lattice(grp_char, &perm)
+        self.inner.add_lattice(grp_char, &perm)
     }
 
     /// Add a spin-inversion symmetry element.
@@ -170,26 +157,14 @@ impl SpinBasis {
     ///
     /// `locs = None` applies the operation to all sites.
     pub fn add_inv(&mut self, locs: Option<Vec<u32>>) -> Result<(), QuSpinError> {
-        if self.space_kind != SpaceKind::Symm {
-            return Err(QuSpinError::ValueError(
-                "add_inv requires SpaceKind::Symm".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError(
-                "cannot add symmetry elements after basis is built".into(),
-            ));
-        }
         let locs_u32 = locs.unwrap_or_else(|| (0..self.n_sites as u32).collect());
         let locs_usize: Vec<usize> = locs_u32.iter().map(|&v| v as usize).collect();
-
+        let char = Complex::new(-1.0, 0.0);
         if self.lhss == 2 {
-            self.inner
-                .push_local_mask(Complex::new(-1.0, 0.0), &locs_usize)
+            self.inner.add_inv(char, &locs_usize)
         } else {
             let perm: Vec<u8> = (0..self.lhss).rev().map(|v| v as u8).collect();
-            self.inner
-                .push_local_perm(Complex::new(-1.0, 0.0), perm, locs_usize)
+            self.inner.add_local(char, perm, locs_usize)
         }
     }
 
@@ -253,6 +228,36 @@ impl SpinBasis {
             }
             SpaceKind::Symm if self.lhss == 2 => {
                 with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed!(B, seed);
+                        match ham {
+                            SpinOperatorInner::Ham8(h) => {
+                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
+                            }
+                            SpinOperatorInner::Ham16(h) => {
+                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
+                            }
+                        }
+                    }
+                });
+            }
+            SpaceKind::Symm if self.lhss == 3 => {
+                with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed!(B, seed);
+                        match ham {
+                            SpinOperatorInner::Ham8(h) => {
+                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
+                            }
+                            SpinOperatorInner::Ham16(h) => {
+                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
+                            }
+                        }
+                    }
+                });
+            }
+            SpaceKind::Symm if self.lhss == 4 => {
+                with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
                         match ham {
@@ -424,6 +429,22 @@ impl SpinBasis {
             }
             SpaceKind::Symm if self.lhss == 2 => {
                 with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed_bond!(B, seed);
+                        sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
+                    }
+                });
+            }
+            SpaceKind::Symm if self.lhss == 3 => {
+                with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed_bond!(B, seed);
+                        sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
+                    }
+                });
+            }
+            SpaceKind::Symm if self.lhss == 4 => {
+                with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed_bond!(B, seed);
                         sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());

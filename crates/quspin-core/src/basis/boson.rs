@@ -4,10 +4,13 @@ use super::seed::{dit_seed_from_bytes, seed_from_bytes};
 use super::space::{FullSpace, Subspace};
 use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
-use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
+use crate::bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 use crate::error::QuSpinError;
 use crate::operator::{BondOperatorInner, BosonOperatorInner};
-use crate::{with_dit_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut};
+use crate::{
+    with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
+    with_trit_sym_basis_mut,
+};
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------
@@ -76,34 +79,35 @@ impl BosonBasis {
                 { SpaceInner::from(Subspace::<B>::new_empty(lhss, n_sites, false)) }
             ),
             SpaceKind::Symm => {
-                if lhss == 2 {
-                    crate::select_b_for_n_sites!(
-                        n_bits,
-                        B,
+                macro_rules! overflow_err {
+                    () => {
                         return Err(QuSpinError::ValueError(format!(
                             "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
                              exceeding the 8192-bit maximum"
-                        ))),
-                        {
-                            SpaceInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
-                                lhss, n_sites, false,
-                            ))
-                        }
-                    )
-                } else {
-                    crate::select_b_for_n_sites!(
-                        n_bits,
-                        B,
-                        return Err(QuSpinError::ValueError(format!(
-                            "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
-                             exceeding the 8192-bit maximum"
-                        ))),
-                        {
-                            SpaceInner::from(SymBasis::<B, DynamicPermDitValues, _>::new_empty(
-                                lhss, n_sites, false,
-                            ))
-                        }
-                    )
+                        )))
+                    };
+                }
+                match lhss {
+                    2 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
+                    3 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, PermDitValues<3>, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
+                    4 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, PermDitValues<4>, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
+                    _ => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
+                        SpaceInner::from(SymBasis::<B, DynamicPermDitValues, _>::new_empty(
+                            lhss, n_sites, false,
+                        ))
+                    }),
                 }
             }
         };
@@ -124,34 +128,12 @@ impl BosonBasis {
     /// Add a lattice (site-permutation) symmetry element.
     ///
     /// Valid only for [`SpaceKind::Symm`] bases before a `build_*` method is called.
-    ///
-    /// # Errors
-    /// - Basis is not [`SpaceKind::Symm`]
-    /// - Basis is already built
-    /// - `perm.len() != n_sites`
     pub fn add_lattice(
         &mut self,
         grp_char: Complex<f64>,
         perm: Vec<usize>,
     ) -> Result<(), QuSpinError> {
-        if self.space_kind != SpaceKind::Symm {
-            return Err(QuSpinError::ValueError(
-                "add_lattice requires SpaceKind::Symm".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError(
-                "cannot add symmetry elements after basis is built".into(),
-            ));
-        }
-        if perm.len() != self.n_sites {
-            return Err(QuSpinError::ValueError(format!(
-                "perm.len()={} but n_sites={}",
-                perm.len(),
-                self.n_sites
-            )));
-        }
-        self.inner.push_lattice(grp_char, &perm)
+        self.inner.add_lattice(grp_char, &perm)
     }
 
     /// Build the subspace reachable from `seeds` using a [`BosonOperatorInner`].
@@ -216,6 +198,36 @@ impl BosonBasis {
             }
             SpaceKind::Symm if self.lhss == 2 => {
                 with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed!(B, seed);
+                        match ham {
+                            BosonOperatorInner::Ham8(h) => {
+                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
+                            }
+                            BosonOperatorInner::Ham16(h) => {
+                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
+                            }
+                        }
+                    }
+                });
+            }
+            SpaceKind::Symm if self.lhss == 3 => {
+                with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed!(B, seed);
+                        match ham {
+                            BosonOperatorInner::Ham8(h) => {
+                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
+                            }
+                            BosonOperatorInner::Ham16(h) => {
+                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
+                            }
+                        }
+                    }
+                });
+            }
+            SpaceKind::Symm if self.lhss == 4 => {
+                with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
                         match ham {
@@ -320,6 +332,22 @@ impl BosonBasis {
             }
             SpaceKind::Symm if self.lhss == 2 => {
                 with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed_bond!(B, seed);
+                        sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
+                    }
+                });
+            }
+            SpaceKind::Symm if self.lhss == 3 => {
+                with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
+                    for seed in seeds {
+                        let s = decode_seed_bond!(B, seed);
+                        sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
+                    }
+                });
+            }
+            SpaceKind::Symm if self.lhss == 4 => {
+                with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed_bond!(B, seed);
                         sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());

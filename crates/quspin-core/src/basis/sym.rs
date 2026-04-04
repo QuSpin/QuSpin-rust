@@ -114,7 +114,7 @@ pub struct SymBasis<B: BitInt, L, N: NormInt> {
 impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
     /// Construct an empty basis with no group elements and no states.
     ///
-    /// Call [`push_lattice`](Self::push_lattice) / [`push_local`](Self::push_local)
+    /// Call [`add_lattice`](Self::add_lattice) / [`add_local`](Self::add_local)
     /// to add symmetry elements, then [`build`](Self::build) to populate states.
     pub fn new_empty(lhss: usize, n_sites: usize, fermionic: bool) -> Self {
         SymBasis {
@@ -132,14 +132,14 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
     /// Add a lattice (site-permutation) symmetry element. Valid before [`build`](Self::build).
     ///
     /// `perm[src] = dst` maps source site `src` to destination `dst`.
-    pub fn push_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
+    pub fn add_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
         let op = BenesPermDitLocations::<B>::new(self.lhss, perm, self.fermionic);
         self.lattice
             .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
     }
 
     /// Add a local symmetry element. Valid before [`build`](Self::build).
-    pub fn push_local(&mut self, grp_char: Complex<f64>, local_op: L) {
+    pub fn add_local(&mut self, grp_char: Complex<f64>, local_op: L) {
         self.local.push((grp_char, local_op));
     }
 
@@ -378,10 +378,10 @@ mod tests {
     #[test]
     fn sym_basis_bitflip_2site() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 2, false);
-        basis.push_lattice(Complex::new(1.0, 0.0), &[0, 1]);
+        basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1]);
         // spin inversion: XOR mask at all sites
         let mask = PermDitMask::<u32>::new(0b11u32);
-        basis.push_local(Complex::new(1.0, 0.0), mask);
+        basis.add_local(Complex::new(1.0, 0.0), mask);
         basis.build(0u32, x_op(2));
 
         assert_eq!(basis.size(), 2);
@@ -392,7 +392,7 @@ mod tests {
     #[test]
     fn sym_basis_no_symmetry_matches_subspace() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
-        basis.push_lattice(Complex::new(1.0, 0.0), &[0, 1, 2]);
+        basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1, 2]);
         basis.build(0u32, x_op(3));
         assert_eq!(basis.size(), 8);
     }
@@ -400,7 +400,7 @@ mod tests {
     #[test]
     fn sym_basis_sorted_ascending() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
-        basis.push_lattice(Complex::new(1.0, 0.0), &[0, 1, 2]);
+        basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1, 2]);
         basis.build(0u32, x_op(3));
         for i in 1..basis.size() {
             assert!(basis.state_at(i) > basis.state_at(i - 1));
@@ -410,9 +410,9 @@ mod tests {
     #[test]
     fn sym_basis_u8_norm() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(2, 2, false);
-        basis.push_lattice(Complex::new(1.0, 0.0), &[0, 1]);
+        basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1]);
         let mask = PermDitMask::<u32>::new(0b11u32);
-        basis.push_local(Complex::new(1.0, 0.0), mask);
+        basis.add_local(Complex::new(1.0, 0.0), mask);
         basis.build(0u32, x_op(2));
         assert_eq!(basis.size(), 2);
         for i in 0..basis.size() {
@@ -424,9 +424,9 @@ mod tests {
     #[test]
     fn sym_basis_entry_roundtrip() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(2, 2, false);
-        basis.push_lattice(Complex::new(1.0, 0.0), &[0, 1]);
+        basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1]);
         let mask = PermDitMask::<u32>::new(0b11u32);
-        basis.push_local(Complex::new(1.0, 0.0), mask);
+        basis.add_local(Complex::new(1.0, 0.0), mask);
         basis.build(0u32, x_op(2));
         for i in 0..basis.size() {
             let (_, norm) = basis.entry(i);
@@ -445,7 +445,7 @@ mod tests {
         let mut basis =
             SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites as usize, false);
         let identity: Vec<usize> = (0..n_sites as usize).collect();
-        basis.push_lattice(Complex::new(1.0, 0.0), &identity);
+        basis.add_lattice(Complex::new(1.0, 0.0), &identity);
         basis.build(0u32, x_op(n_sites));
         assert_eq!(basis.size(), 1 << n_sites);
         // Verify sorted ascending
@@ -466,9 +466,9 @@ mod tests {
         let mut basis =
             SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites as usize, false);
         let identity: Vec<usize> = (0..n_sites as usize).collect();
-        basis.push_lattice(Complex::new(1.0, 0.0), &identity);
+        basis.add_lattice(Complex::new(1.0, 0.0), &identity);
         let mask = PermDitMask::<u32>::new((1u32 << n_sites) - 1);
-        basis.push_local(Complex::new(1.0, 0.0), mask);
+        basis.add_local(Complex::new(1.0, 0.0), mask);
         basis.build(0u32, x_op(n_sites));
 
         // With Z2 spin inversion (XOR all bits) on 12 sites:

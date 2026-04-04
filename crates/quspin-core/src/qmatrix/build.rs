@@ -5,7 +5,7 @@ use crate::basis::{
     BasisSpace,
     sym::{NormInt, SymBasis},
 };
-use crate::bitbasis::{BitInt, BitStateOp, GenLocalOp};
+use crate::bitbasis::{BitInt, BitStateOp, PermDitValues};
 use crate::operator::Operator;
 use crate::primitive::Primitive;
 use num_complex::Complex;
@@ -281,38 +281,71 @@ where
         SpaceInner::DitSym8192(b) => {
             build_from_symmetric::<H, B8192, DynamicPermDitValues, u32, M, i64, C>(ham, b)
         }
-        // Any-LHSS generic symmetric
-        SpaceInner::GenSym32(b) => {
-            build_from_symmetric::<H, u32, GenLocalOp<u32>, u8, M, i64, C>(ham, b)
+        // LHSS=3 symmetric (trit)
+        SpaceInner::TritSym32(b) => {
+            build_from_symmetric::<H, u32, PermDitValues<3>, u8, M, i64, C>(ham, b)
         }
-        SpaceInner::GenSym64(b) => {
-            build_from_symmetric::<H, u64, GenLocalOp<u64>, u16, M, i64, C>(ham, b)
+        SpaceInner::TritSym64(b) => {
+            build_from_symmetric::<H, u64, PermDitValues<3>, u16, M, i64, C>(ham, b)
         }
-        SpaceInner::GenSym128(b) => {
-            build_from_symmetric::<H, B128, GenLocalOp<B128>, u32, M, i64, C>(ham, b)
+        SpaceInner::TritSym128(b) => {
+            build_from_symmetric::<H, B128, PermDitValues<3>, u32, M, i64, C>(ham, b)
         }
-        SpaceInner::GenSym256(b) => {
-            build_from_symmetric::<H, B256, GenLocalOp<B256>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::GenSym512(b) => {
-            build_from_symmetric::<H, B512, GenLocalOp<B512>, u32, M, i64, C>(ham, b)
+        SpaceInner::TritSym256(b) => {
+            build_from_symmetric::<H, B256, PermDitValues<3>, u32, M, i64, C>(ham, b)
         }
         #[cfg(feature = "large-int")]
-        SpaceInner::GenSym1024(b) => {
-            build_from_symmetric::<H, B1024, GenLocalOp<B1024>, u32, M, i64, C>(ham, b)
+        SpaceInner::TritSym512(b) => {
+            build_from_symmetric::<H, B512, PermDitValues<3>, u32, M, i64, C>(ham, b)
         }
         #[cfg(feature = "large-int")]
-        SpaceInner::GenSym2048(b) => {
-            build_from_symmetric::<H, B2048, GenLocalOp<B2048>, u32, M, i64, C>(ham, b)
+        SpaceInner::TritSym1024(b) => {
+            build_from_symmetric::<H, B1024, PermDitValues<3>, u32, M, i64, C>(ham, b)
         }
         #[cfg(feature = "large-int")]
-        SpaceInner::GenSym4096(b) => {
-            build_from_symmetric::<H, B4096, GenLocalOp<B4096>, u32, M, i64, C>(ham, b)
+        SpaceInner::TritSym2048(b) => {
+            build_from_symmetric::<H, B2048, PermDitValues<3>, u32, M, i64, C>(ham, b)
         }
         #[cfg(feature = "large-int")]
-        SpaceInner::GenSym8192(b) => {
-            build_from_symmetric::<H, B8192, GenLocalOp<B8192>, u32, M, i64, C>(ham, b)
+        SpaceInner::TritSym4096(b) => {
+            build_from_symmetric::<H, B4096, PermDitValues<3>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::TritSym8192(b) => {
+            build_from_symmetric::<H, B8192, PermDitValues<3>, u32, M, i64, C>(ham, b)
+        }
+        // LHSS=4 symmetric (quat)
+        SpaceInner::QuatSym32(b) => {
+            build_from_symmetric::<H, u32, PermDitValues<4>, u8, M, i64, C>(ham, b)
+        }
+        SpaceInner::QuatSym64(b) => {
+            build_from_symmetric::<H, u64, PermDitValues<4>, u16, M, i64, C>(ham, b)
+        }
+        SpaceInner::QuatSym128(b) => {
+            build_from_symmetric::<H, B128, PermDitValues<4>, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::QuatSym256(b) => {
+            build_from_symmetric::<H, B256, PermDitValues<4>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::QuatSym512(b) => {
+            build_from_symmetric::<H, B512, PermDitValues<4>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::QuatSym1024(b) => {
+            build_from_symmetric::<H, B1024, PermDitValues<4>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::QuatSym2048(b) => {
+            build_from_symmetric::<H, B2048, PermDitValues<4>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::QuatSym4096(b) => {
+            build_from_symmetric::<H, B4096, PermDitValues<4>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::QuatSym8192(b) => {
+            build_from_symmetric::<H, B8192, PermDitValues<4>, u32, M, i64, C>(ham, b)
         }
     }
 }
