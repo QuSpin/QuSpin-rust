@@ -282,6 +282,24 @@ impl HamiltonianInner {
             h.dot_transpose_many(overwrite, time, input, output)
         })
     }
+
+    pub fn expm_dot(
+        &self,
+        time: f64,
+        a: Complex<f64>,
+        f: &mut [Complex<f64>],
+    ) -> Result<(), QuSpinError> {
+        with_hamiltonian!(self, _M, _C, h, { h.expm_dot(time, a, f) })
+    }
+
+    pub fn expm_dot_many(
+        &self,
+        time: f64,
+        a: Complex<f64>,
+        f: ArrayViewMut2<'_, Complex<f64>>,
+    ) -> Result<(), QuSpinError> {
+        with_hamiltonian!(self, _M, _C, h, { h.expm_dot_many(time, a, f) })
+    }
 }
 
 // ---------------------------------------------------------------------------
