@@ -4,7 +4,7 @@ use crate::basis::{
     BasisSpace,
     sym::{NormInt, SymBasis},
 };
-use crate::bitbasis::{BitInt, BitStateOp};
+use crate::bitbasis::{BitInt, BitStateOp, GenLocalOp};
 use crate::operator::Operator;
 use crate::primitive::Primitive;
 use num_complex::Complex;
@@ -281,6 +281,39 @@ where
         #[cfg(feature = "large-int")]
         SpaceInner::DitSym8192(b) => {
             build_from_symmetric::<H, B8192, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+        }
+        // Any-LHSS generic symmetric
+        SpaceInner::GenSym32(b) => {
+            build_from_symmetric::<H, u32, GenLocalOp<u32>, u8, M, i64, C>(ham, b)
+        }
+        SpaceInner::GenSym64(b) => {
+            build_from_symmetric::<H, u64, GenLocalOp<u64>, u16, M, i64, C>(ham, b)
+        }
+        SpaceInner::GenSym128(b) => {
+            build_from_symmetric::<H, B128, GenLocalOp<B128>, u32, M, i64, C>(ham, b)
+        }
+        SpaceInner::GenSym256(b) => {
+            build_from_symmetric::<H, B256, GenLocalOp<B256>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::GenSym512(b) => {
+            build_from_symmetric::<H, B512, GenLocalOp<B512>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::GenSym1024(b) => {
+            build_from_symmetric::<H, B1024, GenLocalOp<B1024>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::GenSym2048(b) => {
+            build_from_symmetric::<H, B2048, GenLocalOp<B2048>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::GenSym4096(b) => {
+            build_from_symmetric::<H, B4096, GenLocalOp<B4096>, u32, M, i64, C>(ham, b)
+        }
+        #[cfg(feature = "large-int")]
+        SpaceInner::GenSym8192(b) => {
+            build_from_symmetric::<H, B8192, GenLocalOp<B8192>, u32, M, i64, C>(ham, b)
         }
     }
 }
