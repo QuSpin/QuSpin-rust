@@ -1,3 +1,4 @@
+pub(crate) mod bfs;
 pub mod boson;
 pub mod dispatch;
 pub mod expand;

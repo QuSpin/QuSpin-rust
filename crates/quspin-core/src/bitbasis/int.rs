@@ -13,6 +13,8 @@ use std::ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr};
 pub trait BitInt:
     private::Sealed
     + Copy
+    + Send
+    + Sync
     + Default
     + Debug
     + Eq

@@ -3,7 +3,7 @@ ion-cli = { type = "local" }
 receiving-code-review = { source = "obra/superpowers/skills/receiving-code-review" }
 requesting-code-review = { source = "obra/superpowers/skills/requesting-code-review" }
 using-git-worktrees = { source = "obra/superpowers/skills/using-git-worktrees" }
-brainstorming = { source = "obra/superpowers/skills/brainstorming" }
+brainstorming = { source = "obra/superpowers/brainstorming" }
 dispatching-parallel-agents = { source = "obra/superpowers/skills/dispatching-parallel-agents" }
 executing-plans = { source = "obra/superpowers/skills/executing-plans" }
 finishing-a-development-branch = { source = "obra/superpowers/skills/finishing-a-development-branch" }

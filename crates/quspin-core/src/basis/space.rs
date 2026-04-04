@@ -1,19 +1,10 @@
 use super::BasisSpace;
+use super::bfs::bfs_wave;
 use crate::bitbasis::{
     BitInt,
     manip::{DitManip, DynamicDitManip},
 };
 use std::collections::HashMap;
-
-/// A net amplitude is treated as zero when its magnitude is below
-/// `sum_of_input_magnitudes * AMP_CANCEL_TOL`.
-///
-/// This is a relative tolerance: it scales with the coupling strengths in
-/// the Hamiltonian, so it catches exact symbolic cancellations (e.g. the
-/// `+1` from `XX` and `−1` from `YY` on `|00⟩`) without requiring a
-/// hardcoded absolute threshold.  The factor of 4 covers the two complex
-/// multiplications in a typical single-site operator application.
-const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
 
 // ---------------------------------------------------------------------------
 // FullSpace
@@ -175,46 +166,45 @@ impl<B: BitInt> Subspace<B> {
     /// `op(state)` must return an iterator of `(amplitude, new_state, cindex)`
     /// triples — matching the signature of `PauliHamiltonian::apply`.
     ///
-    /// Uses iterative DFS (matching the C++ `subspace::build` stack-based
-    /// implementation).  After the walk, states are sorted ascending and the
+    /// Uses level-synchronous BFS: each wave processes the current frontier
+    /// in parallel (when large enough), discovers new states, and forms the
+    /// next frontier.  After the walk, states are sorted ascending and the
     /// index map is rebuilt.
-    ///
-    /// Mirrors `subspace::build` from `space.hpp`.
     pub fn build<Op, I, Iter>(&mut self, seed: B, op: Op)
     where
-        Op: Fn(B) -> Iter,
+        Op: Fn(B) -> Iter + Sync,
         Iter: IntoIterator<Item = (num_complex::Complex<f64>, B, I)>,
     {
         self.built = true;
-        let mut stack: Vec<B> = Vec::new();
 
-        if let std::collections::hash_map::Entry::Vacant(e) = self.index_map.entry(seed) {
-            e.insert(self.states.len());
-            self.states.push(seed);
-            stack.push(seed);
+        let is_new =
+            if let std::collections::hash_map::Entry::Vacant(e) = self.index_map.entry(seed) {
+                e.insert(self.states.len());
+                self.states.push(seed);
+                true
+            } else {
+                false
+            };
+
+        if !is_new {
+            return;
         }
+
         let max_size = self.lhss.saturating_pow(self.n_sites as u32);
-        while let Some(state) = stack.pop()
-            && self.states.len() < max_size
-        {
-            // Accumulate (net_amp, sum_of_magnitudes) per output state.
-            // The sum of magnitudes sets the scale for the cancellation check.
-            let mut contributions: HashMap<B, (num_complex::Complex<f64>, f64)> = HashMap::new();
-            for (amp, next_state, _cindex) in op(state) {
-                if next_state != state {
-                    let e = contributions.entry(next_state).or_default();
-                    e.0 += amp;
-                    e.1 += amp.norm();
-                }
-            }
-            for (next_state, (net_amp, scale)) in contributions {
-                if net_amp.norm() > scale * AMP_CANCEL_TOL
-                    && let std::collections::hash_map::Entry::Vacant(e) =
-                        self.index_map.entry(next_state)
+        let mut frontier: Vec<B> = vec![seed];
+
+        while !frontier.is_empty() && self.states.len() < max_size {
+            let discovered = bfs_wave(&frontier, &op);
+
+            // Register new states and form the next frontier.
+            frontier.clear();
+            for next_state in discovered {
+                if let std::collections::hash_map::Entry::Vacant(e) =
+                    self.index_map.entry(next_state)
                 {
                     e.insert(self.states.len());
                     self.states.push(next_state);
-                    stack.push(next_state);
+                    frontier.push(next_state);
                 }
             }
         }
@@ -419,6 +409,59 @@ mod tests {
         let mut sub = Subspace::<U128>::new(2, n_sites, false);
         sub.build(seed, hop_op);
         assert_eq!(sub.size(), n_sites);
+    }
+
+    // --- Parallel path tests (frontier > PARALLEL_FRONTIER_THRESHOLD) ---
+
+    #[test]
+    fn subspace_parallel_full_connectivity() {
+        // 12 sites, X on all → 2^12 = 4096 states.
+        // After the first BFS wave the frontier has 12 states,
+        // after the second it has ~66, after the third ~220, etc.
+        // By wave 4+ the frontier exceeds the threshold.
+        let n_sites = 12u32;
+        let mut sub = Subspace::<u32>::new(2, n_sites as usize, false);
+        sub.build(0u32, x_op_all_sites(n_sites));
+        assert_eq!(sub.size(), 1 << n_sites);
+        // Verify sorted ascending
+        for i in 1..sub.size() {
+            assert!(sub.state_at(i) > sub.state_at(i - 1));
+        }
+        // Verify index roundtrip
+        for i in 0..sub.size() {
+            assert_eq!(sub.index(sub.state_at(i)), Some(i));
+        }
+    }
+
+    #[test]
+    fn subspace_parallel_xx_yy_conserves_particle_number() {
+        // Same as the small test but at 12 sites — frontier grows large enough
+        // to trigger parallel BFS.  Amplitude cancellation must still be exact.
+        use crate::operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
+        use smallvec::smallvec;
+
+        let n_sites: usize = 12;
+        let mut terms: Vec<OpEntry<u8>> = Vec::new();
+        for i in 0..(n_sites - 1) as u32 {
+            terms.push(OpEntry::new(
+                0u8,
+                Complex::new(1.0, 0.0),
+                smallvec![(HardcoreOp::X, i), (HardcoreOp::X, i + 1)],
+            ));
+            terms.push(OpEntry::new(
+                0u8,
+                Complex::new(1.0, 0.0),
+                smallvec![(HardcoreOp::Y, i), (HardcoreOp::Y, i + 1)],
+            ));
+        }
+        let ham = HardcoreOperator::new(terms);
+
+        // Half-filling sector: k = n_sites/2
+        let k = n_sites / 2;
+        let seed = (1u32 << k) - 1;
+        let mut sub = Subspace::<u32>::new(2, n_sites, false);
+        sub.build(seed, |s| ham.apply_smallvec(s).into_iter());
+        assert_eq!(sub.size(), binom(n_sites, k));
     }
 
     #[test]
