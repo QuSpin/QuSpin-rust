@@ -82,4 +82,3 @@ scratch/
 .agents/skills/verification-before-completion
 .agents/skills/writing-plans
 .agents/skills/writing-skills
-.claude/skills/ion-cli

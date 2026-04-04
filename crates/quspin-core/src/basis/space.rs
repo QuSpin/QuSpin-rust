@@ -44,7 +44,7 @@ pub struct FullSpace<B: BitInt> {
 
 impl<B: BitInt> FullSpace<B> {
     pub fn new(lhss: usize, n_sites: usize, fermionic: bool) -> Self {
-        let dim = lhss.pow(n_sites as u32);
+        let dim = lhss.saturating_pow(n_sites as u32);
         FullSpace {
             n_sites,
             dim,
@@ -193,9 +193,9 @@ impl<B: BitInt> Subspace<B> {
             self.states.push(seed);
             stack.push(seed);
         }
-        let max_size = self.lhss.pow(self.n_sites as u32);
+        let max_size = self.lhss.saturating_pow(self.n_sites as u32);
         while let Some(state) = stack.pop()
-            && stack.len() < max_size
+            && self.states.len() < max_size
         {
             // Accumulate (net_amp, sum_of_magnitudes) per output state.
             // The sum of magnitudes sets the scale for the cancellation check.
@@ -391,6 +391,34 @@ mod tests {
                 sub.size()
             );
         }
+    }
+
+    /// Regression test for issue #12: `lhss.pow(n_sites)` overflows `usize`
+    /// when n_sites >= 64 with lhss=2. The DFS safety bound must use
+    /// `saturating_pow` to avoid the panic.
+    #[test]
+    fn subspace_build_large_n_sites_no_overflow() {
+        use ruint::aliases::U128;
+
+        // 65 sites with lhss=2 requires 65 bits → B = U128.
+        // Single-particle hopping: seed has 1 particle, should find exactly 65 states.
+        let n_sites: usize = 65;
+        let hop_op = |state: U128| {
+            let mut results = vec![];
+            for i in 0..(n_sites - 1) {
+                let si = (state >> i) & U128::from(1);
+                let sj = (state >> (i + 1)) & U128::from(1);
+                if si != sj {
+                    let ns = state ^ (U128::from(1) << i) ^ (U128::from(1) << (i + 1));
+                    results.push((Complex::new(1.0, 0.0), ns, 0u8));
+                }
+            }
+            results
+        };
+        let seed = U128::from(1); // single particle at site 0
+        let mut sub = Subspace::<U128>::new(2, n_sites, false);
+        sub.build(seed, hop_op);
+        assert_eq!(sub.size(), n_sites);
     }
 
     #[test]
