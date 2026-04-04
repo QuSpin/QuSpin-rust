@@ -1,3 +1,4 @@
+use super::matrix::PARALLEL_DIM_THRESHOLD;
 use super::{CIndex, Entry, Index, QMatrix};
 use crate::basis::dispatch::SpaceInner;
 use crate::basis::{
@@ -8,7 +9,24 @@ use crate::bitbasis::{BitInt, BitStateOp, GenLocalOp};
 use crate::operator::Operator;
 use crate::primitive::Primitive;
 use num_complex::Complex;
+use rayon::prelude::*;
 use smallvec::SmallVec;
+
+/// Assemble a `QMatrix` from per-row entry vectors.
+fn rows_to_qmatrix<M: Primitive, I: Index, C: CIndex>(
+    dim: usize,
+    rows: Vec<Vec<Entry<M, I, C>>>,
+) -> QMatrix<M, I, C> {
+    let total_nnz: usize = rows.iter().map(|r| r.len()).sum();
+    let mut indptr = Vec::with_capacity(dim + 1);
+    let mut data = Vec::with_capacity(total_nnz);
+    indptr.push(I::from_usize(0));
+    for row in rows {
+        data.extend_from_slice(&row);
+        indptr.push(I::from_usize(data.len()));
+    }
+    QMatrix::from_csr(indptr, data)
+}
 
 // ---------------------------------------------------------------------------
 // Build from non-symmetric basis (FullSpace or Subspace)
@@ -30,49 +48,44 @@ use smallvec::SmallVec;
 /// - `C` — operator-string index type
 pub fn build_from_basis<H, B, M, I, C, S>(ham: &H, basis: &S) -> QMatrix<M, I, C>
 where
-    H: Operator<C>,
+    H: Operator<C> + Sync,
     B: BitInt,
     M: Primitive,
     I: Index,
     C: CIndex + Copy + Ord,
-    S: BasisSpace<B>,
+    S: BasisSpace<B> + Sync,
 {
     let dim = basis.size();
-    let mut indptr = Vec::with_capacity(dim + 1);
-    let mut data: Vec<Entry<M, I, C>> = Vec::new();
 
-    indptr.push(I::from_usize(0));
-
-    for row_idx in 0..dim {
+    let build_row = |row_idx: usize| -> Vec<Entry<M, I, C>> {
         let state = basis.state_at(row_idx);
-        let row_start = data.len();
-
+        let mut entries: Vec<Entry<M, I, C>> = Vec::new();
         ham.apply(state, |cindex, amp, new_state| {
             let Some(col_idx) = basis.index(new_state) else {
                 return;
             };
             let col = I::from_usize(col_idx);
             let value = M::from_complex(amp);
-
-            // Merge with existing entry at same (col, cindex) if present.
-            let existing = data[row_start..]
+            let existing = entries
                 .iter_mut()
                 .find(|e| e.col == col && e.cindex == cindex);
             if let Some(e) = existing {
                 e.value = M::from_complex(e.value.to_complex() + amp);
             } else {
-                data.push(Entry::new(value, col, cindex));
+                entries.push(Entry::new(value, col, cindex));
             }
         });
+        entries.sort_unstable_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));
+        entries
+    };
 
-        // Sort this row's entries by (col, cindex).
-        data[row_start..]
-            .sort_unstable_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));
+    let rows: Vec<Vec<Entry<M, I, C>>> = if dim >= PARALLEL_DIM_THRESHOLD {
+        (0..dim).into_par_iter().map(build_row).collect()
+    } else {
+        (0..dim).map(build_row).collect()
+    };
 
-        indptr.push(I::from_usize(data.len()));
-    }
-
-    QMatrix::from_csr(indptr, data)
+    rows_to_qmatrix(dim, rows)
 }
 
 // ---------------------------------------------------------------------------
@@ -91,43 +104,30 @@ pub fn build_from_symmetric<H, B, L, N, M, I, C>(
     basis: &SymBasis<B, L, N>,
 ) -> QMatrix<M, I, C>
 where
-    H: Operator<C>,
+    H: Operator<C> + Sync,
     B: BitInt,
-    L: BitStateOp<B>,
+    L: BitStateOp<B> + Sync,
     N: NormInt,
     M: Primitive,
     I: Index,
     C: CIndex + Copy + Ord,
 {
     let dim = basis.size();
-    let mut indptr = Vec::with_capacity(dim + 1);
-    let mut data: Vec<Entry<M, I, C>> = Vec::new();
-
-    indptr.push(I::from_usize(0));
-
-    // Per-row buffers hoisted outside the loop so their allocations are
-    // amortised.  SmallVec avoids heap allocation entirely for small rows
-    // (capacity 64 covers typical nearest-neighbour Hamiltonians).
     const ROW_CAP: usize = 64;
-    let mut row_buf: SmallVec<[(C, Complex<f64>); ROW_CAP]> = SmallVec::new();
-    let mut new_states: SmallVec<[B; ROW_CAP]> = SmallVec::new();
-    let mut ref_out: SmallVec<[(B, Complex<f64>); ROW_CAP]> = SmallVec::new();
 
-    for row_idx in 0..dim {
+    let build_row = |row_idx: usize| -> Vec<Entry<M, I, C>> {
         let (state, norm) = basis.entry(row_idx);
-        let row_start = data.len();
+        let mut row_buf: SmallVec<[(C, Complex<f64>); ROW_CAP]> = SmallVec::new();
+        let mut new_states: SmallVec<[B; ROW_CAP]> = SmallVec::new();
+        let mut ref_out: SmallVec<[(B, Complex<f64>); ROW_CAP]> = SmallVec::new();
+        let mut entries: Vec<Entry<M, I, C>> = Vec::new();
 
-        // Collect all operator outputs for this row.
-        row_buf.clear();
-        new_states.clear();
         ham.apply(state, |cindex, amp, new_state| {
             row_buf.push((cindex, amp));
             new_states.push(new_state);
         });
 
         if !new_states.is_empty() {
-            // Batch-map every new_state to its orbit representative and
-            // group character in a single amortised pass.
             ref_out.resize(new_states.len(), (new_states[0], Complex::new(1.0, 0.0)));
             basis.get_refstate_batch(&new_states, &mut ref_out);
 
@@ -135,33 +135,32 @@ where
                 let Some(col_idx) = basis.index(*ref_state) else {
                     continue;
                 };
-
                 let (_, new_norm) = basis.entry(col_idx);
-
-                // Scale: amp * grp_char * sqrt(new_norm / norm)
                 let scale = grp_char * (new_norm / norm).sqrt();
                 let full_amp = amp * scale;
                 let col = I::from_usize(col_idx);
                 let value = M::from_complex(full_amp);
-
-                let existing = data[row_start..]
+                let existing = entries
                     .iter_mut()
                     .find(|e| e.col == col && e.cindex == *cindex);
                 if let Some(e) = existing {
                     e.value = M::from_complex(e.value.to_complex() + full_amp);
                 } else {
-                    data.push(Entry::new(value, col, *cindex));
+                    entries.push(Entry::new(value, col, *cindex));
                 }
             }
         }
+        entries.sort_unstable_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));
+        entries
+    };
 
-        data[row_start..]
-            .sort_unstable_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));
+    let rows: Vec<Vec<Entry<M, I, C>>> = if dim >= PARALLEL_DIM_THRESHOLD {
+        (0..dim).into_par_iter().map(build_row).collect()
+    } else {
+        (0..dim).map(build_row).collect()
+    };
 
-        indptr.push(I::from_usize(data.len()));
-    }
-
-    QMatrix::from_csr(indptr, data)
+    rows_to_qmatrix(dim, rows)
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +177,7 @@ where
 /// 29-arm match for every `(M, C)` combination.
 pub fn build_from_space<H, M, C>(ham: &H, space: &SpaceInner) -> QMatrix<M, i64, C>
 where
-    H: crate::operator::Operator<C>,
+    H: crate::operator::Operator<C> + Sync,
     M: crate::primitive::Primitive,
     C: CIndex + Copy + Ord,
 {
@@ -411,5 +410,38 @@ mod tests {
         for i in 0..4 {
             assert!((h2psi[i] - psi[i]).abs() < 1e-12, "h2psi[{i}]={}", h2psi[i]);
         }
+    }
+
+    /// Build XX chain Hamiltonian for `n_sites` (periodic boundary).
+    fn xx_chain(n_sites: usize) -> HardcoreOperator<u8> {
+        use crate::operator::pauli::{HardcoreOp, OpEntry};
+        let mut terms = Vec::new();
+        for i in 0..n_sites {
+            let j = (i + 1) % n_sites;
+            let ops = smallvec![(HardcoreOp::X, i as u32), (HardcoreOp::X, j as u32),];
+            terms.push(OpEntry::new(0u8, Complex::new(1.0, 0.0), ops));
+        }
+        HardcoreOperator::new(terms)
+    }
+
+    #[test]
+    fn build_from_basis_parallel() {
+        // 9-site XX chain → FullSpace dim=512, exercises parallel path.
+        let ham = xx_chain(9);
+        let basis = FullSpace::<u32>::new(2, 9, false);
+        assert_eq!(basis.size(), 512);
+        let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
+        assert_eq!(mat.dim(), 512);
+        // XX is hermitian: H^2|ψ⟩ should give back a valid result.
+        // Check trace(H) = 0 (off-diagonal operator).
+        let mut trace = 0.0f64;
+        for r in 0..512 {
+            for e in mat.row(r) {
+                if e.col == r as i64 {
+                    trace += e.value;
+                }
+            }
+        }
+        assert!(trace.abs() < 1e-12, "trace={trace}");
     }
 }

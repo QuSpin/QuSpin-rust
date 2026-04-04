@@ -1,6 +1,7 @@
 use crate::error::QuSpinError;
 use crate::primitive::Primitive;
 use ndarray::{ArrayView2, ArrayViewMut2};
+use rayon::prelude::*;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
@@ -14,6 +15,12 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 ///
 /// Matches the tolerance used in `Subspace::build` / `SymmetricSubspace::build`.
 const ZERO_TOL: f64 = 4.0 * f64::EPSILON;
+
+/// Minimum matrix dimension for parallel execution.
+///
+/// Below this threshold the sequential path is used to avoid rayon fork/join
+/// overhead.  Matches `PARALLEL_FRONTIER_THRESHOLD` in `basis::bfs`.
+pub(super) const PARALLEL_DIM_THRESHOLD: usize = 256;
 
 // ---------------------------------------------------------------------------
 // Index / CIndex sealed traits
@@ -336,11 +343,10 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
             )));
         }
 
-        let mut pos = 0usize;
-        indptr[0] = I::from_usize(0);
-        for r in 0..self.dim {
-            let mut i = 0;
+        let materialize_row = |r: usize| -> Vec<(I, V)> {
+            let mut results = Vec::new();
             let row = self.row(r);
+            let mut i = 0;
             while i < row.len() {
                 let col = row[i].col;
                 let mut acc = V::default();
@@ -353,16 +359,31 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
                     i += 1;
                 }
                 if !drop_zeros || acc.magnitude() > scale * ZERO_TOL {
-                    if pos >= indices.len() {
-                        return Err(QuSpinError::ValueError(format!(
-                            "output buffer too small: needed more than {} entries",
-                            indices.len()
-                        )));
-                    }
-                    indices[pos] = col;
-                    data[pos] = acc;
-                    pos += 1;
+                    results.push((col, acc));
                 }
+            }
+            results
+        };
+
+        let row_results: Vec<Vec<(I, V)>> = if self.dim >= PARALLEL_DIM_THRESHOLD {
+            (0..self.dim).into_par_iter().map(materialize_row).collect()
+        } else {
+            (0..self.dim).map(materialize_row).collect()
+        };
+
+        let mut pos = 0usize;
+        indptr[0] = I::from_usize(0);
+        for (r, results) in row_results.iter().enumerate() {
+            for &(col, val) in results {
+                if pos >= indices.len() {
+                    return Err(QuSpinError::ValueError(format!(
+                        "output buffer too small: needed more than {} entries",
+                        indices.len()
+                    )));
+                }
+                indices[pos] = col;
+                data[pos] = val;
+                pos += 1;
             }
             indptr[r + 1] = I::from_usize(pos);
         }
@@ -416,10 +437,24 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
             )));
         }
         output.fill(V::default());
-        for r in 0..self.dim {
-            for e in self.row(r) {
-                let entry_as_v = V::from_complex(e.value.to_complex());
-                output[r * self.dim + e.col.as_usize()] += coeff[e.cindex.as_usize()] * entry_as_v;
+        if self.dim >= PARALLEL_DIM_THRESHOLD {
+            let dim = self.dim;
+            output
+                .par_chunks_mut(dim)
+                .enumerate()
+                .for_each(|(r, out_row)| {
+                    for e in self.row(r) {
+                        let entry_as_v = V::from_complex(e.value.to_complex());
+                        out_row[e.col.as_usize()] += coeff[e.cindex.as_usize()] * entry_as_v;
+                    }
+                });
+        } else {
+            for r in 0..self.dim {
+                for e in self.row(r) {
+                    let entry_as_v = V::from_complex(e.value.to_complex());
+                    output[r * self.dim + e.col.as_usize()] +=
+                        coeff[e.cindex.as_usize()] * entry_as_v;
+                }
             }
         }
         Ok(())
@@ -507,12 +542,35 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
         }
 
         let n_vecs = input.ncols();
-        for r in 0..self.dim {
-            for e in self.row(r) {
-                let scale = coeff[e.cindex.as_usize()] * V::from_complex(e.value.to_complex());
-                let col = e.col.as_usize();
-                for k in 0..n_vecs {
-                    output[[r, k]] += scale * input[[col, k]];
+        if self.dim >= PARALLEL_DIM_THRESHOLD
+            && n_vecs > 0
+            && input.is_standard_layout()
+            && output.is_standard_layout()
+        {
+            let in_slice = input.as_slice().unwrap();
+            let out_slice = output.as_slice_mut().unwrap();
+            out_slice
+                .par_chunks_mut(n_vecs)
+                .enumerate()
+                .for_each(|(r, out_row)| {
+                    for e in self.row(r) {
+                        let scale =
+                            coeff[e.cindex.as_usize()] * V::from_complex(e.value.to_complex());
+                        let col = e.col.as_usize();
+                        let base = col * n_vecs;
+                        for k in 0..n_vecs {
+                            out_row[k] += scale * in_slice[base + k];
+                        }
+                    }
+                });
+        } else {
+            for r in 0..self.dim {
+                for e in self.row(r) {
+                    let scale = coeff[e.cindex.as_usize()] * V::from_complex(e.value.to_complex());
+                    let col = e.col.as_usize();
+                    for k in 0..n_vecs {
+                        output[[r, k]] += scale * input[[col, k]];
+                    }
                 }
             }
         }
@@ -522,7 +580,6 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
     /// Batch transpose matrix–vector product: `output[[col, k]] += Σ_{r} coeff[cindex] * value * input[[r, k]]`.
     ///
     /// Both `input` and `output` must have shape `(dim, n_vecs)`.
-    /// Sequential to avoid data races on `output`.
     ///
     /// # Errors
     /// Returns `ValueError` if any shape is inconsistent with `dim` or `num_coeff`.
@@ -540,12 +597,60 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
         }
 
         let n_vecs = input.ncols();
-        for r in 0..self.dim {
-            for e in self.row(r) {
-                let scale = coeff[e.cindex.as_usize()] * V::from_complex(e.value.to_complex());
-                let col = e.col.as_usize();
-                for k in 0..n_vecs {
-                    output[[col, k]] += scale * input[[r, k]];
+        // Each rayon worker allocates a dim*n_vecs buffer in the fold.
+        // Cap per-thread allocation at ~32 MB (for f64) to avoid OOM on
+        // large n_vecs.  Use checked_mul to guard against usize overflow.
+        const MAX_TRANSPOSE_BUF_ELEMS: usize = 4 * 1024 * 1024;
+        let total = self.dim.checked_mul(n_vecs);
+        if self.dim >= PARALLEL_DIM_THRESHOLD
+            && total.is_some_and(|t| t > 0 && t <= MAX_TRANSPOSE_BUF_ELEMS)
+            && input.is_standard_layout()
+            && output.is_standard_layout()
+        {
+            let in_slice = input.as_slice().unwrap();
+            let out_slice = output.as_slice_mut().unwrap();
+            let total = total.unwrap();
+
+            // Thread-local accumulators, reduced by element-wise sum.
+            let result: Vec<V> = (0..self.dim)
+                .into_par_iter()
+                .fold(
+                    || vec![V::default(); total],
+                    |mut buf, r| {
+                        for e in self.row(r) {
+                            let scale =
+                                coeff[e.cindex.as_usize()] * V::from_complex(e.value.to_complex());
+                            let col = e.col.as_usize();
+                            let base = col * n_vecs;
+                            let in_base = r * n_vecs;
+                            for k in 0..n_vecs {
+                                buf[base + k] += scale * in_slice[in_base + k];
+                            }
+                        }
+                        buf
+                    },
+                )
+                .reduce(
+                    || vec![V::default(); total],
+                    |mut a, b| {
+                        for (x, y) in a.iter_mut().zip(b.iter()) {
+                            *x += *y;
+                        }
+                        a
+                    },
+                );
+
+            for (o, v) in out_slice.iter_mut().zip(result.iter()) {
+                *o += *v;
+            }
+        } else {
+            for r in 0..self.dim {
+                for e in self.row(r) {
+                    let scale = coeff[e.cindex.as_usize()] * V::from_complex(e.value.to_complex());
+                    let col = e.col.as_usize();
+                    for k in 0..n_vecs {
+                        output[[col, k]] += scale * input[[r, k]];
+                    }
                 }
             }
         }
@@ -974,5 +1079,103 @@ mod tests {
         assert!((output[[1, 0]] - 5.0).abs() < 1e-12);
         assert!((output[[0, 1]] - 2.0).abs() < 1e-12);
         assert!((output[[1, 1]] - 1.0).abs() < 1e-12);
+    }
+
+    // ---------------------------------------------------------------
+    // Parallel-path tests (dim >= PARALLEL_DIM_THRESHOLD)
+    // ---------------------------------------------------------------
+
+    /// Build a tridiagonal matrix of size `dim` with 1s on off-diagonals.
+    fn tridiag(dim: usize) -> QMatrix<f64, i64, u8> {
+        let mut indptr = Vec::with_capacity(dim + 1);
+        let mut data = Vec::new();
+        indptr.push(0i64);
+        for r in 0..dim {
+            if r > 0 {
+                data.push(Entry::new(1.0f64, (r - 1) as i64, 0u8));
+            }
+            if r + 1 < dim {
+                data.push(Entry::new(1.0f64, (r + 1) as i64, 0u8));
+            }
+            indptr.push(data.len() as i64);
+        }
+        QMatrix::from_csr(indptr, data)
+    }
+
+    #[test]
+    fn to_dense_into_parallel() {
+        let dim = 300;
+        let m = tridiag(dim);
+        let coeff = vec![1.0f64];
+        let dense = m.to_dense::<f64>(&coeff).unwrap();
+        // Verify tridiagonal structure.
+        for r in 0..dim {
+            for c in 0..dim {
+                let expected = if (r + 1 == c) || (c + 1 == r) {
+                    1.0
+                } else {
+                    0.0
+                };
+                assert!(
+                    (dense[r * dim + c] - expected).abs() < 1e-12,
+                    "dense[{r},{c}] = {} expected {expected}",
+                    dense[r * dim + c]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn dot_many_parallel() {
+        let dim = 300;
+        let m = tridiag(dim);
+        let coeff = vec![1.0f64];
+        // Input: identity-like first column.
+        let mut input = vec![0.0f64; dim];
+        input[0] = 1.0;
+        let mut output = vec![0.0f64; dim];
+        m.dot(true, &coeff, &input, &mut output).unwrap();
+        // M * e_0 = e_1 (only off-diagonal connection from row 0 is col 1).
+        assert!((output[1] - 1.0).abs() < 1e-12);
+        assert!(output[0].abs() < 1e-12);
+        assert!(output[2].abs() < 1e-12);
+    }
+
+    #[test]
+    fn dot_transpose_many_parallel() {
+        let dim = 300;
+        let m = tridiag(dim);
+        let coeff = vec![1.0f64];
+        let mut input = vec![0.0f64; dim];
+        input[0] = 1.0;
+        let mut output_t = vec![0.0f64; dim];
+        m.dot_transpose(true, &coeff, &input, &mut output_t)
+            .unwrap();
+        // Tridiag is symmetric, so transpose dot should match dot.
+        let mut output = vec![0.0f64; dim];
+        m.dot(true, &coeff, &input, &mut output).unwrap();
+        for i in 0..dim {
+            assert!(
+                (output[i] - output_t[i]).abs() < 1e-10,
+                "mismatch at {i}: {} vs {}",
+                output[i],
+                output_t[i]
+            );
+        }
+    }
+
+    #[test]
+    fn to_csr_into_parallel() {
+        let dim = 300;
+        let m = tridiag(dim);
+        let coeff = vec![1.0f64];
+        let (indptr, indices, data) = m.to_csr::<f64>(&coeff, true).unwrap();
+        // Each interior row has 2 entries, boundary rows have 1.
+        assert_eq!(data.len(), 2 * (dim - 2) + 2);
+        // Verify first row: only col 1.
+        let start = indptr[0].as_usize();
+        let end = indptr[1].as_usize();
+        assert_eq!(end - start, 1);
+        assert_eq!(indices[start], 1i64);
     }
 }
