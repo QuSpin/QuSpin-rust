@@ -6,18 +6,15 @@ use smallvec::SmallVec;
 
 /// Python-facing Pauli / hardcore-boson / spin-½ operator.
 ///
-/// Each term is `(coeff, op_str, sites, cindex)` where:
-/// - `coeff`   – complex coefficient
-/// - `op_str`  – ASCII string; each char is one of `x y z + - n` (case-insensitive)
-/// - `sites`   – site index for each character in `op_str`
-/// - `cindex`  – which coupling constant this term belongs to (default 0)
+/// Terms are grouped by coupling-constant index (cindex): the i-th element of
+/// `terms` corresponds to cindex `i`.  Each element is a `(op_str, bonds)`
+/// pair where each bond is `[coeff, site0, site1, ...]`.
 ///
-/// Example (Heisenberg XX+YY chain on 4 sites):
+/// Example (XX + ZZ nearest-neighbour chain on 4 sites):
 /// ```python
 /// op = PauliOperator([
-///     (1.0, "++", [0, 1], 0), (1.0, "--", [0, 1], 0),
-///     (1.0, "++", [1, 2], 0), (1.0, "--", [1, 2], 0),
-///     (1.0, "++", [2, 3], 0), (1.0, "--", [2, 3], 0),
+///     ("XX", [[1.0, 0, 1], [1.0, 1, 2], [1.0, 2, 3]]),
+///     ("ZZ", [[1.0, 0, 1], [1.0, 1, 2], [1.0, 2, 3]]),
 /// ])
 /// ```
 #[pyclass(name = "PauliOperator", module = "quspin._rs")]
@@ -27,27 +24,25 @@ pub struct PyPauliOperator {
 
 #[pymethods]
 impl PyPauliOperator {
-    /// Construct from a list of `(coeff, op_str, sites, cindex)` tuples.
+    /// Construct from a list of `(op_str, bonds)` pairs, one per cindex.
+    ///
+    /// Each bond is `[coeff, site0, site1, ...]` where `coeff` is a complex
+    /// scalar and the remaining elements are integer site indices.
     #[new]
     #[pyo3(signature = (terms))]
-    fn new(terms: Vec<(Complex<f64>, String, Vec<u32>, usize)>) -> PyResult<Self> {
-        // Determine cindex type based on max_cindex and max_site.
-        let max_cindex = terms.iter().map(|(_, _, _, c)| *c).max().unwrap_or(0);
-        let max_site = terms
-            .iter()
-            .flat_map(|(_, _, sites, _)| sites.iter().copied())
-            .max()
-            .unwrap_or(0) as usize;
+    fn new(py: Python<'_>, terms: Vec<(String, Vec<Vec<PyObject>>)>) -> PyResult<Self> {
+        let max_cindex = terms.len().saturating_sub(1);
+        let max_site = max_site_from_terms(py, &terms)?;
 
         let use_u8 = max_cindex <= 255 && max_site <= 255;
 
         if use_u8 {
-            let entries = parse_terms::<u8>(&terms).map_err(Error::from)?;
+            let entries = parse_terms::<u8>(py, &terms).map_err(Error::from)?;
             Ok(PyPauliOperator {
                 inner: HardcoreOperatorInner::Ham8(HardcoreOperator::new(entries)),
             })
         } else if max_cindex <= 65535 && max_site <= 65535 {
-            let entries = parse_terms::<u16>(&terms).map_err(Error::from)?;
+            let entries = parse_terms::<u16>(py, &terms).map_err(Error::from)?;
             Ok(PyPauliOperator {
                 inner: HardcoreOperatorInner::Ham16(HardcoreOperator::new(entries)),
             })
@@ -82,36 +77,87 @@ impl PyPauliOperator {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+/// Extract the max site index from all bonds across all terms.
+pub(crate) fn max_site_from_terms(
+    py: Python<'_>,
+    terms: &[(String, Vec<Vec<PyObject>>)],
+) -> PyResult<usize> {
+    let mut max = 0usize;
+    for (_, bonds) in terms {
+        for bond in bonds {
+            // bond = [coeff, site0, site1, ...]  — skip index 0 (coeff)
+            for obj in bond.iter().skip(1) {
+                let site: u32 = obj.bind(py).extract()?;
+                max = max.max(site as usize);
+            }
+        }
+    }
+    Ok(max)
+}
+
+/// Extract a complex coefficient from a Python scalar (int, float, or complex).
+pub(crate) fn extract_coeff(py: Python<'_>, obj: &PyObject) -> PyResult<Complex<f64>> {
+    let bound = obj.bind(py);
+    if let Ok(z) = bound.extract::<Complex<f64>>() {
+        return Ok(z);
+    }
+    let re: f64 = bound.extract()?;
+    Ok(Complex::new(re, 0.0))
+}
+
 fn parse_terms<C: Copy + Ord + TryFrom<usize>>(
-    terms: &[(Complex<f64>, String, Vec<u32>, usize)],
+    py: Python<'_>,
+    terms: &[(String, Vec<Vec<PyObject>>)],
 ) -> Result<Vec<OpEntry<C>>, quspin_core::error::QuSpinError>
 where
     <C as TryFrom<usize>>::Error: std::fmt::Debug,
 {
-    let mut entries = Vec::with_capacity(terms.len());
-    for (coeff, op_str, sites, cindex_usize) in terms {
-        if op_str.len() != sites.len() {
-            return Err(quspin_core::error::QuSpinError::ValueError(format!(
-                "op_str length {} != sites length {}",
-                op_str.len(),
-                sites.len()
-            )));
-        }
-        let cindex = C::try_from(*cindex_usize).map_err(|_| {
+    let mut entries = Vec::new();
+    for (cindex_usize, (op_str, bonds)) in terms.iter().enumerate() {
+        let cindex = C::try_from(cindex_usize).map_err(|_| {
             quspin_core::error::QuSpinError::ValueError(format!(
                 "cindex {cindex_usize} out of range for chosen index type"
             ))
         })?;
-        let mut ops: SmallVec<[(HardcoreOp, u32); 4]> = SmallVec::new();
-        for (ch, &site) in op_str.chars().zip(sites.iter()) {
-            let op = HardcoreOp::from_char(ch).ok_or_else(|| {
-                quspin_core::error::QuSpinError::ValueError(format!(
-                    "unknown operator character '{ch}'; expected one of x, y, z, +, -, n"
-                ))
+        for bond in bonds {
+            if bond.is_empty() {
+                return Err(quspin_core::error::QuSpinError::ValueError(
+                    "each bond must be [coeff, site0, site1, ...]".to_string(),
+                ));
+            }
+            let coeff = extract_coeff(py, &bond[0]).map_err(|e| {
+                quspin_core::error::QuSpinError::ValueError(format!("bond coefficient: {e}"))
             })?;
-            ops.push((op, site));
+            let sites: Vec<u32> = bond[1..]
+                .iter()
+                .map(|s| {
+                    s.bind(py).extract::<u32>().map_err(|e| {
+                        quspin_core::error::QuSpinError::ValueError(format!("bond site index: {e}"))
+                    })
+                })
+                .collect::<Result<_, _>>()?;
+            if op_str.len() != sites.len() {
+                return Err(quspin_core::error::QuSpinError::ValueError(format!(
+                    "op_str length {} != number of sites {}",
+                    op_str.len(),
+                    sites.len()
+                )));
+            }
+            let mut ops: SmallVec<[(HardcoreOp, u32); 4]> = SmallVec::new();
+            for (ch, &site) in op_str.chars().zip(sites.iter()) {
+                let op = HardcoreOp::from_char(ch).ok_or_else(|| {
+                    quspin_core::error::QuSpinError::ValueError(format!(
+                        "unknown operator character '{ch}'; expected one of x, y, z, +, -, n"
+                    ))
+                })?;
+                ops.push((op, site));
+            }
+            entries.push(OpEntry::new(cindex, coeff, ops));
         }
-        entries.push(OpEntry::new(cindex, *coeff, ops));
     }
     Ok(entries)
 }
