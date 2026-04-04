@@ -3,6 +3,9 @@ name = "quspin-core"
 version.workspace = true
 edition.workspace = true
 
+[features]
+large-int = []
+
 [dependencies]
 num-complex = { workspace = true }
 ndarray = { workspace = true }

@@ -22,3 +22,6 @@ paste = "1"
 nalgebra = "0.33"
 bytemuck = "1"
 ode_solvers = "0.6"
+
+[profile.release]
+codegen-units = 4

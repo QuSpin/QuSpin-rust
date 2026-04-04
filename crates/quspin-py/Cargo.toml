@@ -8,7 +8,7 @@ name = "_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-quspin-core = { path = "../quspin-core" }
+quspin-core = { path = "../quspin-core", features = ["large-int"] }
 num-complex = { workspace = true }
 ndarray = { workspace = true }
 ruint = { workspace = true }

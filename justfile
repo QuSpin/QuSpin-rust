@@ -13,8 +13,8 @@ check:
     cargo check
 
 # Development install of the Python extension
-develop:
-    uv run maturin develop
+develop *args:
+    uv run maturin develop {{ args }}
 
 # ── Testing ─────────────────────────────────────────────────────────
 
