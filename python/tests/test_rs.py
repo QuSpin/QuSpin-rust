@@ -16,6 +16,7 @@ from quspin_rs._rs import (
     QMatrix,
     SchrodingerEq,
     SpinBasis,
+    Static,
 )
 
 # ---------------------------------------------------------------------------
@@ -28,7 +29,7 @@ N = 4  # number of sites
 def make_pauli_op() -> PauliOperator:
     """XX + ZZ nearest-neighbour Hamiltonian on N sites."""
     bonds = [[1.0, i, i + 1] for i in range(N - 1)]
-    return PauliOperator([("XX", bonds), ("ZZ", bonds)])
+    return PauliOperator([("XX", bonds)], [("ZZ", bonds)])
 
 
 def make_spin_basis_full() -> SpinBasis:
@@ -250,7 +251,7 @@ N_B = 3
 
 def make_boson_op() -> BosonOperator:
     bonds = [[1.0, i, i + 1] for i in range(N_B - 1)]
-    return BosonOperator([("+-", bonds), ("-+", bonds)], LHSS_B)
+    return BosonOperator([("+-", bonds)], [("-+", bonds)], lhss=LHSS_B)
 
 
 class TestBosonBasisFull:
@@ -282,7 +283,7 @@ class TestBosonBasisLargeNSites:
             [1.0, i + 1, i] for i in range(n - 1)
         ]
 
-        return BosonOperator([("+-", terms)], lhss)
+        return BosonOperator([("+-", terms)], lhss=lhss)
 
     @pytest.mark.parametrize("N", [32, 63, 64, 65, 100, 128, 200])
     def test_single_particle_basis(self, N: int):
@@ -336,11 +337,11 @@ class TestQMatrixFermion:
 
 class TestHamiltonian:
     def _make_static(self):
-        """Static Hamiltonian: XX+ZZ — cindex 1 (ZZ) has constant coefficient 1."""
+        """Static Hamiltonian: XX+ZZ — both cindices are Static."""
         op = make_pauli_op()
         basis = make_spin_basis_full()
         mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
-        return Hamiltonian(mat, [lambda t: 1.0 + 0j])
+        return Hamiltonian(mat, [Static(), Static()])
 
     def test_dim(self):
         h = self._make_static()
@@ -354,7 +355,7 @@ class TestHamiltonian:
         op = make_pauli_op()
         basis = make_spin_basis_full()
         mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
-        ham = Hamiltonian(mat, [lambda t: 1.0 + 0j])
+        ham = Hamiltonian(mat, [Static(), Static()])
         coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
         ip, ii, id_ = mat.to_csr(coeff)
         hp, hi, hd = ham.to_csr(0.0)
@@ -366,7 +367,7 @@ class TestHamiltonian:
         op = make_pauli_op()
         basis = make_spin_basis_full()
         mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
-        ham = Hamiltonian(mat, [lambda t: 1.0 + 0j])
+        ham = Hamiltonian(mat, [Static(), Static()])
         n = mat.dim
         coeff = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
         inp = np.random.default_rng(7).standard_normal((n, 2)) + 0j
@@ -378,11 +379,10 @@ class TestHamiltonian:
 
     def test_time_dependent_coeff(self):
         """Scaling coupling by cos(t) should give cos(t) * static result."""
-        op = PauliOperator([("ZZ", [[1.0, 0, 1]]), ("ZZ", [[1.0, 0, 1]])])
+        op = PauliOperator([("ZZ", [[1.0, 0, 1]])], [("ZZ", [[1.0, 0, 1]])])
         basis = SpinBasis.full(2)
         mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
-        # coeff_fns[0] multiplies cindex 1
-        ham = Hamiltonian(mat, [lambda t: math.cos(t) + 0j])
+        ham = Hamiltonian(mat, [Static(), lambda t: math.cos(t) + 0j])
         n = mat.dim
         inp = np.random.default_rng(8).standard_normal((n, 1)) + 0j
         out_t0 = np.zeros((n, 1), dtype=np.complex128)
@@ -407,7 +407,7 @@ class TestSchrodingerEq:
         op = PauliOperator([("X", [[1.0, 0]])])
         basis = SpinBasis.full(1)
         mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
-        ham = Hamiltonian(mat, [])
+        ham = Hamiltonian(mat, [Static()])
         return SchrodingerEq(ham)
 
     def test_dim(self):
@@ -457,7 +457,7 @@ class TestHamiltonianExpm:
         op = PauliOperator([("Z", [[1.0, 0]])])
         basis = SpinBasis.full(1)
         mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
-        return Hamiltonian(mat, [])
+        return Hamiltonian(mat, [Static()])
 
     def _ref_expm_z(self, a, f):
         """Analytically apply exp(a * diag(1, -1)) to column(s) f.
@@ -502,7 +502,7 @@ class TestHamiltonianExpm:
         op = PauliOperator([("XX", [[1.0, 0, 1]])])
         basis = SpinBasis.full(2)
         mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
-        ham = Hamiltonian(mat, [])
+        ham = Hamiltonian(mat, [Static()])
         a = -1j * math.pi / 3
         H = ham.to_dense(0.0)
         # exp(a*H) via eigendecomposition (H is Hermitian)
@@ -540,7 +540,7 @@ def _make_pbc_hopping_op(L: int) -> PauliOperator:
     """Single-particle XX+YY hopping on L sites with periodic boundary conditions."""
     xx_bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
     yy_bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
-    return PauliOperator([("XX", xx_bonds), ("YY", yy_bonds)])
+    return PauliOperator([("XX", xx_bonds)], [("YY", yy_bonds)])
 
 
 def _translation_group(

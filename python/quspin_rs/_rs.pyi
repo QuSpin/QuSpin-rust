@@ -147,20 +147,22 @@ class BosonBasis:
 class PauliOperator:
     """Pauli / hardcore-boson operator.
 
-    Args:
-        terms: List of ``(op_str, bonds)`` pairs, one per coupling-constant
-               index (cindex).  The i-th element corresponds to cindex ``i``.
-               Each bond is ``[coeff, site0, site1, ...]``.
+    Each positional argument is a *term* (one coupling-constant index).
+    A term is a list of ``(op_str, bonds)`` pairs that share that cindex.
+    Each bond is ``[coeff, site0, site1, ...]``.
 
     Example::
 
         bonds = [[1.0, 0, 1], [1.0, 1, 2], [1.0, 2, 3]]
+        # Two cindices (XX and ZZ can have independent coefficients):
+        op = PauliOperator([("XX", bonds)], [("ZZ", bonds)])
+        # One cindex (XX and ZZ always share the same coefficient):
         op = PauliOperator([("XX", bonds), ("ZZ", bonds)])
     """
 
     def __init__(
         self,
-        terms: list[tuple[str, list[list[Any]]]],
+        *terms: list[tuple[str, list[list[Any]]]],
     ) -> None: ...
     @property
     def max_site(self) -> int: ...
@@ -195,15 +197,13 @@ class BondOperator:
 class BosonOperator:
     """Bosonic operator.
 
-    Args:
-        terms: Same ``(op_str, bonds)`` format as ``PauliOperator``, using
-               boson op strings (``+``, ``-``, ``n``).
-        lhss:  Local Hilbert-space size.
+    Same variadic ``*terms`` format as ``PauliOperator``, using boson op
+    strings (``+``, ``-``, ``n``).  ``lhss`` is keyword-only.
     """
 
     def __init__(
         self,
-        terms: list[tuple[str, list[list[Any]]]],
+        *terms: list[tuple[str, list[list[Any]]]],
         lhss: int,
     ) -> None: ...
     @property
@@ -217,15 +217,14 @@ class BosonOperator:
 class FermionOperator:
     """Fermionic operator.
 
-    Args:
-        terms: Same ``(op_str, bonds)`` format as ``PauliOperator``, using
-               fermion op strings (``+``, ``-``, ``n``).  Jordan-Wigner signs
-               are applied automatically.
+    Same variadic ``*terms`` format as ``PauliOperator``, using fermion op
+    strings (``+``, ``-``, ``n``).  Jordan-Wigner signs are applied
+    automatically.
     """
 
     def __init__(
         self,
-        terms: list[tuple[str, list[list[Any]]]],
+        *terms: list[tuple[str, list[list[Any]]]],
     ) -> None: ...
     @property
     def max_site(self) -> int: ...
@@ -286,6 +285,8 @@ class QMatrix:
     @property
     def nnz(self) -> int: ...
     @property
+    def num_coeff(self) -> int: ...
+    @property
     def dtype(self) -> str: ...
     def __add__(self, rhs: QMatrix) -> QMatrix: ...
     def __sub__(self, rhs: QMatrix) -> QMatrix: ...
@@ -331,25 +332,41 @@ class QMatrix:
     def __repr__(self) -> str: ...
 
 # ---------------------------------------------------------------------------
+# Static marker
+# ---------------------------------------------------------------------------
+
+class Static:
+    """Marker indicating a static (time-independent) coefficient.
+
+    Pass ``Static()`` in the ``coeff_fns`` list to mark a cindex as having
+    a constant coefficient of 1.0.
+    """
+
+    def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
+
+# ---------------------------------------------------------------------------
 # Hamiltonian
 # ---------------------------------------------------------------------------
 
 class Hamiltonian:
     """Time-dependent Hamiltonian.
 
-    Wraps a ``QMatrix`` together with Python callables — one per dynamic
-    coupling constant.  Cindex 0 is always the static part (coefficient 1).
+    Wraps a ``QMatrix`` together with coefficient descriptors — one per
+    cindex.  Each entry is either ``Static()`` (coefficient 1.0) or a
+    callable ``f(t) -> complex``.
 
     Args:
         qmatrix:   A ``QMatrix`` with ``num_coeff`` operator strings.
-        coeff_fns: List of callables ``f(t: float) -> complex``, length
-                   ``qmatrix.num_coeff - 1``.
+        coeff_fns: List of length ``qmatrix.num_coeff``.  Each element is
+                   ``Static()`` for a time-independent term or a callable
+                   ``f(t: float) -> complex`` for a time-dependent term.
     """
 
     def __init__(
         self,
         qmatrix: QMatrix,
-        coeff_fns: list[Callable[[float], complex]],
+        coeff_fns: list[Static | Callable[[float], complex]],
     ) -> None: ...
     @property
     def dim(self) -> int: ...

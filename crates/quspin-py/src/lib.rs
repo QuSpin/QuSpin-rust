@@ -8,7 +8,7 @@ pub mod qmatrix;
 pub mod schrodinger;
 
 use basis::{PyBosonBasis, PyFermionBasis, PySpinBasis};
-use hamiltonian::PyHamiltonian;
+use hamiltonian::{PyHamiltonian, PyStatic};
 use operator::{PyBondOperator, PyBosonOperator, PyFermionOperator, PyPauliOperator};
 use pyo3::prelude::*;
 use qmatrix::PyQMatrix;
@@ -27,6 +27,7 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyFermionOperator>()?;
     // Matrix, Hamiltonian, and integrator types
     m.add_class::<PyQMatrix>()?;
+    m.add_class::<PyStatic>()?;
     m.add_class::<PyHamiltonian>()?;
     m.add_class::<PySchrodingerEq>()?;
     Ok(())
