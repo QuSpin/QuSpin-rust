@@ -26,11 +26,8 @@ N = 4  # number of sites
 
 def make_pauli_op() -> PauliOperator:
     """XX + ZZ nearest-neighbour Hamiltonian on N sites."""
-    terms = []
-    for i in range(N - 1):
-        terms.append((1.0 + 0j, "XX", [i, i + 1], 0))  # cindex 0: XX
-        terms.append((1.0 + 0j, "ZZ", [i, i + 1], 1))  # cindex 1: ZZ
-    return PauliOperator(terms)
+    bonds = [[1.0, i, i + 1] for i in range(N - 1)]
+    return PauliOperator([("XX", bonds), ("ZZ", bonds)])
 
 
 def make_spin_basis_full() -> SpinBasis:
@@ -251,11 +248,8 @@ N_B = 3
 
 
 def make_boson_op() -> BosonOperator:
-    terms = []
-    for i in range(N_B - 1):
-        terms.append((1.0 + 0j, "+-", [i, i + 1], 0))
-        terms.append((1.0 + 0j, "-+", [i, i + 1], 0))
-    return BosonOperator(terms, LHSS_B)
+    bonds = [[1.0, i, i + 1] for i in range(N_B - 1)]
+    return BosonOperator([("+-", bonds), ("-+", bonds)], LHSS_B)
 
 
 class TestBosonBasisFull:
@@ -283,11 +277,11 @@ class TestBosonBasisLargeNSites:
 
     @staticmethod
     def _make_boson_op(n: int, lhss: int) -> BosonOperator:
-        terms = []
-        for i in range(n - 1):
-            terms.append((1.0 + 0j, "+-", [i, i + 1], 0))
-            terms.append((1.0 + 0j, "-+", [i, i + 1], 0))
-        return BosonOperator(terms, lhss)
+        terms = [[1.0, i, i + 1] for i in range(n - 1)] + [
+            [1.0, i + 1, i] for i in range(n - 1)
+        ]
+
+        return BosonOperator([("+-", terms)], lhss)
 
     @pytest.mark.parametrize("N", [32, 63, 64, 65, 100, 128, 200])
     def test_single_particle_basis(self, N: int):
@@ -311,11 +305,10 @@ class TestBosonBasisLargeNSites:
 
 def make_fermion_op() -> FermionOperator:
     N_F = 4
-    terms = []
-    for i in range(N_F - 1):
-        terms.append((1.0 + 0j, "+-", [i + 1, i], 0))
-        terms.append((1.0 + 0j, "+-", [i, i + 1], 0))
-    return FermionOperator(terms)
+    bonds = [[1.0, i + 1, i] for i in range(N_F - 1)] + [
+        [1.0, i, i + 1] for i in range(N_F - 1)
+    ]
+    return FermionOperator([("+-", bonds)])
 
 
 class TestFermionBasisFull:
@@ -384,7 +377,7 @@ class TestHamiltonian:
 
     def test_time_dependent_coeff(self):
         """Scaling coupling by cos(t) should give cos(t) * static result."""
-        op = PauliOperator([(1.0 + 0j, "ZZ", [0, 1], 0), (1.0 + 0j, "ZZ", [0, 1], 1)])
+        op = PauliOperator([("ZZ", [[1.0, 0, 1]]), ("ZZ", [[1.0, 0, 1]])])
         basis = SpinBasis.full(2)
         mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
         # coeff_fns[0] multiplies cindex 1
@@ -410,7 +403,7 @@ class TestHamiltonian:
 class TestSchrodingerEq:
     def _pauli_x_eq(self) -> SchrodingerEq:
         """H = X on a 1-site spin-1/2 basis."""
-        op = PauliOperator([(1.0 + 0j, "X", [0], 0)])
+        op = PauliOperator([("X", [[1.0, 0]])])
         basis = SpinBasis.full(1)
         mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
         ham = Hamiltonian(mat, [])
@@ -448,3 +441,90 @@ class TestSchrodingerEq:
         assert states.ndim == 2
         assert states.shape[1] == 2
         assert states.shape[0] == len(times)
+
+
+# ---------------------------------------------------------------------------
+# Hamiltonian.expm_dot / expm_dot_many
+# ---------------------------------------------------------------------------
+
+
+class TestHamiltonianExpm:
+    """Tests for expm_dot and expm_dot_many on a 2×2 diagonal Hamiltonian."""
+
+    def _diagonal_ham(self):
+        """H = diag(1, -1) via Z on a 1-site spin-1/2 basis."""
+        op = PauliOperator([("Z", [[1.0, 0]])])
+        basis = SpinBasis.full(1)
+        mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
+        return Hamiltonian(mat, [])
+
+    def _ref_expm_z(self, a, f):
+        """Analytically apply exp(a * diag(1, -1)) to column(s) f.
+
+        For H = diag(1, -1): exp(a·H) = diag(exp(a), exp(-a)).
+        Works for f of shape (2,) or (2, n_vecs).
+        """
+        scale = np.array([cmath.exp(a), cmath.exp(-a)], dtype=np.complex128)
+        if f.ndim == 1:
+            return scale * f
+        return scale[:, None] * f
+
+    def test_expm_dot_matches_analytic(self):
+        ham = self._diagonal_ham()
+        a = -1j * math.pi / 4
+        f = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128) / math.sqrt(2)
+        expected = self._ref_expm_z(a, f.copy())
+        ham.expm_dot(0.0, a, f)
+        np.testing.assert_allclose(f, expected, atol=1e-10)
+
+    def test_expm_dot_real_a(self):
+        ham = self._diagonal_ham()
+        a = -0.5 + 0j
+        f = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
+        expected = self._ref_expm_z(a, f.copy())
+        ham.expm_dot(0.0, a, f)
+        np.testing.assert_allclose(f, expected, atol=1e-10)
+
+    def test_expm_dot_many_matches_analytic(self):
+        ham = self._diagonal_ham()
+        a = -1j * math.pi / 4
+        rng = np.random.default_rng(42)
+        F = (rng.standard_normal((2, 3)) + 1j * rng.standard_normal((2, 3))).astype(
+            np.complex128
+        )
+        expected = self._ref_expm_z(a, F.copy())
+        ham.expm_dot_many(0.0, a, F)
+        np.testing.assert_allclose(F, expected, atol=1e-10)
+
+    def test_expm_dot_offdiag_matches_numpy(self):
+        """Compare expm_dot against numpy eigendecomposition on an XX Hamiltonian."""
+        op = PauliOperator([("XX", [[1.0, 0, 1]])])
+        basis = SpinBasis.full(2)
+        mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
+        ham = Hamiltonian(mat, [])
+        a = -1j * math.pi / 3
+        H = ham.to_dense(0.0)
+        # exp(a*H) via eigendecomposition (H is Hermitian)
+        vals, vecs = np.linalg.eigh(H)
+        ref_expm = (vecs * np.exp(a * vals)) @ vecs.conj().T
+        rng = np.random.default_rng(99)
+        f = (rng.standard_normal(4) + 1j * rng.standard_normal(4)).astype(np.complex128)
+        expected = ref_expm @ f
+        ham.expm_dot(0.0, a, f)
+        np.testing.assert_allclose(f, expected, atol=1e-10)
+
+    def test_expm_dot_wrong_size_raises(self):
+        import pytest
+
+        ham = self._diagonal_ham()
+        f = np.zeros(5, dtype=np.complex128)
+        with pytest.raises(Exception):
+            ham.expm_dot(0.0, -1j, f)
+
+    def test_expm_dot_many_wrong_size_raises(self):
+        import pytest
+
+        ham = self._diagonal_ham()
+        f = np.zeros((5, 2), dtype=np.complex128)
+        with pytest.raises(Exception):
+            ham.expm_dot_many(0.0, -1j, f)

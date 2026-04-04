@@ -153,16 +153,19 @@ class PauliOperator:
     """Pauli / hardcore-boson operator.
 
     Args:
-        terms: List of ``(coeff, op_str, sites, cindex)`` tuples where:
-            - ``coeff``: complex coefficient
-            - ``op_str``: operator string, e.g. ``"XY"``
-            - ``sites``: list of site indices
-            - ``cindex``: coupling constant index (0 = static)
+        terms: List of ``(op_str, bonds)`` pairs, one per coupling-constant
+               index (cindex).  The i-th element corresponds to cindex ``i``.
+               Each bond is ``[coeff, site0, site1, ...]``.
+
+    Example::
+
+        bonds = [[1.0, 0, 1], [1.0, 1, 2], [1.0, 2, 3]]
+        op = PauliOperator([("XX", bonds), ("ZZ", bonds)])
     """
 
     def __init__(
         self,
-        terms: list[tuple[complex, str, list[int], int]],
+        terms: list[tuple[str, list[list[Any]]]],
     ) -> None: ...
     @property
     def max_site(self) -> int: ...
@@ -202,13 +205,14 @@ class BosonOperator:
     """Bosonic operator.
 
     Args:
-        terms: Same format as ``PauliOperator`` but uses boson op strings.
+        terms: Same ``(op_str, bonds)`` format as ``PauliOperator``, using
+               boson op strings (``+``, ``-``, ``n``).
         lhss:  Local Hilbert-space size.
     """
 
     def __init__(
         self,
-        terms: list[tuple[complex, str, list[int], int]],
+        terms: list[tuple[str, list[list[Any]]]],
         lhss: int,
     ) -> None: ...
     @property
@@ -224,12 +228,14 @@ class FermionOperator:
     """Fermionic operator.
 
     Args:
-        terms: Same format as ``PauliOperator`` but uses fermion op strings.
+        terms: Same ``(op_str, bonds)`` format as ``PauliOperator``, using
+               fermion op strings (``+``, ``-``, ``n``).  Jordan-Wigner signs
+               are applied automatically.
     """
 
     def __init__(
         self,
-        terms: list[tuple[complex, str, list[int], int]],
+        terms: list[tuple[str, list[list[Any]]]],
     ) -> None: ...
     @property
     def max_site(self) -> int: ...
