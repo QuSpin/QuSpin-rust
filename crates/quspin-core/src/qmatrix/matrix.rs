@@ -599,17 +599,17 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
         let n_vecs = input.ncols();
         // Each rayon worker allocates a dim*n_vecs buffer in the fold.
         // Cap per-thread allocation at ~32 MB (for f64) to avoid OOM on
-        // large n_vecs.
+        // large n_vecs.  Use checked_mul to guard against usize overflow.
         const MAX_TRANSPOSE_BUF_ELEMS: usize = 4 * 1024 * 1024;
+        let total = self.dim.checked_mul(n_vecs);
         if self.dim >= PARALLEL_DIM_THRESHOLD
-            && n_vecs > 0
-            && self.dim * n_vecs <= MAX_TRANSPOSE_BUF_ELEMS
+            && total.is_some_and(|t| t > 0 && t <= MAX_TRANSPOSE_BUF_ELEMS)
             && input.is_standard_layout()
             && output.is_standard_layout()
         {
             let in_slice = input.as_slice().unwrap();
             let out_slice = output.as_slice_mut().unwrap();
-            let total = self.dim * n_vecs;
+            let total = total.unwrap();
 
             // Thread-local accumulators, reduced by element-wise sum.
             let result: Vec<V> = (0..self.dim)
