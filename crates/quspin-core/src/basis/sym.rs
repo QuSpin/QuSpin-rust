@@ -3,14 +3,16 @@
 /// Replaces the two-type hierarchy (`SymGrpBase<B,L>` + `SymmetricSubspace<G,N>`)
 /// with a single flat struct. `N` is an explicit type parameter — the B→N
 /// pairing is encoded in `SpaceInner` variant definitions, not a runtime enum.
-use super::lattice::BenesLatticeElement;
+use super::bfs::bfs_wave;
+use super::lattice::{BenesLatticeElement, LatEl, LocalOpItem};
 use super::traits::BasisSpace;
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
 use num_complex::Complex;
-use std::collections::HashMap;
+use rayon::prelude::*;
+use std::collections::{HashMap, HashSet};
 
-/// See `space::AMP_CANCEL_TOL` for the rationale.
-const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
+/// Minimum batch size before switching to parallel orbit computation.
+const PARALLEL_BATCH_THRESHOLD: usize = 256;
 
 // ---------------------------------------------------------------------------
 // NormInt
@@ -208,10 +210,14 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
 
     /// Build the symmetric subspace reachable from `seed` under `op`.
     ///
-    /// Mirrors `symmetric_subspace::build` from `space.hpp` (single-thread branch).
+    /// Uses level-synchronous BFS with three phases per wave:
+    /// 1. Parallel operator application over the frontier
+    /// 2. Parallel batch orbit computation (deferred, one large batch)
+    /// 3. Sequential registration of new representative states
     pub fn build<Op, I, Iter>(&mut self, seed: B, op: Op)
     where
-        Op: Fn(B) -> Iter,
+        Op: Fn(B) -> Iter + Sync,
+        L: Sync,
         Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
     {
         self.built = true;
@@ -225,41 +231,52 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
             self.states.push((ref_seed, N::from_norm(norm_seed)));
         }
 
-        let mut stack: Vec<B> = vec![ref_seed];
+        let mut frontier: Vec<B> = vec![ref_seed];
 
-        while let Some(state) = stack.pop() {
-            let mut contributions: HashMap<B, (Complex<f64>, f64)> = HashMap::new();
-            for (amp, next_state, _cindex) in op(state) {
-                if next_state != state {
-                    let e = contributions.entry(next_state).or_default();
-                    e.0 += amp;
-                    e.1 += amp.norm();
-                }
-            }
-
-            let candidates: Vec<B> = contributions
-                .iter()
-                .filter(|(_, (net_amp, scale))| net_amp.norm() > scale * AMP_CANCEL_TOL)
-                .map(|(&s, _)| s)
-                .collect();
+        while !frontier.is_empty() {
+            // Phase 1: discover raw candidate states via operator application.
+            // Per-source amplitude accumulation and cancellation, then union.
+            let candidates: Vec<B> = bfs_wave(&frontier, &op).into_iter().collect();
 
             if candidates.is_empty() {
+                frontier.clear();
                 continue;
             }
 
-            let mut batch_out: Vec<(B, f64)> = vec![(candidates[0], 0.0); candidates.len()];
-            self.check_refstate_batch(&candidates, &mut batch_out);
+            // Phase 2a: map candidates to their orbit representatives.
+            let lattice = &self.lattice;
+            let local = &self.local;
 
-            for (next_ref, _) in batch_out {
-                let (_, next_norm) = self.check_refstate(next_ref);
+            let mut ref_out: Vec<(B, f64)> = vec![(B::from_u64(0), 0.0); candidates.len()];
+            par_check_refstate_batch(lattice, local, &candidates, &mut ref_out);
 
-                if next_norm > 0.0
-                    && let std::collections::hash_map::Entry::Vacant(e) =
-                        self.index_map.entry(next_ref)
+            // Collect unique new representatives (not already in index_map).
+            let unique_reps: Vec<B> = ref_out
+                .iter()
+                .map(|(rep, _)| *rep)
+                .collect::<HashSet<B>>()
+                .into_iter()
+                .filter(|rep| !self.index_map.contains_key(rep))
+                .collect();
+
+            if unique_reps.is_empty() {
+                frontier.clear();
+                continue;
+            }
+
+            // Phase 2b: compute orbit norms for unique representatives.
+            let mut norm_out: Vec<(B, f64)> = vec![(B::from_u64(0), 0.0); unique_reps.len()];
+            par_check_refstate_batch(lattice, local, &unique_reps, &mut norm_out);
+
+            // Phase 3: register new representatives and form next frontier.
+            frontier.clear();
+            for (&rep, &(_, norm)) in unique_reps.iter().zip(norm_out.iter()) {
+                if norm > 0.0
+                    && let std::collections::hash_map::Entry::Vacant(e) = self.index_map.entry(rep)
                 {
                     e.insert(self.states.len());
-                    self.states.push((next_ref, N::from_norm(next_norm)));
-                    stack.push(next_ref);
+                    self.states.push((rep, N::from_norm(norm)));
+                    frontier.push(rep);
                 }
             }
         }
@@ -273,6 +290,34 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         for (i, &(s, _)) in self.states.iter().enumerate() {
             self.index_map.insert(s, i);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Parallel orbit batch helper
+// ---------------------------------------------------------------------------
+
+/// Threshold-gated parallel wrapper around [`orbit::check_refstate_batch`].
+///
+/// Above [`PARALLEL_BATCH_THRESHOLD`], splits the work into chunks distributed
+/// across rayon threads. Each chunk calls the existing batch function, which
+/// retains its inner auto-vectorisation.
+fn par_check_refstate_batch<B, E, L>(lattice: &[E], local: &[L], states: &[B], out: &mut [(B, f64)])
+where
+    B: BitInt,
+    E: LatEl<B> + Sync,
+    L: LocalOpItem<B> + Sync,
+{
+    if states.len() >= PARALLEL_BATCH_THRESHOLD {
+        let chunk_size = (states.len() / rayon::current_num_threads()).max(64);
+        states
+            .par_chunks(chunk_size)
+            .zip(out.par_chunks_mut(chunk_size))
+            .for_each(|(s, o)| {
+                super::orbit::check_refstate_batch(lattice, local, s, o);
+            });
+    } else {
+        super::orbit::check_refstate_batch(lattice, local, states, out);
     }
 }
 
@@ -386,6 +431,52 @@ mod tests {
         for i in 0..basis.size() {
             let (_, norm) = basis.entry(i);
             assert_eq!(norm, 1.0);
+        }
+    }
+
+    // --- Parallel path tests ---
+
+    #[test]
+    fn sym_basis_parallel_no_symmetry_matches_full() {
+        // 12 sites, identity-only lattice, no local ops.
+        // No symmetry reduction → should find all 2^12 = 4096 representatives.
+        // Frontier grows large enough to trigger parallel BFS.
+        let n_sites = 12u32;
+        let mut basis =
+            SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites as usize, false);
+        let identity: Vec<usize> = (0..n_sites as usize).collect();
+        basis.push_lattice(Complex::new(1.0, 0.0), &identity);
+        basis.build(0u32, x_op(n_sites));
+        assert_eq!(basis.size(), 1 << n_sites);
+        // Verify sorted ascending
+        for i in 1..basis.size() {
+            assert!(basis.state_at(i) > basis.state_at(i - 1));
+        }
+        // Verify index roundtrip
+        for i in 0..basis.size() {
+            assert_eq!(basis.index(basis.state_at(i)), Some(i));
+        }
+    }
+
+    #[test]
+    fn sym_basis_parallel_bitflip_reduces_size() {
+        // 12 sites with spin-inversion symmetry (XOR all bits).
+        // Full space: 2^12 = 4096. With Z2 symmetry: roughly half.
+        let n_sites = 12u32;
+        let mut basis =
+            SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites as usize, false);
+        let identity: Vec<usize> = (0..n_sites as usize).collect();
+        basis.push_lattice(Complex::new(1.0, 0.0), &identity);
+        let mask = PermDitMask::<u32>::new((1u32 << n_sites) - 1);
+        basis.push_local(Complex::new(1.0, 0.0), mask);
+        basis.build(0u32, x_op(n_sites));
+
+        // With Z2 spin inversion (XOR all bits) on 12 sites:
+        // No state equals its own complement, so every orbit has exactly 2
+        // distinct elements. Representatives = 4096 / 2 = 2048.
+        assert_eq!(basis.size(), 2048);
+        for i in 1..basis.size() {
+            assert!(basis.state_at(i) > basis.state_at(i - 1));
         }
     }
 }
