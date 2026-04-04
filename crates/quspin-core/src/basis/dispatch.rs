@@ -18,10 +18,11 @@
 /// are not physically meaningful.
 use crate::basis::{
     BasisSpace,
-    seed::{seed_from_bytes, state_to_str},
+    seed::{dit_state_to_str, seed_from_bytes, state_to_str},
     space::{FullSpace, Subspace},
     sym::SymBasis,
 };
+use crate::bitbasis::manip::DynamicDitManip;
 use crate::bitbasis::{BitInt, DynamicPermDitValues, GenLocalOp, PermDitMask};
 use crate::error::QuSpinError;
 use num_complex::Complex;
@@ -120,6 +121,18 @@ pub enum SpaceInner {
     GenSym4096(SymBasis<B4096, GenLocalOp<B4096>, u32>),
     #[cfg(feature = "large-int")]
     GenSym8192(SymBasis<B8192, GenLocalOp<B8192>, u32>),
+}
+
+/// Format a basis state as a string, using bit-encoding for LHSS=2 and
+/// decimal dit-encoding for LHSS≥3.
+#[inline]
+fn fmt_state<B: crate::bitbasis::BitInt>(state: B, n_sites: usize, lhss: usize) -> String {
+    if lhss == 2 {
+        state_to_str(state, n_sites)
+    } else {
+        let manip = DynamicDitManip::new(lhss);
+        dit_state_to_str(state, n_sites, &manip)
+    }
 }
 
 impl SpaceInner {
@@ -318,64 +331,64 @@ impl SpaceInner {
     /// Return the `i`-th basis state as a bit-string (site 0 = index 0).
     pub fn state_at_str(&self, i: usize) -> String {
         match self {
-            SpaceInner::Full32(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::Full64(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::Sub32(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::Sub64(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::Sub128(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::Sub256(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Full32(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::Full64(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::Sub32(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::Sub64(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::Sub128(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::Sub256(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sub512(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Sub512(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sub1024(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Sub1024(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sub2048(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Sub2048(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sub4096(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Sub4096(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sub8192(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::Sym32(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::Sym64(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::Sym128(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::Sym256(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Sub8192(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::Sym32(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::Sym64(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::Sym128(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::Sym256(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym512(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Sym512(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym1024(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Sym1024(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym2048(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Sym2048(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym4096(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Sym4096(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym8192(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::DitSym32(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::DitSym64(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::DitSym128(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::DitSym256(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::Sym8192(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::DitSym32(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::DitSym64(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::DitSym128(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::DitSym256(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym512(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::DitSym512(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym1024(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::DitSym1024(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym2048(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::DitSym2048(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym4096(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::DitSym4096(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym8192(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::GenSym32(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::GenSym64(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::GenSym128(b) => state_to_str(b.state_at(i), b.n_sites()),
-            SpaceInner::GenSym256(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::DitSym8192(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::GenSym32(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::GenSym64(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::GenSym128(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
+            SpaceInner::GenSym256(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym512(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::GenSym512(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym1024(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::GenSym1024(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym2048(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::GenSym2048(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym4096(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::GenSym4096(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
             #[cfg(feature = "large-int")]
-            SpaceInner::GenSym8192(b) => state_to_str(b.state_at(i), b.n_sites()),
+            SpaceInner::GenSym8192(b) => fmt_state(b.state_at(i), b.n_sites(), b.lhss()),
         }
     }
 

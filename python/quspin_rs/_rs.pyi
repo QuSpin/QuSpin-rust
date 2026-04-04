@@ -140,6 +140,79 @@ class BosonBasis:
     def index(self, state: str) -> int | None: ...
     def __repr__(self) -> str: ...
 
+class GenericBasis:
+    """Generic basis for any on-site Hilbert-space size (LHSS ≥ 2).
+
+    Supports lattice (site-permutation) and local (dit-permutation) symmetries.
+    Paired with ``MonomialOperator`` for Hamiltonian construction.
+    """
+
+    @classmethod
+    def full(cls, n_sites: int, lhss: int) -> GenericBasis:
+        """Full Hilbert space (no restriction, no build step required)."""
+        ...
+
+    @classmethod
+    def subspace(
+        cls,
+        n_sites: int,
+        lhss: int,
+        ham: MonomialOperator,
+        seeds: list[str],
+    ) -> GenericBasis:
+        """Subspace built by BFS from seed states.
+
+        Args:
+            seeds: List of state strings (one digit per site, base ``lhss``).
+        """
+        ...
+
+    @classmethod
+    def symmetric(
+        cls,
+        n_sites: int,
+        lhss: int,
+        ham: MonomialOperator,
+        seeds: list[str],
+        symmetries: list[tuple[list[int], tuple[float, float]]],
+        local_symmetries: list[
+            tuple[list[int], tuple[float, float]]
+            | tuple[list[int], tuple[float, float], list[int]]
+        ] = ...,
+    ) -> GenericBasis:
+        """Symmetry-reduced subspace.
+
+        Args:
+            symmetries:       List of ``(perm, (re, im))`` lattice symmetry tuples.
+            local_symmetries: List of 2- or 3-tuples for local (dit-permutation)
+                symmetries.  Each entry is either:
+
+                - ``(perm, (re, im))`` — applies to **all** sites, or
+                - ``(perm, (re, im), mask)`` — applies only to sites in ``mask``.
+
+                ``perm`` is a list of ``lhss`` integers permuting the local
+                Hilbert-space states ``0 … lhss-1``.
+        """
+        ...
+
+    @property
+    def n_sites(self) -> int: ...
+    @property
+    def lhss(self) -> int: ...
+    @property
+    def size(self) -> int: ...
+    @property
+    def is_built(self) -> bool: ...
+    def state_at(self, i: int) -> str:
+        """Return the i-th basis state as a string of site occupations."""
+        ...
+
+    def index(self, state: str) -> int | None:
+        """Return the index of a state string, or ``None`` if absent."""
+        ...
+
+    def __repr__(self) -> str: ...
+
 # ---------------------------------------------------------------------------
 # Operator types
 # ---------------------------------------------------------------------------
@@ -234,6 +307,56 @@ class FermionOperator:
     def lhss(self) -> int: ...
     def __repr__(self) -> str: ...
 
+class MonomialOperator:
+    """Generic monomial-matrix operator (one non-zero per row).
+
+    Each positional term argument is a 3-tuple ``(perm, amp, bonds)`` where:
+
+    - ``perm``: 1-D integer array of length ``lhss**k`` — output joint-state
+      index for each input joint-state index.
+    - ``amp``:  1-D complex128 array of length ``lhss**k`` — complex amplitude
+      for each input joint-state.
+    - ``bonds``: list of k-tuples of site indices; all bonds in one term must
+      have the same number of sites ``k``.
+
+    Cindex (coupling-constant index) is implicit by position: the i-th term
+    gets cindex ``i``.
+
+    Example (cyclic shift on nearest-neighbour bonds, lhss=3, 4 sites)::
+
+        import numpy as np
+        lhss = 3
+        k = 2          # 2-site bond
+        dim = lhss**k  # 9
+        perm = np.array([
+            lhss * ((a + 1) % lhss) + (b + 1) % lhss
+            for a in range(lhss) for b in range(lhss)
+        ], dtype=np.intp)
+        amp = np.ones(dim, dtype=complex)
+        bonds = [(0, 1), (1, 2), (2, 3)]
+        op = MonomialOperator(lhss, (perm, amp, bonds))
+    """
+
+    def __init__(
+        self,
+        lhss: int,
+        *terms: tuple[
+            npt.NDArray[np.intp],
+            npt.NDArray[np.complexfloating[Any, Any]],
+            list[tuple[int, ...]],
+        ],
+    ) -> None: ...
+    @property
+    def max_site(self) -> int: ...
+    @property
+    def num_coeffs(self) -> int:
+        """Number of distinct coupling-constant indices (= number of terms)."""
+        ...
+
+    @property
+    def lhss(self) -> int: ...
+    def __repr__(self) -> str: ...
+
 # ---------------------------------------------------------------------------
 # QMatrix
 # ---------------------------------------------------------------------------
@@ -278,6 +401,15 @@ class QMatrix:
         dtype: np.dtype[Any],
     ) -> QMatrix:
         """Build from a FermionOperator and a FermionBasis."""
+        ...
+
+    @staticmethod
+    def build_monomial(
+        op: MonomialOperator,
+        basis: GenericBasis,
+        dtype: np.dtype[Any],
+    ) -> QMatrix:
+        """Build from a MonomialOperator and a GenericBasis."""
         ...
 
     @property

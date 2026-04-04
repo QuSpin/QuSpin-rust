@@ -147,17 +147,19 @@ fn parse_terms(py: Python<'_>, terms: &[PyObject], lhss: usize) -> PyResult<Vec<
             )));
         }
 
-        // Extract perm as 1-D usize array.
+        // Extract perm as a 1-D integer array (accept np.intp / int64 / int32).
+        // We try i64 first (most common on 64-bit), then i32 (32-bit platforms).
         let perm: Vec<usize> = {
             let perm_obj = tuple.get_item(0)?;
-            let arr: PyReadonlyArray1<'_, usize> = perm_obj
-                .extract::<PyReadonlyArray1<'_, usize>>()
-                .map_err(|_| {
-                    pyo3::exceptions::PyTypeError::new_err(format!(
-                        "term {term_idx}: perm must be a 1-D integer array (dtype=usize/intp)"
-                    ))
-                })?;
-            arr.as_array().iter().copied().collect()
+            if let Ok(arr) = perm_obj.extract::<PyReadonlyArray1<'_, i64>>() {
+                arr.as_array().iter().map(|&v| v as usize).collect()
+            } else if let Ok(arr) = perm_obj.extract::<PyReadonlyArray1<'_, i32>>() {
+                arr.as_array().iter().map(|&v| v as usize).collect()
+            } else {
+                return Err(pyo3::exceptions::PyTypeError::new_err(format!(
+                    "term {term_idx}: perm must be a 1-D integer array (e.g. dtype=np.intp or np.int64)"
+                )));
+            }
         };
 
         // Extract amp as 1-D complex128 array.
