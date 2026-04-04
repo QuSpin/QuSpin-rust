@@ -13,6 +13,7 @@ use crate::error::QuSpinError;
 use crate::operator::bond::BondOperatorInner;
 use crate::operator::boson::BosonOperatorInner;
 use crate::operator::fermion::FermionOperatorInner;
+use crate::operator::monomial::MonomialOperatorInner;
 use crate::operator::pauli::HardcoreOperatorInner;
 use crate::primitive::Primitive;
 use crate::qmatrix::matrix::{CIndex, Index};
@@ -317,6 +318,18 @@ impl QMatrixInner {
         match ham {
             FermionOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
             FermionOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
+        }
+    }
+
+    /// Build from a monomial operator and a `GenericBasis` space.
+    pub fn build_monomial(
+        ham: &MonomialOperatorInner,
+        space: &SpaceInner,
+        dtype: ValueDType,
+    ) -> Self {
+        match ham {
+            MonomialOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
+            MonomialOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
         }
     }
 }
