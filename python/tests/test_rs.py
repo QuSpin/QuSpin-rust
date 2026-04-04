@@ -1,5 +1,6 @@
 """Tests for the quspin_rs._rs PyO3 extension (new API)."""
 
+import cmath
 import math
 
 import numpy as np
@@ -421,3 +422,90 @@ class TestSchrodingerEq:
         assert states.ndim == 2
         assert states.shape[1] == 2
         assert states.shape[0] == len(times)
+
+
+# ---------------------------------------------------------------------------
+# Hamiltonian.expm_dot / expm_dot_many
+# ---------------------------------------------------------------------------
+
+
+class TestHamiltonianExpm:
+    """Tests for expm_dot and expm_dot_many on a 2×2 diagonal Hamiltonian."""
+
+    def _diagonal_ham(self):
+        """H = diag(1, -1) via Z on a 1-site spin-1/2 basis."""
+        op = PauliOperator([(1.0 + 0j, "Z", [0], 0)])
+        basis = SpinBasis.full(1)
+        mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
+        return Hamiltonian(mat, [])
+
+    def _ref_expm_z(self, a, f):
+        """Analytically apply exp(a * diag(1, -1)) to column(s) f.
+
+        For H = diag(1, -1): exp(a·H) = diag(exp(a), exp(-a)).
+        Works for f of shape (2,) or (2, n_vecs).
+        """
+        scale = np.array([cmath.exp(a), cmath.exp(-a)], dtype=np.complex128)
+        if f.ndim == 1:
+            return scale * f
+        return scale[:, None] * f
+
+    def test_expm_dot_matches_analytic(self):
+        ham = self._diagonal_ham()
+        a = -1j * math.pi / 4
+        f = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128) / math.sqrt(2)
+        expected = self._ref_expm_z(a, f.copy())
+        ham.expm_dot(0.0, a, f)
+        np.testing.assert_allclose(f, expected, atol=1e-10)
+
+    def test_expm_dot_real_a(self):
+        ham = self._diagonal_ham()
+        a = -0.5 + 0j
+        f = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
+        expected = self._ref_expm_z(a, f.copy())
+        ham.expm_dot(0.0, a, f)
+        np.testing.assert_allclose(f, expected, atol=1e-10)
+
+    def test_expm_dot_many_matches_analytic(self):
+        ham = self._diagonal_ham()
+        a = -1j * math.pi / 4
+        rng = np.random.default_rng(42)
+        F = (rng.standard_normal((2, 3)) + 1j * rng.standard_normal((2, 3))).astype(
+            np.complex128
+        )
+        expected = self._ref_expm_z(a, F.copy())
+        ham.expm_dot_many(0.0, a, F)
+        np.testing.assert_allclose(F, expected, atol=1e-10)
+
+    def test_expm_dot_offdiag_matches_numpy(self):
+        """Compare expm_dot against numpy eigendecomposition on an XX Hamiltonian."""
+        op = PauliOperator([(1.0 + 0j, "XX", [0, 1], 0)])
+        basis = SpinBasis.full(2)
+        mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
+        ham = Hamiltonian(mat, [])
+        a = -1j * math.pi / 3
+        H = ham.to_dense(0.0)
+        # exp(a*H) via eigendecomposition (H is Hermitian)
+        vals, vecs = np.linalg.eigh(H)
+        ref_expm = (vecs * np.exp(a * vals)) @ vecs.conj().T
+        rng = np.random.default_rng(99)
+        f = (rng.standard_normal(4) + 1j * rng.standard_normal(4)).astype(np.complex128)
+        expected = ref_expm @ f
+        ham.expm_dot(0.0, a, f)
+        np.testing.assert_allclose(f, expected, atol=1e-10)
+
+    def test_expm_dot_wrong_size_raises(self):
+        import pytest
+
+        ham = self._diagonal_ham()
+        f = np.zeros(5, dtype=np.complex128)
+        with pytest.raises(Exception):
+            ham.expm_dot(0.0, -1j, f)
+
+    def test_expm_dot_many_wrong_size_raises(self):
+        import pytest
+
+        ham = self._diagonal_ham()
+        f = np.zeros((5, 2), dtype=np.complex128)
+        with pytest.raises(Exception):
+            ham.expm_dot_many(0.0, -1j, f)
