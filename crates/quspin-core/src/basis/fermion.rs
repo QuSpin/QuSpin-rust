@@ -120,7 +120,7 @@ impl FermionBasis {
                 self.n_sites
             )));
         }
-        self.inner.push_lattice(grp_char, &perm)
+        self.inner.add_lattice(grp_char, &perm)
     }
 
     /// Build the subspace reachable from `seeds` using a [`FermionOperatorInner`].
