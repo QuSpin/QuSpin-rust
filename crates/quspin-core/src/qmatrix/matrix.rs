@@ -343,81 +343,49 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
             )));
         }
 
-        if self.dim >= PARALLEL_DIM_THRESHOLD {
-            // Pass 1: collect per-row entries in parallel.
-            let row_results: Vec<Vec<(I, V)>> = (0..self.dim)
-                .into_par_iter()
-                .map(|r| {
-                    let mut results = Vec::new();
-                    let row = self.row(r);
-                    let mut i = 0;
-                    while i < row.len() {
-                        let col = row[i].col;
-                        let mut acc = V::default();
-                        let mut scale = 0.0f64;
-                        while i < row.len() && row[i].col == col {
-                            let entry_as_v = V::from_complex(row[i].value.to_complex());
-                            let contrib = coeff[row[i].cindex.as_usize()] * entry_as_v;
-                            acc += contrib;
-                            scale += contrib.magnitude();
-                            i += 1;
-                        }
-                        if !drop_zeros || acc.magnitude() > scale * ZERO_TOL {
-                            results.push((col, acc));
-                        }
-                    }
-                    results
-                })
-                .collect();
+        let materialize_row = |r: usize| -> Vec<(I, V)> {
+            let mut results = Vec::new();
+            let row = self.row(r);
+            let mut i = 0;
+            while i < row.len() {
+                let col = row[i].col;
+                let mut acc = V::default();
+                let mut scale = 0.0f64;
+                while i < row.len() && row[i].col == col {
+                    let entry_as_v = V::from_complex(row[i].value.to_complex());
+                    let contrib = coeff[row[i].cindex.as_usize()] * entry_as_v;
+                    acc += contrib;
+                    scale += contrib.magnitude();
+                    i += 1;
+                }
+                if !drop_zeros || acc.magnitude() > scale * ZERO_TOL {
+                    results.push((col, acc));
+                }
+            }
+            results
+        };
 
-            // Pass 2: prefix sum + scatter (sequential, O(dim + nnz)).
-            let mut pos = 0usize;
-            indptr[0] = I::from_usize(0);
-            for (r, results) in row_results.iter().enumerate() {
-                for &(col, val) in results {
-                    if pos >= indices.len() {
-                        return Err(QuSpinError::ValueError(format!(
-                            "output buffer too small: needed more than {} entries",
-                            indices.len()
-                        )));
-                    }
-                    indices[pos] = col;
-                    data[pos] = val;
-                    pos += 1;
-                }
-                indptr[r + 1] = I::from_usize(pos);
-            }
+        let row_results: Vec<Vec<(I, V)>> = if self.dim >= PARALLEL_DIM_THRESHOLD {
+            (0..self.dim).into_par_iter().map(materialize_row).collect()
         } else {
-            let mut pos = 0usize;
-            indptr[0] = I::from_usize(0);
-            for r in 0..self.dim {
-                let mut i = 0;
-                let row = self.row(r);
-                while i < row.len() {
-                    let col = row[i].col;
-                    let mut acc = V::default();
-                    let mut scale = 0.0f64;
-                    while i < row.len() && row[i].col == col {
-                        let entry_as_v = V::from_complex(row[i].value.to_complex());
-                        let contrib = coeff[row[i].cindex.as_usize()] * entry_as_v;
-                        acc += contrib;
-                        scale += contrib.magnitude();
-                        i += 1;
-                    }
-                    if !drop_zeros || acc.magnitude() > scale * ZERO_TOL {
-                        if pos >= indices.len() {
-                            return Err(QuSpinError::ValueError(format!(
-                                "output buffer too small: needed more than {} entries",
-                                indices.len()
-                            )));
-                        }
-                        indices[pos] = col;
-                        data[pos] = acc;
-                        pos += 1;
-                    }
+            (0..self.dim).map(materialize_row).collect()
+        };
+
+        let mut pos = 0usize;
+        indptr[0] = I::from_usize(0);
+        for (r, results) in row_results.iter().enumerate() {
+            for &(col, val) in results {
+                if pos >= indices.len() {
+                    return Err(QuSpinError::ValueError(format!(
+                        "output buffer too small: needed more than {} entries",
+                        indices.len()
+                    )));
                 }
-                indptr[r + 1] = I::from_usize(pos);
+                indices[pos] = col;
+                data[pos] = val;
+                pos += 1;
             }
+            indptr[r + 1] = I::from_usize(pos);
         }
         Ok(())
     }
@@ -575,6 +543,7 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
 
         let n_vecs = input.ncols();
         if self.dim >= PARALLEL_DIM_THRESHOLD
+            && n_vecs > 0
             && input.is_standard_layout()
             && output.is_standard_layout()
         {
@@ -629,6 +598,7 @@ impl<M: Primitive, I: Index, C: CIndex> QMatrix<M, I, C> {
 
         let n_vecs = input.ncols();
         if self.dim >= PARALLEL_DIM_THRESHOLD
+            && n_vecs > 0
             && input.is_standard_layout()
             && output.is_standard_layout()
         {

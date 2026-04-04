@@ -99,33 +99,23 @@ where
     assert_eq!(lhs.dim(), rhs.dim(), "QMatrix dimensions must match");
 
     let dim = lhs.dim();
+    let build_row = |r: usize| merge_row(&op, lhs.row(r), rhs.row(r));
 
-    if dim >= PARALLEL_DIM_THRESHOLD {
-        let rows: Vec<Vec<Entry<M, I, C>>> = (0..dim)
-            .into_par_iter()
-            .map(|r| merge_row(&op, lhs.row(r), rhs.row(r)))
-            .collect();
-
-        let total_nnz: usize = rows.iter().map(|r| r.len()).sum();
-        let mut indptr = Vec::with_capacity(dim + 1);
-        let mut data = Vec::with_capacity(total_nnz);
-        indptr.push(I::from_usize(0));
-        for row in rows {
-            data.extend_from_slice(&row);
-            indptr.push(I::from_usize(data.len()));
-        }
-        QMatrix::from_csr(indptr, data)
+    let rows: Vec<Vec<Entry<M, I, C>>> = if dim >= PARALLEL_DIM_THRESHOLD {
+        (0..dim).into_par_iter().map(build_row).collect()
     } else {
-        let mut indptr = Vec::with_capacity(dim + 1);
-        let mut data: Vec<Entry<M, I, C>> = Vec::new();
-        indptr.push(I::from_usize(0));
-        for r in 0..dim {
-            let entries = merge_row(&op, lhs.row(r), rhs.row(r));
-            data.extend_from_slice(&entries);
-            indptr.push(I::from_usize(data.len()));
-        }
-        QMatrix::from_csr(indptr, data)
+        (0..dim).map(build_row).collect()
+    };
+
+    let total_nnz: usize = rows.iter().map(|r| r.len()).sum();
+    let mut indptr = Vec::with_capacity(dim + 1);
+    let mut data = Vec::with_capacity(total_nnz);
+    indptr.push(I::from_usize(0));
+    for row in rows {
+        data.extend_from_slice(&row);
+        indptr.push(I::from_usize(data.len()));
     }
+    QMatrix::from_csr(indptr, data)
 }
 
 impl<M, I, C> Add for QMatrix<M, I, C>
