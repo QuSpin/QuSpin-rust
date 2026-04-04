@@ -4,7 +4,6 @@ import cmath
 import math
 
 import numpy as np
-import pytest
 
 from quspin_rs._rs import (
     BosonBasis,
