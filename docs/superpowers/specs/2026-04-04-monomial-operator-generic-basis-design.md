@@ -199,33 +199,36 @@ All stubs are added to `python/quspin_rs/_rs.pyi`.
 
 ### `MonomialOperator`
 
-Mirrors `BondOperator`'s `(matrix, bonds, cindex)` tuple format:
+Uses the variadic constructor pattern (matching the recent per-term cindex
+grouping refactor): each positional `*terms` entry implicitly corresponds to
+cindex 0, 1, 2, … The `cindex` field is dropped from the tuple.
 
 ```python
 class MonomialOperator:
     def __init__(
         self,
-        terms: list[tuple[
+        lhss: int,
+        *terms: tuple[
             npt.NDArray[np.intp],            # perm: shape (lhss^k,)
             npt.NDArray[np.complexfloating], # amp:  shape (lhss^k,) — no coeff
             list[tuple[int, ...]],           # bonds: k-tuples; k consistent within a term
-            int,                             # cindex
-        ]],
-        lhss: int,
+        ],  # len(terms) == num_coeffs
     ) -> None: ...
     @property
     def max_site(self) -> int: ...
     @property
-    def num_cindices(self) -> int: ...
+    def num_coeffs(self) -> int: ...
     @property
     def lhss(self) -> int: ...
     def __repr__(self) -> str: ...
 ```
 
-**Key documentation note:** `amp` carries the full per-entry amplitude; there
-is no `coeff` parameter. This differs from `BondOperator` where a separate
-coefficient scales the matrix. Bond k (number of sites per bond) must be
-consistent within each term but may differ across terms.
+**Key documentation notes:**
+- `cindex` is implicit: term at position `i` has cindex `i`.
+- `amp` carries the full per-entry amplitude; there is no `coeff` parameter.
+- Bond k (number of sites per bond) must be consistent within each term but
+  may differ across terms.
+- `num_coeffs` = number of variadic `terms` arguments.
 
 ### `GenericBasis`
 
@@ -307,7 +310,7 @@ Validated at construction / call time:
 
 | Check | Error |
 |---|---|
-| `terms` must not be empty | `ValueError` |
+| At least one term must be provided | `ValueError` |
 | `len(perm) == len(amp) == lhss^k` for each term | `ValueError` |
 | All bonds within a single term must have the same `k` | `ValueError` |
 | `perm` values in `{0,...,lhss^k - 1}` | `ValueError` |
