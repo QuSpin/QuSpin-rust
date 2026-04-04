@@ -202,7 +202,7 @@ pub fn reduced_density_matrix<B, T, E, V>(
     let lhss = space.lhss();
     let n_sites = space.n_sites();
     let n_a = sites_a.len();
-    let dim_a = lhss.pow(n_a as u32);
+    let dim_a = lhss.saturating_pow(n_a as u32);
     debug_assert_eq!(out.shape(), &[dim_a, dim_a]);
 
     let fermionic = space.fermionic();
