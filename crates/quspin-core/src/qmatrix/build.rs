@@ -187,10 +187,15 @@ where
 
     type B128 = ruint::Uint<128, 2>;
     type B256 = ruint::Uint<256, 4>;
+    #[cfg(feature = "large-int")]
     type B512 = ruint::Uint<512, 8>;
+    #[cfg(feature = "large-int")]
     type B1024 = ruint::Uint<1024, 16>;
+    #[cfg(feature = "large-int")]
     type B2048 = ruint::Uint<2048, 32>;
+    #[cfg(feature = "large-int")]
     type B4096 = ruint::Uint<4096, 64>;
+    #[cfg(feature = "large-int")]
     type B8192 = ruint::Uint<8192, 128>;
 
     match space {
@@ -201,10 +206,15 @@ where
         SpaceInner::Sub64(b) => build_from_basis::<H, u64, M, i64, C, _>(ham, b),
         SpaceInner::Sub128(b) => build_from_basis::<H, B128, M, i64, C, _>(ham, b),
         SpaceInner::Sub256(b) => build_from_basis::<H, B256, M, i64, C, _>(ham, b),
+        #[cfg(feature = "large-int")]
         SpaceInner::Sub512(b) => build_from_basis::<H, B512, M, i64, C, _>(ham, b),
+        #[cfg(feature = "large-int")]
         SpaceInner::Sub1024(b) => build_from_basis::<H, B1024, M, i64, C, _>(ham, b),
+        #[cfg(feature = "large-int")]
         SpaceInner::Sub2048(b) => build_from_basis::<H, B2048, M, i64, C, _>(ham, b),
+        #[cfg(feature = "large-int")]
         SpaceInner::Sub4096(b) => build_from_basis::<H, B4096, M, i64, C, _>(ham, b),
+        #[cfg(feature = "large-int")]
         SpaceInner::Sub8192(b) => build_from_basis::<H, B8192, M, i64, C, _>(ham, b),
         // LHSS=2 symmetric
         SpaceInner::Sym32(b) => {
@@ -219,18 +229,23 @@ where
         SpaceInner::Sym256(b) => {
             build_from_symmetric::<H, B256, PermDitMask<B256>, u32, M, i64, C>(ham, b)
         }
+        #[cfg(feature = "large-int")]
         SpaceInner::Sym512(b) => {
             build_from_symmetric::<H, B512, PermDitMask<B512>, u32, M, i64, C>(ham, b)
         }
+        #[cfg(feature = "large-int")]
         SpaceInner::Sym1024(b) => {
             build_from_symmetric::<H, B1024, PermDitMask<B1024>, u32, M, i64, C>(ham, b)
         }
+        #[cfg(feature = "large-int")]
         SpaceInner::Sym2048(b) => {
             build_from_symmetric::<H, B2048, PermDitMask<B2048>, u32, M, i64, C>(ham, b)
         }
+        #[cfg(feature = "large-int")]
         SpaceInner::Sym4096(b) => {
             build_from_symmetric::<H, B4096, PermDitMask<B4096>, u32, M, i64, C>(ham, b)
         }
+        #[cfg(feature = "large-int")]
         SpaceInner::Sym8192(b) => {
             build_from_symmetric::<H, B8192, PermDitMask<B8192>, u32, M, i64, C>(ham, b)
         }
@@ -247,18 +262,23 @@ where
         SpaceInner::DitSym256(b) => {
             build_from_symmetric::<H, B256, DynamicPermDitValues, u32, M, i64, C>(ham, b)
         }
+        #[cfg(feature = "large-int")]
         SpaceInner::DitSym512(b) => {
             build_from_symmetric::<H, B512, DynamicPermDitValues, u32, M, i64, C>(ham, b)
         }
+        #[cfg(feature = "large-int")]
         SpaceInner::DitSym1024(b) => {
             build_from_symmetric::<H, B1024, DynamicPermDitValues, u32, M, i64, C>(ham, b)
         }
+        #[cfg(feature = "large-int")]
         SpaceInner::DitSym2048(b) => {
             build_from_symmetric::<H, B2048, DynamicPermDitValues, u32, M, i64, C>(ham, b)
         }
+        #[cfg(feature = "large-int")]
         SpaceInner::DitSym4096(b) => {
             build_from_symmetric::<H, B4096, DynamicPermDitValues, u32, M, i64, C>(ham, b)
         }
+        #[cfg(feature = "large-int")]
         SpaceInner::DitSym8192(b) => {
             build_from_symmetric::<H, B8192, DynamicPermDitValues, u32, M, i64, C>(ham, b)
         }
