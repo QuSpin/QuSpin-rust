@@ -217,7 +217,7 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
     pub fn build<Op, I, Iter>(&mut self, seed: B, op: Op)
     where
         Op: Fn(B) -> Iter + Sync,
-        L: Send + Sync,
+        L: Sync,
         Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
     {
         self.built = true;

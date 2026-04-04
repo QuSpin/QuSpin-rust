@@ -177,9 +177,17 @@ impl<B: BitInt> Subspace<B> {
     {
         self.built = true;
 
-        if let std::collections::hash_map::Entry::Vacant(e) = self.index_map.entry(seed) {
-            e.insert(self.states.len());
-            self.states.push(seed);
+        let is_new =
+            if let std::collections::hash_map::Entry::Vacant(e) = self.index_map.entry(seed) {
+                e.insert(self.states.len());
+                self.states.push(seed);
+                true
+            } else {
+                false
+            };
+
+        if !is_new {
+            return;
         }
 
         let max_size = self.lhss.saturating_pow(self.n_sites as u32);
