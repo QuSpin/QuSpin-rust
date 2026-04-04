@@ -15,6 +15,25 @@ type CsrArrays<'py> = (
     Bound<'py, PyArray1<Complex64>>,
 );
 
+/// Marker type indicating a static (time-independent) coefficient.
+///
+/// Pass `Static()` in the `coeff_fns` list to mark a cindex as static
+/// (coefficient = 1.0) rather than providing a callable.
+#[pyclass(name = "Static", module = "quspin._rs", frozen)]
+pub struct PyStatic;
+
+#[pymethods]
+impl PyStatic {
+    #[new]
+    fn new() -> Self {
+        PyStatic
+    }
+
+    fn __repr__(&self) -> &str {
+        "Static"
+    }
+}
+
 /// Python-facing time-dependent Hamiltonian.
 ///
 /// Wraps a `HamiltonianInner` (from `quspin-core`) behind an `Arc` so that
@@ -35,46 +54,47 @@ pub struct PyHamiltonian {
 
 #[pymethods]
 impl PyHamiltonian {
-    /// Construct a time-dependent Hamiltonian.
+    /// Construct a Hamiltonian.
     ///
     /// Args:
     ///     qmatrix:   A `QMatrix` whose cindices encode the operator terms.
-    ///                Cindex 0 is the static part (coefficient = 1).
-    ///                Cindices 1..num_coeff are time-dependent.
-    ///     coeff_fns: A list of Python callables `f(t: float) -> complex`,
-    ///                one per dynamic cindex.  Length must equal
-    ///                `qmatrix.num_coeff - 1` (or 0 for a static Hamiltonian).
+    ///     coeff_fns: A list of length `qmatrix.num_coeff`, one entry per
+    ///                cindex.  Each entry is either `Static()` (coefficient
+    ///                is always 1.0) or a callable `f(t: float) -> complex`.
     #[new]
     #[pyo3(signature = (qmatrix, coeff_fns))]
-    fn new(_py: Python<'_>, qmatrix: &PyQMatrix, coeff_fns: Vec<PyObject>) -> PyResult<Self> {
-        let expected = qmatrix.inner.num_coeff().saturating_sub(1);
+    fn new(py: Python<'_>, qmatrix: &PyQMatrix, coeff_fns: Vec<PyObject>) -> PyResult<Self> {
+        let expected = qmatrix.inner.num_coeff();
         if coeff_fns.len() != expected {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "coeff_fns has {} entries but need {} (qmatrix.num_coeff - 1)",
+                "coeff_fns has {} entries but need {} (qmatrix.num_coeff)",
                 coeff_fns.len(),
                 expected,
             )));
         }
 
-        // Wrap each Python callable in a `Send + Sync` closure that
-        // re-acquires the GIL via `Python::with_gil` (re-entrant).
-        let rust_fns: Vec<CoeffFn> = coeff_fns
+        // Convert each entry: Static() → None, callable → Some(CoeffFn).
+        let rust_fns: Vec<Option<CoeffFn>> = coeff_fns
             .into_iter()
-            .map(|f| {
-                let arc_fn: CoeffFn = Arc::new(move |t: f64| {
-                    Python::with_gil(|py| {
-                        let result = f.call1(py, (t,)).expect("coeff_fn call failed");
-                        if let Ok(z) = result.extract::<Complex<f64>>(py) {
-                            z
-                        } else {
-                            let re: f64 = result
-                                .extract(py)
-                                .expect("coeff_fn: expected float or complex");
-                            Complex::new(re, 0.0)
-                        }
-                    })
-                });
-                arc_fn
+            .map(|obj| {
+                if obj.downcast_bound::<PyStatic>(py).is_ok() {
+                    None
+                } else {
+                    let arc_fn: CoeffFn = Arc::new(move |t: f64| {
+                        Python::with_gil(|py| {
+                            let result = obj.call1(py, (t,)).expect("coeff_fn call failed");
+                            if let Ok(z) = result.extract::<Complex<f64>>(py) {
+                                z
+                            } else {
+                                let re: f64 = result
+                                    .extract(py)
+                                    .expect("coeff_fn: expected float or complex");
+                                Complex::new(re, 0.0)
+                            }
+                        })
+                    });
+                    Some(arc_fn)
+                }
             })
             .collect();
 

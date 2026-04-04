@@ -286,6 +286,8 @@ class QMatrix:
     @property
     def nnz(self) -> int: ...
     @property
+    def num_coeff(self) -> int: ...
+    @property
     def dtype(self) -> str: ...
     def __add__(self, rhs: QMatrix) -> QMatrix: ...
     def __sub__(self, rhs: QMatrix) -> QMatrix: ...
@@ -331,25 +333,41 @@ class QMatrix:
     def __repr__(self) -> str: ...
 
 # ---------------------------------------------------------------------------
+# Static marker
+# ---------------------------------------------------------------------------
+
+class Static:
+    """Marker indicating a static (time-independent) coefficient.
+
+    Pass ``Static()`` in the ``coeff_fns`` list to mark a cindex as having
+    a constant coefficient of 1.0.
+    """
+
+    def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
+
+# ---------------------------------------------------------------------------
 # Hamiltonian
 # ---------------------------------------------------------------------------
 
 class Hamiltonian:
     """Time-dependent Hamiltonian.
 
-    Wraps a ``QMatrix`` together with Python callables — one per dynamic
-    coupling constant.  Cindex 0 is always the static part (coefficient 1).
+    Wraps a ``QMatrix`` together with coefficient descriptors — one per
+    cindex.  Each entry is either ``Static()`` (coefficient 1.0) or a
+    callable ``f(t) -> complex``.
 
     Args:
         qmatrix:   A ``QMatrix`` with ``num_coeff`` operator strings.
-        coeff_fns: List of callables ``f(t: float) -> complex``, length
-                   ``qmatrix.num_coeff - 1``.
+        coeff_fns: List of length ``qmatrix.num_coeff``.  Each element is
+                   ``Static()`` for a time-independent term or a callable
+                   ``f(t: float) -> complex`` for a time-dependent term.
     """
 
     def __init__(
         self,
         qmatrix: QMatrix,
-        coeff_fns: list[Callable[[float], complex]],
+        coeff_fns: list[Static | Callable[[float], complex]],
     ) -> None: ...
     @property
     def dim(self) -> int: ...

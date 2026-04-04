@@ -140,15 +140,21 @@ impl PyQMatrix {
     }
 
     #[getter]
+    fn num_coeff(&self) -> usize {
+        self.inner.num_coeff()
+    }
+
+    #[getter]
     fn dtype(&self) -> &str {
         self.inner.dtype_name()
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "QMatrix(dim={}, nnz={}, dtype={})",
+            "QMatrix(dim={}, nnz={}, num_coeff={}, dtype={})",
             self.inner.dim(),
             self.inner.nnz(),
+            self.inner.num_coeff(),
             self.inner.dtype_name(),
         )
     }

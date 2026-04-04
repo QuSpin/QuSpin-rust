@@ -16,6 +16,7 @@ from quspin_rs._rs import (
     QMatrix,
     SchrodingerEq,
     SpinBasis,
+    Static,
 )
 
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "QMatrix",
     "SchrodingerEq",
     "SpinBasis",
+    "Static",
 ]

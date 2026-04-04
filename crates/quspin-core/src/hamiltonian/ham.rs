@@ -18,17 +18,18 @@ pub type CoeffFn = Arc<dyn Fn(f64) -> Complex<f64> + Send + Sync>;
 
 /// Time-dependent Hamiltonian wrapping a [`QMatrix`].
 ///
-/// The matrix is partitioned into `num_coeff` operator strings:
-/// - String `0`: the **static** part, always multiplied by coefficient `1.0`.
-/// - String `k > 0`: a time-dependent part with coefficient `coeff_fns[k-1](t)`.
+/// The matrix is partitioned into `num_coeff` operator strings.  Each string
+/// has either:
+/// - a **static** coefficient (`None`) — always multiplied by `1.0`, or
+/// - a **dynamic** coefficient (`Some(f)`) — multiplied by `f(t)`.
 ///
 /// All output methods are fixed to `Complex<f64>` regardless of the stored
 /// element type `M`.
 pub struct Hamiltonian<M: Primitive, I: Index, C: CIndex> {
     pub(crate) matrix: QMatrix<M, I, C>,
-    /// One callable per time-dependent operator string (cindex 1..num_coeff).
-    /// Length must equal `matrix.num_coeff().saturating_sub(1)`.
-    pub(crate) coeff_fns: Vec<CoeffFn>,
+    /// One entry per operator string (cindex `0..num_coeff`).
+    /// `None` = static (coefficient 1.0), `Some(f)` = time-dependent.
+    pub(crate) coeff_fns: Vec<Option<CoeffFn>>,
 }
 
 impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
@@ -36,15 +37,21 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
     // Constructor
     // ------------------------------------------------------------------
 
-    /// Wrap a `QMatrix` and a list of time-dependent coefficient functions.
+    /// Wrap a `QMatrix` and a list of coefficient descriptors.
+    ///
+    /// Each entry corresponds to one cindex: `None` marks a static term
+    /// (coefficient 1.0) and `Some(f)` marks a time-dependent term.
     ///
     /// # Errors
-    /// Returns `ValueError` if `coeff_fns.len() != matrix.num_coeff().saturating_sub(1)`.
-    pub fn new(matrix: QMatrix<M, I, C>, coeff_fns: Vec<CoeffFn>) -> Result<Self, QuSpinError> {
-        let expected = matrix.num_coeff().saturating_sub(1);
+    /// Returns `ValueError` if `coeff_fns.len() != matrix.num_coeff()`.
+    pub fn new(
+        matrix: QMatrix<M, I, C>,
+        coeff_fns: Vec<Option<CoeffFn>>,
+    ) -> Result<Self, QuSpinError> {
+        let expected = matrix.num_coeff();
         if coeff_fns.len() != expected {
             return Err(QuSpinError::ValueError(format!(
-                "coeff_fns.len() = {} but matrix.num_coeff() - 1 = {}",
+                "coeff_fns.len() = {} but matrix.num_coeff() = {}",
                 coeff_fns.len(),
                 expected
             )));
@@ -69,12 +76,13 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
     // ------------------------------------------------------------------
 
     fn eval_coeffs(&self, time: f64) -> Vec<Complex<f64>> {
-        let mut c = Vec::with_capacity(self.matrix.num_coeff());
-        c.push(Complex::new(1.0, 0.0)); // cindex 0: static
-        for f in &self.coeff_fns {
-            c.push(f(time));
-        }
-        c
+        self.coeff_fns
+            .iter()
+            .map(|f| match f {
+                Some(f) => f(time),
+                None => Complex::new(1.0, 0.0),
+            })
+            .collect()
     }
 
     // ------------------------------------------------------------------
@@ -273,30 +281,40 @@ where
 
 /// Build merged `coeff_fns` list and per-operand cindex remapping vectors.
 ///
-/// - `cindex 0` (the static part) always maps to `0` in both operands.
-/// - Each time-dependent function (cindex > 0) is deduplicated by `Arc::ptr_eq`.
+/// - All `None` (static) entries are merged to a single cindex (always cindex 0).
+/// - Each time-dependent function (`Some(Arc)`) is deduplicated by `Arc::ptr_eq`.
 ///   Functions that are the same `Arc` share a single cindex in the result.
 fn build_merged_cindex_maps<C: CIndex>(
-    lhs_fns: &[CoeffFn],
-    rhs_fns: &[CoeffFn],
-) -> (Vec<CoeffFn>, Vec<C>, Vec<C>) {
-    let mut merged: Vec<CoeffFn> = Vec::new();
+    lhs_fns: &[Option<CoeffFn>],
+    rhs_fns: &[Option<CoeffFn>],
+) -> (Vec<Option<CoeffFn>>, Vec<C>, Vec<C>) {
+    // Slot 0 is always the static (None) slot.
+    let mut merged: Vec<Option<CoeffFn>> = vec![None];
 
-    let mut make_map = |fns: &[CoeffFn]| -> Vec<C> {
-        let mut map = vec![C::from_usize(0); fns.len() + 1]; // +1 for cindex 0
-        for (k, f) in fns.iter().enumerate() {
-            // Search for an existing merged fn that is the same Arc.
-            let new_idx = merged
-                .iter()
-                .position(|existing| Arc::ptr_eq(existing, f))
-                .map(|pos| pos + 1) // cindex is 1-based
-                .unwrap_or_else(|| {
-                    merged.push(Arc::clone(f));
-                    merged.len() // newly assigned cindex
-                });
-            map[k + 1] = C::from_usize(new_idx);
-        }
-        map
+    let mut make_map = |fns: &[Option<CoeffFn>]| -> Vec<C> {
+        fns.iter()
+            .map(|f| match f {
+                None => C::from_usize(0), // all static entries share cindex 0
+                Some(arc) => {
+                    // Search for an existing dynamic entry with the same Arc.
+                    let pos = merged.iter().enumerate().skip(1).find_map(|(i, existing)| {
+                        if let Some(existing_arc) = existing
+                            && Arc::ptr_eq(existing_arc, arc)
+                        {
+                            return Some(i);
+                        }
+                        None
+                    });
+                    match pos {
+                        Some(idx) => C::from_usize(idx),
+                        None => {
+                            merged.push(Some(Arc::clone(arc)));
+                            C::from_usize(merged.len() - 1)
+                        }
+                    }
+                }
+            })
+            .collect()
     };
 
     let lhs_map = make_map(lhs_fns);
@@ -330,7 +348,8 @@ mod tests {
     #[test]
     fn eval_coeffs_static_only() {
         let mat = xx_qmatrix();
-        let ham = Hamiltonian::new(mat, vec![]).unwrap();
+        // num_coeff=1, single static entry
+        let ham = Hamiltonian::new(mat, vec![None]).unwrap();
         let coeffs = ham.eval_coeffs(0.0);
         assert_eq!(coeffs.len(), 1);
         assert_eq!(coeffs[0], Complex::new(1.0, 0.0));
@@ -339,11 +358,8 @@ mod tests {
     #[test]
     fn eval_coeffs_with_time_fn() {
         let mat = xx_qmatrix();
-        // Build a 2-cindex QMatrix by treating the single-cindex mat as having one
-        // time-dependent fn. We can't directly create a 2-cindex mat here without
-        // building a more complex operator, so just test coeff evaluation.
-        // Use a static-only mat (num_coeff=1) with no fns.
-        let ham = Hamiltonian::new(mat, vec![]).unwrap();
+        // num_coeff=1, single static entry — time value should not matter
+        let ham = Hamiltonian::new(mat, vec![None]).unwrap();
         let c = ham.eval_coeffs(3.1);
         assert_eq!(c, vec![Complex::new(1.0, 0.0)]);
     }
@@ -351,15 +367,15 @@ mod tests {
     #[test]
     fn new_wrong_coeff_count_errors() {
         let mat = xx_qmatrix();
-        // mat has num_coeff=1, so expects 0 fns; pass 1 fn → error
+        // mat has num_coeff=1, so expects 1 entry; pass 2 → error
         let f: CoeffFn = Arc::new(|_t| Complex::new(1.0, 0.0));
-        assert!(Hamiltonian::new(mat, vec![f]).is_err());
+        assert!(Hamiltonian::new(mat, vec![None, Some(f)]).is_err());
     }
 
     #[test]
     fn dot_at_time_zero_matches_qmatrix_dot() {
         let mat = xx_qmatrix();
-        let ham = Hamiltonian::new(mat.clone(), vec![]).unwrap();
+        let ham = Hamiltonian::new(mat.clone(), vec![None]).unwrap();
 
         let input = vec![
             Complex::new(1.0, 0.0),
@@ -383,8 +399,8 @@ mod tests {
     #[test]
     fn add_two_static_hamiltonians_doubles_entries() {
         let mat = xx_qmatrix();
-        let h1 = Hamiltonian::new(mat.clone(), vec![]).unwrap();
-        let h2 = Hamiltonian::new(mat, vec![]).unwrap();
+        let h1 = Hamiltonian::new(mat.clone(), vec![None]).unwrap();
+        let h2 = Hamiltonian::new(mat, vec![None]).unwrap();
         let h = h1 + h2;
 
         // H + H should give 2*H entries
@@ -406,17 +422,14 @@ mod tests {
 
     #[test]
     fn add_shared_arc_merges_to_one_cindex() {
-        // This tests the cindex-merging logic: two Hamiltonians sharing the same
-        // Arc<fn> should produce a result with only 2 cindices (0 + shared fn),
-        // not 3.
-        // Since building multi-cindex matrices requires more setup, we verify
-        // that build_merged_cindex_maps behaves correctly.
+        // Two Hamiltonians sharing the same Arc<fn> should produce a result
+        // with only 2 cindices (static + shared fn), not 3.
         let f: CoeffFn = Arc::new(|t: f64| Complex::new(t, 0.0));
-        let fns1 = vec![Arc::clone(&f)];
-        let fns2 = vec![Arc::clone(&f)];
+        let fns1 = vec![None, Some(Arc::clone(&f))];
+        let fns2 = vec![None, Some(Arc::clone(&f))];
         let (merged, map1, map2) = build_merged_cindex_maps::<u8>(&fns1, &fns2);
-        // Both should map their fn to cindex 1
-        assert_eq!(merged.len(), 1);
+        // Static → cindex 0, shared Arc → cindex 1
+        assert_eq!(merged.len(), 2);
         assert_eq!(map1, vec![0u8, 1u8]);
         assert_eq!(map2, vec![0u8, 1u8]);
     }
@@ -425,12 +438,23 @@ mod tests {
     fn add_distinct_arcs_preserves_both_cindices() {
         let f1: CoeffFn = Arc::new(|t: f64| Complex::new(t, 0.0));
         let f2: CoeffFn = Arc::new(|t: f64| Complex::new(t * 2.0, 0.0));
-        let fns1 = vec![Arc::clone(&f1)];
-        let fns2 = vec![Arc::clone(&f2)];
+        let fns1 = vec![None, Some(Arc::clone(&f1))];
+        let fns2 = vec![None, Some(Arc::clone(&f2))];
         let (merged, map1, map2) = build_merged_cindex_maps::<u8>(&fns1, &fns2);
-        // Different Arcs → 2 merged fns, each getting a distinct cindex
-        assert_eq!(merged.len(), 2);
+        // Static → cindex 0, two distinct Arcs → cindices 1 and 2
+        assert_eq!(merged.len(), 3);
         assert_eq!(map1, vec![0u8, 1u8]);
         assert_eq!(map2, vec![0u8, 2u8]);
+    }
+
+    #[test]
+    fn add_multiple_static_entries_merge_to_one() {
+        // All None entries should map to cindex 0
+        let fns1 = vec![None, None];
+        let fns2 = vec![None, None];
+        let (merged, map1, map2) = build_merged_cindex_maps::<u8>(&fns1, &fns2);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(map1, vec![0u8, 0u8]);
+        assert_eq!(map2, vec![0u8, 0u8]);
     }
 }

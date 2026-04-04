@@ -109,14 +109,14 @@ pub enum HamiltonianInner {
 
 impl HamiltonianInner {
     /// Build a `HamiltonianInner` from a type-erased `QMatrixInner` and a list
-    /// of `Send + Sync` coefficient functions (one per dynamic cindex).
+    /// of coefficient descriptors (one per cindex).
     ///
-    /// The matrix element type `M` and cindex type `C` are inferred from the
-    /// `QMatrixInner` variant; the function validates that `coeff_fns.len()`
-    /// equals `qmatrix.num_coeff() - 1`.
+    /// Each entry is `None` for a static term (coefficient 1.0) or
+    /// `Some(f)` for a time-dependent term.  The matrix element type `M` and
+    /// cindex type `C` are inferred from the `QMatrixInner` variant.
     pub fn from_qmatrix_inner(
         qmatrix: QMatrixInner,
-        coeff_fns: Vec<CoeffFn>,
+        coeff_fns: Vec<Option<CoeffFn>>,
     ) -> Result<Self, QuSpinError> {
         crate::with_qmatrix!(qmatrix, _M, _C, mat, {
             Ok(Hamiltonian::new(mat, coeff_fns)?.into_hamiltonian_inner())
