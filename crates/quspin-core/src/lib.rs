@@ -4,6 +4,7 @@ pub mod dtype;
 pub mod error;
 pub mod expm;
 pub mod hamiltonian;
+pub mod krylov;
 pub mod operator;
 pub mod primitive;
 pub mod qmatrix;
