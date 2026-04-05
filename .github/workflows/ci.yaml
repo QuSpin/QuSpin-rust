@@ -30,7 +30,7 @@ jobs:
         run: uv run maturin develop
 
       - name: pytest
-        run: uv run pytest python/tests/ -x -q
+        run: uv run --locked pytest python/tests/ -x -q
 
       - name: cargo test
         run: cargo test --workspace
