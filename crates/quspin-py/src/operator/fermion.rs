@@ -1,12 +1,13 @@
 use crate::error::Error;
-use crate::operator::pauli::{Terms, extract_coeff, max_site_from_terms};
-use crate::operator::{as_c64_vec, with_space_inner, with_two_space_inners, write_c64_back};
+use crate::operator::{
+    Terms, as_c64_vec, max_site_from_terms, parse_terms_generic, with_space_inner,
+    with_two_space_inners, write_c64_back,
+};
 use numpy::{Complex64, PyArray1};
 use pyo3::prelude::*;
 use quspin_core::operator::fermion::{
     FermionOp, FermionOpEntry, FermionOperator, FermionOperatorInner,
 };
-use smallvec::SmallVec;
 
 /// Python-facing fermionic operator.
 ///
@@ -28,12 +29,16 @@ impl PyFermionOperator {
         let use_u8 = max_cindex <= 255 && max_site <= 255;
 
         if use_u8 {
-            let entries = parse_terms::<u8>(py, &terms).map_err(Error::from)?;
+            let entries =
+                parse_terms_generic::<u8, FermionOp, _, _>(py, &terms, FermionOpEntry::new)
+                    .map_err(Error::from)?;
             Ok(PyFermionOperator {
                 inner: FermionOperatorInner::Ham8(FermionOperator::new(entries)),
             })
         } else if max_cindex <= 65535 && max_site <= 65535 {
-            let entries = parse_terms::<u16>(py, &terms).map_err(Error::from)?;
+            let entries =
+                parse_terms_generic::<u16, FermionOp, _, _>(py, &terms, FermionOpEntry::new)
+                    .map_err(Error::from)?;
             Ok(PyFermionOperator {
                 inner: FermionOperatorInner::Ham16(FermionOperator::new(entries)),
             })
@@ -123,61 +128,4 @@ impl PyFermionOperator {
             self.inner.num_cindices(),
         )
     }
-}
-
-fn parse_terms<C: Copy + Ord + TryFrom<usize>>(
-    py: Python<'_>,
-    terms: &[crate::operator::pauli::Term],
-) -> Result<Vec<FermionOpEntry<C>>, quspin_core::error::QuSpinError>
-where
-    <C as TryFrom<usize>>::Error: std::fmt::Debug,
-{
-    let mut entries = Vec::new();
-    for (cindex_usize, term) in terms.iter().enumerate() {
-        let cindex = C::try_from(cindex_usize).map_err(|_| {
-            quspin_core::error::QuSpinError::ValueError(format!(
-                "cindex {cindex_usize} out of range for chosen index type"
-            ))
-        })?;
-        for (op_str, bonds) in term {
-            for bond in bonds {
-                if bond.is_empty() {
-                    return Err(quspin_core::error::QuSpinError::ValueError(
-                        "each bond must be [coeff, site0, site1, ...]".to_string(),
-                    ));
-                }
-                let coeff = extract_coeff(py, &bond[0]).map_err(|e| {
-                    quspin_core::error::QuSpinError::ValueError(format!("bond coefficient: {e}"))
-                })?;
-                let sites: Vec<u32> = bond[1..]
-                    .iter()
-                    .map(|s| {
-                        s.bind(py).extract::<u32>().map_err(|e| {
-                            quspin_core::error::QuSpinError::ValueError(format!(
-                                "bond site index: {e}"
-                            ))
-                        })
-                    })
-                    .collect::<Result<_, _>>()?;
-                if op_str.len() != sites.len() {
-                    return Err(quspin_core::error::QuSpinError::ValueError(format!(
-                        "op_str length {} != number of sites {}",
-                        op_str.len(),
-                        sites.len()
-                    )));
-                }
-                let mut ops: SmallVec<[(FermionOp, u32); 4]> = SmallVec::new();
-                for (ch, &site) in op_str.chars().zip(sites.iter()) {
-                    let op = FermionOp::from_char(ch).ok_or_else(|| {
-                        quspin_core::error::QuSpinError::ValueError(format!(
-                            "unknown operator character '{ch}'; expected one of +, -, n"
-                        ))
-                    })?;
-                    ops.push((op, site));
-                }
-                entries.push(FermionOpEntry::new(cindex, coeff, ops));
-            }
-        }
-    }
-    Ok(entries)
 }
