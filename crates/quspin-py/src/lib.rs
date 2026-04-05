@@ -2,7 +2,6 @@ pub mod basis;
 pub mod dtype;
 pub mod error;
 pub mod hamiltonian;
-pub mod macros;
 pub mod operator;
 pub mod qmatrix;
 pub mod schrodinger;
