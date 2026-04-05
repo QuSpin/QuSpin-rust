@@ -2,13 +2,14 @@ pub mod basis;
 pub mod dtype;
 pub mod error;
 pub mod hamiltonian;
-pub mod macros;
+pub mod krylov;
 pub mod operator;
 pub mod qmatrix;
 pub mod schrodinger;
 
 use basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis};
 use hamiltonian::{PyHamiltonian, PyStatic};
+use krylov::{PyEigSolver, PyFTLM, PyFTLMDynamic, PyLTLM};
 use operator::{
     PyBondOperator, PyBosonOperator, PyFermionOperator, PyMonomialOperator, PyPauliOperator,
 };
@@ -34,5 +35,10 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStatic>()?;
     m.add_class::<PyHamiltonian>()?;
     m.add_class::<PySchrodingerEq>()?;
+    // Krylov subspace methods
+    m.add_class::<PyEigSolver>()?;
+    m.add_class::<PyFTLM>()?;
+    m.add_class::<PyLTLM>()?;
+    m.add_class::<PyFTLMDynamic>()?;
     Ok(())
 }

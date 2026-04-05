@@ -22,7 +22,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - name: Install Python dependencies
-        run: uv sync
+        run: uv sync --group dev
 
       # maturin develop compiles quspin-core + quspin-py; subsequent
       # cargo steps reuse these artifacts incrementally.

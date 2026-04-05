@@ -1,5 +1,7 @@
 use crate::error::Error;
+use crate::operator::{as_c64_vec, with_space_inner, with_two_space_inners, write_c64_back};
 use num_complex::Complex;
+use numpy::{Complex64, PyArray1};
 use pyo3::prelude::*;
 use quspin_core::operator::pauli::{HardcoreOp, HardcoreOperator, HardcoreOperatorInner, OpEntry};
 use smallvec::SmallVec;
@@ -73,6 +75,63 @@ impl PyPauliOperator {
     #[getter]
     fn lhss(&self) -> usize {
         self.inner.lhss()
+    }
+
+    /// Apply operator to a vector in ``input_basis`` and project into ``output_basis``.
+    #[pyo3(signature = (input_basis, output_basis, coeffs, input, output, overwrite = true))]
+    #[allow(clippy::too_many_arguments)]
+    fn apply_and_project_to(
+        &self,
+        input_basis: &Bound<'_, PyAny>,
+        output_basis: &Bound<'_, PyAny>,
+        coeffs: &Bound<'_, PyArray1<Complex64>>,
+        input: &Bound<'_, PyArray1<Complex64>>,
+        output: &Bound<'_, PyArray1<Complex64>>,
+        overwrite: bool,
+    ) -> PyResult<()> {
+        let coeffs_vec = unsafe { as_c64_vec(coeffs) };
+        let input_vec = unsafe { as_c64_vec(input) };
+        let mut output_vec = unsafe { as_c64_vec(output) };
+
+        with_two_space_inners(input_basis, output_basis, |in_space, out_space| {
+            self.inner
+                .apply_and_project_to(
+                    in_space,
+                    out_space,
+                    &coeffs_vec,
+                    &input_vec,
+                    &mut output_vec,
+                    overwrite,
+                )
+                .map_err(Error::from)
+        })??;
+
+        unsafe { write_c64_back(output, &output_vec) };
+        Ok(())
+    }
+
+    /// Apply operator to a vector, projecting back into the same basis.
+    #[pyo3(signature = (basis, coeffs, input, output, overwrite = true))]
+    fn apply(
+        &self,
+        basis: &Bound<'_, PyAny>,
+        coeffs: &Bound<'_, PyArray1<Complex64>>,
+        input: &Bound<'_, PyArray1<Complex64>>,
+        output: &Bound<'_, PyArray1<Complex64>>,
+        overwrite: bool,
+    ) -> PyResult<()> {
+        let coeffs_vec = unsafe { as_c64_vec(coeffs) };
+        let input_vec = unsafe { as_c64_vec(input) };
+        let mut output_vec = unsafe { as_c64_vec(output) };
+
+        with_space_inner(basis, |space| {
+            self.inner
+                .apply(space, &coeffs_vec, &input_vec, &mut output_vec, overwrite)
+                .map_err(Error::from)
+        })??;
+
+        unsafe { write_c64_back(output, &output_vec) };
+        Ok(())
     }
 
     fn __repr__(&self) -> String {
