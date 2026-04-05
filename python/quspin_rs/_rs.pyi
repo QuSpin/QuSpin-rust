@@ -686,6 +686,7 @@ class FTLM:
         observable: Hamiltonian,
         beta: float,
         time: float = 0.0,
+        stored: bool = True,
     ) -> tuple[float, complex]:
         """Compute a single FTLM sample.
 
@@ -695,6 +696,9 @@ class FTLM:
             observable: ``Hamiltonian`` representing the observable.
             beta:       Inverse temperature.
             time:       Evaluation time for time-dependent coefficients.
+            stored:     If ``True``, store all Lanczos vectors (O(k × dim) memory,
+                        one Lanczos build). If ``False``, replay the recurrence
+                        (O(k + dim) memory, extra matvecs).
 
         Returns:
             ``(z_r, oz_r)`` — partition function contribution and
@@ -721,6 +725,7 @@ class LTLM:
         observable: Hamiltonian,
         beta: float,
         time: float = 0.0,
+        stored: bool = True,
     ) -> tuple[float, complex]:
         """Compute a single LTLM sample.
 
@@ -730,6 +735,9 @@ class LTLM:
             observable: ``Hamiltonian`` representing the observable.
             beta:       Inverse temperature.
             time:       Evaluation time for time-dependent coefficients.
+            stored:     If ``True``, store all Lanczos vectors (O(k × dim) memory,
+                        one Lanczos build). If ``False``, replay the recurrence
+                        (O(k + dim) memory, extra matvecs).
 
         Returns:
             ``(z_r, oz_r)`` — partition function contribution and

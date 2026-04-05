@@ -190,11 +190,16 @@ impl PyFTLM {
     ///     observable: ``Hamiltonian`` representing the observable operator.
     ///     beta:       Inverse temperature.
     ///     time:       Evaluation time for time-dependent coefficients (default 0.0).
+    ///     stored:     If ``True`` (default), store all Lanczos vectors for
+    ///                 O(k × dim) memory but only one Lanczos build. If
+    ///                 ``False``, use O(k + dim) memory by replaying the
+    ///                 recurrence at the cost of extra matvecs.
     ///
     /// Returns:
     ///     ``(z_r, oz_r)`` where ``z_r`` is the partition function contribution
     ///     and ``oz_r`` is the ``⟨O⟩ · Z`` contribution (complex).
-    #[pyo3(signature = (v0, k, observable, beta, time = 0.0))]
+    #[pyo3(signature = (v0, k, observable, beta, time = 0.0, stored = true))]
+    #[allow(clippy::too_many_arguments)]
     fn sample(
         &self,
         py: Python<'_>,
@@ -203,6 +208,7 @@ impl PyFTLM {
         observable: &PyHamiltonian,
         beta: f64,
         time: f64,
+        stored: bool,
     ) -> PyResult<(f64, Complex64)> {
         let n = self.inner.dim();
         let v0_vec = extract_c64_vec(v0);
@@ -216,33 +222,52 @@ impl PyFTLM {
         let o_inner = Arc::clone(&observable.inner);
 
         let result = py.allow_threads(move || -> Result<(f64, C64), QuSpinError> {
-            // Build Lanczos basis
-            let basis = LanczosBasis::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
+            if stored {
+                // Stored path: keep all basis vectors, single Lanczos build
+                let basis = LanczosBasis::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
+                let eig = eig::solve_tridiagonal(basis.alpha(), basis.beta());
 
-            // Solve tridiagonal eigenproblem
-            let eig = eig::solve_tridiagonal(basis.alpha(), basis.beta());
+                let q0 = basis.q(0);
+                let mut o_q0 = vec![C64::default(); n];
+                o_inner.dot(true, time, q0, &mut o_q0)?;
 
-            // Compute observable matrix elements: o_j = ⟨q_j|O|r⟩
-            // where r = q_0 (first basis vector, which is v0 normalized)
-            let q0 = basis.q(0);
-            let mut o_q0 = vec![C64::default(); n];
-            o_inner.dot(true, time, q0, &mut o_q0)?;
+                let obs_elements: Vec<C64> = (0..basis.k())
+                    .map(|j| {
+                        basis
+                            .q(j)
+                            .iter()
+                            .zip(o_q0.iter())
+                            .map(|(a, b)| a.conj() * b)
+                            .sum()
+                    })
+                    .collect();
 
-            let obs_elements: Vec<C64> = (0..basis.k())
-                .map(|j| {
-                    basis
-                        .q(j)
-                        .iter()
-                        .zip(o_q0.iter())
-                        .map(|(a, b)| a.conj() * b)
-                        .sum()
-                })
-                .collect();
+                let z_r = ftlm::ftlm_partition(&eig, beta);
+                let oz_r = ftlm::ftlm_observable(&eig, &obs_elements, beta);
+                Ok((z_r, oz_r))
+            } else {
+                // Replay path: O(k + dim) memory, extra matvecs
+                let iter_basis =
+                    LanczosBasisIter::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
+                let eig = eig::solve_tridiagonal(iter_basis.alpha(), iter_basis.beta());
 
-            let z_r = ftlm::ftlm_partition(&eig, beta);
-            let oz_r = ftlm::ftlm_observable(&eig, &obs_elements, beta);
+                // Compute O|q_0⟩ once (q_0 is the normalized v0)
+                let norm0 = v0_vec.iter().map(|c| c.norm_sqr()).sum::<f64>().sqrt();
+                let q0: Vec<C64> = v0_vec.iter().map(|&c| c / norm0).collect();
+                let mut o_q0 = vec![C64::default(); n];
+                o_inner.dot(true, time, &q0, &mut o_q0)?;
 
-            Ok((z_r, oz_r))
+                // Replay recurrence to compute obs_elements on the fly
+                let mut obs_elements = Vec::with_capacity(iter_basis.k());
+                iter_basis.for_each(&mut make_matvec(&h_inner, time), |_j, q_j| {
+                    let elem: C64 = q_j.iter().zip(o_q0.iter()).map(|(a, b)| a.conj() * b).sum();
+                    obs_elements.push(elem);
+                })?;
+
+                let z_r = ftlm::ftlm_partition(&eig, beta);
+                let oz_r = ftlm::ftlm_observable(&eig, &obs_elements, beta);
+                Ok((z_r, oz_r))
+            }
         });
 
         let (z_r, oz_r) = result.map_err(Error::from)?;
@@ -292,11 +317,16 @@ impl PyLTLM {
     ///     observable: ``Hamiltonian`` representing the observable operator.
     ///     beta:       Inverse temperature.
     ///     time:       Evaluation time for time-dependent coefficients (default 0.0).
+    ///     stored:     If ``True`` (default), store all Lanczos vectors for
+    ///                 O(k × dim) memory but only one Lanczos build. If
+    ///                 ``False``, use O(k + dim) memory by replaying the
+    ///                 recurrence at the cost of extra matvecs.
     ///
     /// Returns:
     ///     ``(z_r, oz_r)`` where ``z_r`` is the partition function contribution
     ///     and ``oz_r`` is ``⟨φ|O|φ⟩`` (complex).
-    #[pyo3(signature = (v0, k, observable, beta, time = 0.0))]
+    #[pyo3(signature = (v0, k, observable, beta, time = 0.0, stored = true))]
+    #[allow(clippy::too_many_arguments)]
     fn sample(
         &self,
         py: Python<'_>,
@@ -305,6 +335,7 @@ impl PyLTLM {
         observable: &PyHamiltonian,
         beta: f64,
         time: f64,
+        stored: bool,
     ) -> PyResult<(f64, Complex64)> {
         let n = self.inner.dim();
         let v0_vec = extract_c64_vec(v0);
@@ -318,32 +349,47 @@ impl PyLTLM {
         let o_inner = Arc::clone(&observable.inner);
 
         let result = py.allow_threads(move || -> Result<(f64, C64), QuSpinError> {
-            // Build stored Lanczos basis
-            let basis = LanczosBasis::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
+            if stored {
+                // Stored path: keep all basis vectors
+                let basis = LanczosBasis::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
+                let eig = eig::solve_tridiagonal(basis.alpha(), basis.beta());
+                let z_r = ftlm::ftlm_partition(&eig, beta);
 
-            // Solve tridiagonal eigenproblem
-            let eig = eig::solve_tridiagonal(basis.alpha(), basis.beta());
+                let coeffs = ltlm::ltlm_coeffs(&eig, beta);
+                let mut phi = vec![C64::default(); n];
+                basis.lin_comb(&coeffs, &mut phi)?;
 
-            // Partition function (same as FTLM)
-            let z_r = ftlm::ftlm_partition(&eig, beta);
+                let mut o_phi = vec![C64::default(); n];
+                o_inner.dot(true, time, &phi, &mut o_phi)?;
 
-            // Compute |φ⟩ = e^{-βH/2}|r⟩ via Krylov projection
-            let coeffs = ltlm::ltlm_coeffs(&eig, beta);
-            let mut phi = vec![C64::default(); n];
-            basis.lin_comb(&coeffs, &mut phi)?;
+                let oz_r: C64 = phi
+                    .iter()
+                    .zip(o_phi.iter())
+                    .map(|(a, b)| a.conj() * b)
+                    .sum();
+                Ok((z_r, oz_r))
+            } else {
+                // Replay path: O(k + dim) memory, extra matvecs
+                let iter_basis =
+                    LanczosBasisIter::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
+                let eig = eig::solve_tridiagonal(iter_basis.alpha(), iter_basis.beta());
+                let z_r = ftlm::ftlm_partition(&eig, beta);
 
-            // Compute O|φ⟩
-            let mut o_phi = vec![C64::default(); n];
-            o_inner.dot(true, time, &phi, &mut o_phi)?;
+                // Compute |φ⟩ = e^{-βH/2}|r⟩ via replay
+                let coeffs = ltlm::ltlm_coeffs(&eig, beta);
+                let mut phi = vec![C64::default(); n];
+                iter_basis.lin_comb(&mut make_matvec(&h_inner, time), &coeffs, &mut phi)?;
 
-            // ⟨φ|O|φ⟩
-            let oz_r: C64 = phi
-                .iter()
-                .zip(o_phi.iter())
-                .map(|(a, b)| a.conj() * b)
-                .sum();
+                let mut o_phi = vec![C64::default(); n];
+                o_inner.dot(true, time, &phi, &mut o_phi)?;
 
-            Ok((z_r, oz_r))
+                let oz_r: C64 = phi
+                    .iter()
+                    .zip(o_phi.iter())
+                    .map(|(a, b)| a.conj() * b)
+                    .sum();
+                Ok((z_r, oz_r))
+            }
         });
 
         let (z_r, oz_r) = result.map_err(Error::from)?;
