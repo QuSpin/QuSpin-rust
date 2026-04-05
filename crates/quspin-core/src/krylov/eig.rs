@@ -119,14 +119,15 @@ impl EigResult {
 /// - `k_krylov` — Krylov subspace dimension
 /// - `k_wanted` — number of eigenpairs to return
 /// - `which` — eigenvalue selection criterion
-/// - `tol` — convergence tolerance on residual norms
+/// - `tol` — convergence tolerance on residual norms; only eigenpairs with
+///   residual `≤ tol` are returned (pass `f64::INFINITY` to disable)
 pub fn lanczos_eig(
     matvec: &mut impl FnMut(&[C64], &mut [C64]) -> Result<(), QuSpinError>,
     v0: &[C64],
     k_krylov: usize,
     k_wanted: usize,
     which: Which,
-    _tol: f64,
+    tol: f64,
 ) -> Result<EigResult, QuSpinError> {
     if k_wanted == 0 {
         return Err(QuSpinError::ValueError(
@@ -136,6 +137,11 @@ pub fn lanczos_eig(
     if k_krylov < k_wanted {
         return Err(QuSpinError::ValueError(format!(
             "k_krylov ({k_krylov}) must be >= k_wanted ({k_wanted})"
+        )));
+    }
+    if !tol.is_finite() && tol != f64::INFINITY {
+        return Err(QuSpinError::ValueError(format!(
+            "tol must be finite or INFINITY; got {tol}"
         )));
     }
 
@@ -198,6 +204,14 @@ pub fn lanczos_eig(
             .map(|(hx, x)| (hx - C64::new(lam, 0.0) * x).norm_sqr())
             .sum::<f64>()
             .sqrt();
+
+        // Filter by tolerance
+        if residual > tol {
+            // Remove the eigenvector we just appended
+            eigenvectors.truncate(eigenvectors.len() - dim);
+            eigenvalues.pop();
+            continue;
+        }
         residuals.push(residual);
     }
 

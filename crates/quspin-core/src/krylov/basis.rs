@@ -192,7 +192,11 @@ impl LanczosBasis {
 // ---------------------------------------------------------------------------
 
 /// Lightweight Lanczos result that stores only the tridiagonal coefficients
-/// and the initial vector, not the full basis.
+/// and the initial vector — O(k + dim) after construction.
+///
+/// **Note:** The `build` method temporarily allocates O(k × dim) for full
+/// re-orthogonalization during construction, then discards the basis vectors.
+/// The persistent storage is O(k + dim) (alpha, beta, and v0).
 ///
 /// Reconstructing vectors requires replaying the Lanczos recurrence with the
 /// operator, so `lin_comb` takes the operator by reference.
@@ -206,10 +210,11 @@ pub struct LanczosBasisIter {
 }
 
 impl LanczosBasisIter {
-    /// Build the tridiagonal decomposition without storing basis vectors.
+    /// Build the tridiagonal decomposition.
     ///
-    /// Same recurrence as [`LanczosBasis::build`] but discards Q after
-    /// extracting `alpha` and `beta`.
+    /// Same recurrence as [`LanczosBasis::build`] with full re-orthogonalization.
+    /// Temporarily allocates O(k × dim) for the basis vectors during construction,
+    /// then discards them — only `alpha`, `beta`, and `v0` are retained.
     pub fn build(
         matvec: &mut impl FnMut(&[C64], &mut [C64]) -> Result<(), QuSpinError>,
         v0: &[C64],

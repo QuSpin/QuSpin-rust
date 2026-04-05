@@ -652,16 +652,18 @@ class EigSolver:
         Args:
             v0:       Initial vector, shape ``(dim,)``.
             k_krylov: Krylov subspace dimension.
-            k_wanted: Number of eigenpairs to return.
+            k_wanted: Maximum number of eigenpairs to return.
             which:    ``"SA"`` (smallest algebraic), ``"LA"`` (largest),
                       or ``"SM"`` (smallest magnitude).
-            tol:      Convergence tolerance.
+            tol:      Convergence tolerance on residual norms. Only eigenpairs
+                      with residual ``≤ tol`` are returned. Pass ``float('inf')``
+                      to disable filtering.
             time:     Evaluation time for time-dependent coefficients.
 
         Returns:
-            ``(eigenvalues, eigenvectors, residuals)`` where eigenvalues has
-            shape ``(k_wanted,)``, eigenvectors ``(k_wanted, dim)``, and
-            residuals ``(k_wanted,)``.
+            ``(eigenvalues, eigenvectors, residuals)`` where ``n_eig`` is the
+            number of converged eigenpairs (may be less than ``k_wanted``).
+            Shapes: ``(n_eig,)``, ``(n_eig, dim)``, ``(n_eig,)``.
         """
         ...
 
