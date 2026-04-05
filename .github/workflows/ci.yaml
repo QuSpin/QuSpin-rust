@@ -7,11 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Rust: unit tests + clippy
-  # ---------------------------------------------------------------------------
-  rust:
-    name: Rust (test + clippy)
+  build-and-test:
+    name: Build & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,32 +19,21 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Python dependencies
+        run: uv sync --group dev
+
+      # maturin develop compiles quspin-core + quspin-py; subsequent
+      # cargo steps reuse these artifacts incrementally.
+      - name: Build extension (maturin develop)
+        run: uv run maturin develop
+
+      - name: pytest
+        run: uv run --locked pytest python/tests/ -x -q
+
       - name: cargo test
         run: cargo test --workspace
 
       - name: cargo clippy
         run: cargo clippy --workspace -- -D warnings
-
-  # ---------------------------------------------------------------------------
-  # Python: build extension with maturin, then run pytest
-  # ---------------------------------------------------------------------------
-  python:
-    name: Python (maturin + pytest)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - uses: astral-sh/setup-uv@v5
-
-      - name: Install Python dependencies
-        run: uv sync
-
-      - name: Build and install extension
-        run: uv run maturin develop
-
-      - name: pytest
-        run: uv run pytest python/tests/ -x -q
