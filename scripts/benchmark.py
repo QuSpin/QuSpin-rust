@@ -28,7 +28,7 @@ def _translation_group(
     return elements
 
 
-L = 26
+L = 30
 op = _make_operator(L)
 seed = "0" * L
 symmetries = _translation_group(L)

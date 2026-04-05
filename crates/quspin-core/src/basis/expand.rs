@@ -17,7 +17,7 @@
 /// full-space vector.
 use super::{
     orbit::iter_images,
-    space::Subspace,
+    space::{FullSpace, Subspace},
     sym::{NormInt, SymBasis},
     traits::BasisSpace,
 };
@@ -274,6 +274,23 @@ pub fn reduced_density_matrix<B, T, E, V>(
 // ---------------------------------------------------------------------------
 // ExpandRefState impls
 // ---------------------------------------------------------------------------
+
+/// For a full space every state is its own representative with norm 1.
+/// Yields a single `(state, coeff)` pair.
+impl<B, T> ExpandRefState<B, T, Complex<f64>> for FullSpace<B>
+where
+    B: BitInt,
+    T: Copy,
+    Complex<f64>: From<T>,
+{
+    fn expand_ref_state_iter(
+        &self,
+        i: usize,
+        coeff: &T,
+    ) -> impl Iterator<Item = (B, Complex<f64>)> {
+        std::iter::once((self.state_at(i), Complex::<f64>::from(*coeff)))
+    }
+}
 
 /// For a plain subspace every state is its own representative with norm 1.
 /// Yields a single `(state, coeff)` pair.

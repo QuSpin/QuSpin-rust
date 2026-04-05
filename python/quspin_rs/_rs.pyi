@@ -217,6 +217,7 @@ class GenericBasis:
 # Operator types
 # ---------------------------------------------------------------------------
 
+
 class PauliOperator:
     """Pauli / hardcore-boson operator.
 
@@ -243,6 +244,29 @@ class PauliOperator:
     def num_cindices(self) -> int: ...
     @property
     def lhss(self) -> int: ...
+    def apply_and_project_to(
+        self,
+        input_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        output_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input`` in ``input_basis``, project into ``output_basis``."""
+        ...
+
+    def apply(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input``, projecting back into the same ``basis``."""
+        ...
+
     def __repr__(self) -> str: ...
 
 class BondOperator:
@@ -265,6 +289,29 @@ class BondOperator:
     def num_cindices(self) -> int: ...
     @property
     def lhss(self) -> int: ...
+    def apply_and_project_to(
+        self,
+        input_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        output_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input`` in ``input_basis``, project into ``output_basis``."""
+        ...
+
+    def apply(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input``, projecting back into the same ``basis``."""
+        ...
+
     def __repr__(self) -> str: ...
 
 class BosonOperator:
@@ -285,6 +332,29 @@ class BosonOperator:
     def num_cindices(self) -> int: ...
     @property
     def lhss(self) -> int: ...
+    def apply_and_project_to(
+        self,
+        input_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        output_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input`` in ``input_basis``, project into ``output_basis``."""
+        ...
+
+    def apply(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input``, projecting back into the same ``basis``."""
+        ...
+
     def __repr__(self) -> str: ...
 
 class FermionOperator:
@@ -305,6 +375,29 @@ class FermionOperator:
     def num_cindices(self) -> int: ...
     @property
     def lhss(self) -> int: ...
+    def apply_and_project_to(
+        self,
+        input_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        output_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input`` in ``input_basis``, project into ``output_basis``."""
+        ...
+
+    def apply(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input``, projecting back into the same ``basis``."""
+        ...
+
     def __repr__(self) -> str: ...
 
 class MonomialOperator:
@@ -355,6 +448,29 @@ class MonomialOperator:
 
     @property
     def lhss(self) -> int: ...
+    def apply_and_project_to(
+        self,
+        input_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        output_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input`` in ``input_basis``, project into ``output_basis``."""
+        ...
+
+    def apply(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input``, projecting back into the same ``basis``."""
+        ...
+
     def __repr__(self) -> str: ...
 
 # ---------------------------------------------------------------------------
