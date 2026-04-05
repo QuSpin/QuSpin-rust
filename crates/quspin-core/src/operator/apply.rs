@@ -86,8 +86,12 @@ where
     validate_args(
         op.num_cindices(),
         coeffs.len(),
+        input_space.n_sites(),
+        input_space.lhss(),
         input_space.size(),
         input.len(),
+        output_space.n_sites(),
+        output_space.lhss(),
         output_space.size(),
         output.len(),
     )?;
@@ -134,6 +138,20 @@ where
     IS: BasisSpace<B> + ExpandRefState<B, C64, C64>,
     OS: ProjectState<B>,
 {
+    if input_space.n_sites() != output_space.n_sites() {
+        return Err(QuSpinError::ValueError(format!(
+            "input basis has n_sites={} but output basis has n_sites={}",
+            input_space.n_sites(),
+            output_space.n_sites(),
+        )));
+    }
+    if input_space.lhss() != output_space.lhss() {
+        return Err(QuSpinError::ValueError(format!(
+            "input basis has lhss={} but output basis has lhss={}",
+            input_space.lhss(),
+            output_space.lhss(),
+        )));
+    }
     if input.len() != input_space.size() {
         return Err(QuSpinError::ValueError(format!(
             "input.len() = {} but input_space.size() = {}",
@@ -171,17 +189,32 @@ where
 // Validation helper
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn validate_args(
     num_cindices: usize,
     coeffs_len: usize,
+    input_n_sites: usize,
+    input_lhss: usize,
     input_size: usize,
     input_len: usize,
+    output_n_sites: usize,
+    output_lhss: usize,
     output_size: usize,
     output_len: usize,
 ) -> Result<(), QuSpinError> {
     if coeffs_len != num_cindices {
         return Err(QuSpinError::ValueError(format!(
             "coeffs.len() = {coeffs_len} but operator has {num_cindices} cindices"
+        )));
+    }
+    if input_n_sites != output_n_sites {
+        return Err(QuSpinError::ValueError(format!(
+            "input basis has n_sites={input_n_sites} but output basis has n_sites={output_n_sites}"
+        )));
+    }
+    if input_lhss != output_lhss {
+        return Err(QuSpinError::ValueError(format!(
+            "input basis has lhss={input_lhss} but output basis has lhss={output_lhss}"
         )));
     }
     if input_len != input_size {
