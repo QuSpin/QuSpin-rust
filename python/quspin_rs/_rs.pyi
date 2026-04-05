@@ -623,3 +623,154 @@ class SchrodingerEq:
         ...
 
     def __repr__(self) -> str: ...
+
+# ---------------------------------------------------------------------------
+# Krylov subspace methods
+# ---------------------------------------------------------------------------
+
+class EigSolver:
+    """Lanczos eigenvalue solver with full re-orthogonalization.
+
+    Args:
+        hamiltonian: A ``Hamiltonian`` whose eigenvalues to compute.
+    """
+
+    def __init__(self, hamiltonian: Hamiltonian) -> None: ...
+    @property
+    def dim(self) -> int: ...
+    def solve(
+        self,
+        v0: npt.NDArray[Any],
+        k_krylov: int,
+        k_wanted: int = 1,
+        which: str = "SA",
+        tol: float = 1e-10,
+        time: float = 0.0,
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[Any], npt.NDArray[np.float64]]:
+        """Compute eigenvalues and eigenvectors.
+
+        Args:
+            v0:       Initial vector, shape ``(dim,)``.
+            k_krylov: Krylov subspace dimension.
+            k_wanted: Number of eigenpairs to return.
+            which:    ``"SA"`` (smallest algebraic), ``"LA"`` (largest),
+                      or ``"SM"`` (smallest magnitude).
+            tol:      Convergence tolerance.
+            time:     Evaluation time for time-dependent coefficients.
+
+        Returns:
+            ``(eigenvalues, eigenvectors, residuals)`` where eigenvalues has
+            shape ``(k_wanted,)``, eigenvectors ``(k_wanted, dim)``, and
+            residuals ``(k_wanted,)``.
+        """
+        ...
+
+    def __repr__(self) -> str: ...
+
+class FTLM:
+    """Finite Temperature Lanczos Method.
+
+    Args:
+        hamiltonian: A ``Hamiltonian`` for the system.
+    """
+
+    def __init__(self, hamiltonian: Hamiltonian) -> None: ...
+    @property
+    def dim(self) -> int: ...
+    def sample(
+        self,
+        v0: npt.NDArray[Any],
+        k: int,
+        observable: Hamiltonian,
+        beta: float,
+        time: float = 0.0,
+    ) -> tuple[float, complex]:
+        """Compute a single FTLM sample.
+
+        Args:
+            v0:         Random starting vector, shape ``(dim,)``.
+            k:          Number of Lanczos steps.
+            observable: ``Hamiltonian`` representing the observable.
+            beta:       Inverse temperature.
+            time:       Evaluation time for time-dependent coefficients.
+
+        Returns:
+            ``(z_r, oz_r)`` — partition function contribution and
+            ``⟨O⟩ · Z`` contribution.
+        """
+        ...
+
+    def __repr__(self) -> str: ...
+
+class LTLM:
+    """Low Temperature Lanczos Method.
+
+    Args:
+        hamiltonian: A ``Hamiltonian`` for the system.
+    """
+
+    def __init__(self, hamiltonian: Hamiltonian) -> None: ...
+    @property
+    def dim(self) -> int: ...
+    def sample(
+        self,
+        v0: npt.NDArray[Any],
+        k: int,
+        observable: Hamiltonian,
+        beta: float,
+        time: float = 0.0,
+    ) -> tuple[float, complex]:
+        """Compute a single LTLM sample.
+
+        Args:
+            v0:         Random starting vector, shape ``(dim,)``.
+            k:          Number of Lanczos steps.
+            observable: ``Hamiltonian`` representing the observable.
+            beta:       Inverse temperature.
+            time:       Evaluation time for time-dependent coefficients.
+
+        Returns:
+            ``(z_r, oz_r)`` — partition function contribution and
+            ``⟨φ|O|φ⟩`` where ``|φ⟩ = e^{-βH/2}|r⟩``.
+        """
+        ...
+
+    def __repr__(self) -> str: ...
+
+class FTLMDynamic:
+    """FTLM dynamic correlations (spectral function).
+
+    Args:
+        hamiltonian: A ``Hamiltonian`` for the system.
+    """
+
+    def __init__(self, hamiltonian: Hamiltonian) -> None: ...
+    @property
+    def dim(self) -> int: ...
+    def sample(
+        self,
+        v0: npt.NDArray[Any],
+        k: int,
+        operator: Hamiltonian,
+        beta: float,
+        omegas: npt.NDArray[np.float64],
+        eta: float,
+        time: float = 0.0,
+    ) -> npt.NDArray[np.float64]:
+        """Compute one FTLM dynamic sample for the spectral function.
+
+        Args:
+            v0:       Random starting vector, shape ``(dim,)``.
+            k:        Number of Lanczos steps for each run.
+            operator: ``Hamiltonian`` representing the operator ``A``.
+            beta:     Inverse temperature.
+            omegas:   Frequency grid, shape ``(n_omega,)``.
+            eta:      Lorentzian broadening parameter.
+            time:     Evaluation time for time-dependent coefficients.
+
+        Returns:
+            Spectral function contribution, shape ``(n_omega,)``.
+        """
+        ...
+
+    def __repr__(self) -> str: ...
