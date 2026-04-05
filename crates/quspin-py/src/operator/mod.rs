@@ -154,10 +154,11 @@ where
                         })
                     })
                     .collect::<Result<_, _>>()?;
-                if op_str.len() != sites.len() {
+                let op_len = op_str.chars().count();
+                if op_len != sites.len() {
                     return Err(quspin_core::error::QuSpinError::ValueError(format!(
                         "op_str length {} != number of sites {}",
-                        op_str.len(),
+                        op_len,
                         sites.len()
                     )));
                 }
