@@ -405,7 +405,7 @@ where
 
     Err(QuSpinError::ValueError(
         "unsupported input basis type for apply_and_project_to \
-         (FullSpace inputs are not supported; use Subspace or SymBasis)"
+         (unsupported or mismatched state integer types)"
             .into(),
     ))
 }
@@ -556,7 +556,7 @@ pub fn project_to(
 
     Err(QuSpinError::ValueError(
         "unsupported input basis type for project_to \
-         (FullSpace inputs are not supported; use Subspace or SymBasis)"
+         (unsupported or mismatched state integer types)"
             .into(),
     ))
 }
@@ -738,6 +738,73 @@ mod tests {
             "out[1] = {}, expected 3+i",
             out[1],
         );
+    }
+
+    #[test]
+    fn apply_symmetric_basis_matches_qmatrix_dot() {
+        // Compare apply on a SymBasis vs QMatrix::dot to verify normalization.
+        // 3-site system with translation symmetry (k=0), using X operator to
+        // connect all states.
+        use crate::basis::sym::SymBasis;
+        use crate::bitbasis::PermDitMask;
+        use crate::qmatrix::build::build_from_symmetric;
+
+        let n_sites = 3;
+        // Use same X operator as the SymBasis tests to connect all states
+        let x_op = |state: u32| -> Vec<(C64, u32, u8)> {
+            (0..n_sites as u32)
+                .map(|loc| (C64::new(1.0, 0.0), state ^ (1 << loc), 0u8))
+                .collect()
+        };
+
+        // XX + ZZ chain for the Hamiltonian
+        let mut terms = Vec::new();
+        for i in 0..n_sites {
+            let j = (i + 1) % n_sites;
+            let xx = smallvec![(HardcoreOp::X, i as u32), (HardcoreOp::X, j as u32)];
+            terms.push(OpEntry::new(0u8, C64::new(1.0, 0.0), xx));
+            let zz = smallvec![(HardcoreOp::Z, i as u32), (HardcoreOp::Z, j as u32)];
+            terms.push(OpEntry::new(0u8, C64::new(1.0, 0.0), zz));
+        }
+        let ham = HardcoreOperator::new(terms);
+
+        // Build symmetric basis: cyclic shift [1,2,0], character = 1 (k=0)
+        let perm: Vec<usize> = (0..n_sites).map(|i| (i + 1) % n_sites).collect();
+        let mut sym = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites, false);
+        sym.add_lattice(C64::new(1.0, 0.0), &perm);
+
+        // Seed with |000⟩ = 0 — X flips connect all states
+        sym.build(0u32, x_op);
+        let dim = sym.size();
+        assert!(dim > 0, "symmetric basis is empty (dim=0)");
+
+        // Build QMatrix in the symmetric basis
+        let mat = build_from_symmetric::<_, u32, PermDitMask<u32>, u32, C64, i64, u8>(&ham, &sym);
+
+        // Test vector
+        let mut psi = vec![C64::default(); dim];
+        psi[0] = C64::new(1.0, 0.0);
+        if dim > 1 {
+            psi[1] = C64::new(0.5, 0.3);
+        }
+        let coeffs = vec![C64::new(1.0, 0.0)];
+
+        // QMatrix::dot
+        let mut out_mat = vec![C64::default(); dim];
+        mat.dot(true, &coeffs, &psi, &mut out_mat).unwrap();
+
+        // apply_and_project_to_inner (same input/output SymBasis)
+        let mut out_apply = vec![C64::default(); dim];
+        apply_and_project_to_inner(&ham, &sym, &sym, &coeffs, &psi, &mut out_apply, true).unwrap();
+
+        for i in 0..dim {
+            assert!(
+                (out_mat[i] - out_apply[i]).norm() < 1e-10,
+                "SymBasis mismatch at {i}: mat={}, apply={}",
+                out_mat[i],
+                out_apply[i],
+            );
+        }
     }
 
     #[test]
