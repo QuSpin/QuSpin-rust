@@ -1,10 +1,9 @@
+use crate::basis::{apply_symmetries, parse_seeds, parse_state_str};
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::fermion::PyFermionOperator;
-use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use quspin_core::basis::seed::seed_from_str;
 use quspin_core::basis::{FermionBasis, SpaceKind};
 
 /// Python-facing fermionic basis.
@@ -13,25 +12,6 @@ use quspin_core::basis::{FermionBasis, SpaceKind};
 #[pyclass(name = "FermionBasis", module = "quspin._rs")]
 pub struct PyFermionBasis {
     pub inner: FermionBasis,
-}
-
-fn parse_seeds(seeds: &[String]) -> PyResult<Vec<Vec<u8>>> {
-    seeds
-        .iter()
-        .map(|s| seed_from_str(s).map_err(Error::from).map_err(PyErr::from))
-        .collect()
-}
-
-fn apply_symmetries(
-    basis: &mut FermionBasis,
-    symmetries: &[(Vec<usize>, (f64, f64))],
-) -> PyResult<()> {
-    for (perm, (re, im)) in symmetries {
-        basis
-            .add_lattice(Complex::new(*re, *im), perm.clone())
-            .map_err(Error::from)?;
-    }
-    Ok(())
 }
 
 fn build_fermion_basis(
@@ -80,7 +60,7 @@ impl PyFermionBasis {
         ham: &Bound<'_, PyAny>,
         seeds: Vec<String>,
     ) -> PyResult<Self> {
-        let byte_seeds = parse_seeds(&seeds)?;
+        let byte_seeds = parse_seeds(&seeds, 2)?;
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Sub).map_err(Error::from)?;
         build_fermion_basis(&mut basis, ham, &byte_seeds)?;
         Ok(PyFermionBasis { inner: basis })
@@ -101,9 +81,9 @@ impl PyFermionBasis {
         seeds: Vec<String>,
         symmetries: Vec<(Vec<usize>, (f64, f64))>,
     ) -> PyResult<Self> {
-        let byte_seeds = parse_seeds(&seeds)?;
+        let byte_seeds = parse_seeds(&seeds, 2)?;
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Symm).map_err(Error::from)?;
-        apply_symmetries(&mut basis, &symmetries)?;
+        apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
         build_fermion_basis(&mut basis, ham, &byte_seeds)?;
         Ok(PyFermionBasis { inner: basis })
     }
@@ -149,7 +129,7 @@ impl PyFermionBasis {
 
     /// Return the index of `state_str` in this basis, or `None` if absent.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = seed_from_str(state_str).map_err(Error::from)?;
+        let bytes = parse_state_str(state_str, 2)?;
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 

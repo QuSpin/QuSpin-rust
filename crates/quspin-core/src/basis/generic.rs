@@ -1,10 +1,7 @@
 /// Generic basis type [`GenericBasis`].
 use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
-use super::space::{FullSpace, Subspace};
-use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
-use crate::bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 use crate::error::QuSpinError;
 use crate::operator::MonomialOperatorInner;
 use crate::{
@@ -50,71 +47,7 @@ impl GenericBasis {
                 "lhss must be >= 2, got {lhss}"
             )));
         }
-
-        let bits_per_dit = if lhss <= 2 {
-            1
-        } else {
-            (usize::BITS - (lhss - 1).leading_zeros()) as usize
-        };
-        let n_bits = n_sites * bits_per_dit;
-
-        let inner = match space_kind {
-            SpaceKind::Full => {
-                if n_bits > 64 {
-                    return Err(QuSpinError::ValueError(format!(
-                        "Full basis requires n_bits <= 64, but n_sites={n_sites} with \
-                         lhss={lhss} needs {n_bits} bits"
-                    )));
-                }
-                if n_bits <= 32 {
-                    SpaceInner::Full32(FullSpace::<u32>::new(lhss, n_sites, false))
-                } else {
-                    SpaceInner::Full64(FullSpace::<u64>::new(lhss, n_sites, false))
-                }
-            }
-            SpaceKind::Sub => crate::select_b_for_n_sites!(
-                n_bits,
-                B,
-                return Err(QuSpinError::ValueError(format!(
-                    "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
-                     exceeding the 8192-bit maximum"
-                ))),
-                { SpaceInner::from(Subspace::<B>::new_empty(lhss, n_sites, false)) }
-            ),
-            SpaceKind::Symm => {
-                macro_rules! overflow_err {
-                    () => {
-                        return Err(QuSpinError::ValueError(format!(
-                            "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
-                             exceeding the 8192-bit maximum"
-                        )))
-                    };
-                }
-                match lhss {
-                    2 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                    3 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, PermDitValues<3>, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                    4 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, PermDitValues<4>, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                    _ => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, DynamicPermDitValues, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                }
-            }
-        };
-
+        let inner = super::make_space_inner(n_sites, lhss, space_kind, false)?;
         Ok(GenericBasis {
             n_sites,
             lhss,

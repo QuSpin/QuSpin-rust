@@ -1,10 +1,9 @@
+use crate::basis::{apply_symmetries, parse_seeds, parse_state_str};
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::pauli::PyPauliOperator;
-use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use quspin_core::basis::seed::seed_from_str;
 use quspin_core::basis::{SpaceKind, SpinBasis};
 
 /// Python-facing spin-½ / spin-S basis.
@@ -14,27 +13,6 @@ use quspin_core::basis::{SpaceKind, SpinBasis};
 #[pyclass(name = "SpinBasis", module = "quspin._rs")]
 pub struct PySpinBasis {
     pub inner: SpinBasis,
-}
-
-// Helper: convert a list of Python seed strings to `Vec<Vec<u8>>`.
-fn parse_seeds(seeds: &[String]) -> PyResult<Vec<Vec<u8>>> {
-    seeds
-        .iter()
-        .map(|s| seed_from_str(s).map_err(Error::from).map_err(PyErr::from))
-        .collect()
-}
-
-// Helper: apply lattice symmetry generators to a SpinBasis.
-fn apply_symmetries(
-    basis: &mut SpinBasis,
-    symmetries: &[(Vec<usize>, (f64, f64))],
-) -> PyResult<()> {
-    for (perm, (re, im)) in symmetries {
-        basis
-            .add_lattice(Complex::new(*re, *im), perm.clone())
-            .map_err(Error::from)?;
-    }
-    Ok(())
 }
 
 // Helper: dispatch BFS build to the right operator type.
@@ -89,7 +67,7 @@ impl PySpinBasis {
         seeds: Vec<String>,
         lhss: usize,
     ) -> PyResult<Self> {
-        let byte_seeds = parse_seeds(&seeds)?;
+        let byte_seeds = parse_seeds(&seeds, lhss)?;
         let mut basis = SpinBasis::new(n_sites, lhss, SpaceKind::Sub).map_err(Error::from)?;
         build_spin_basis(&mut basis, ham, &byte_seeds)?;
         Ok(PySpinBasis { inner: basis })
@@ -115,9 +93,9 @@ impl PySpinBasis {
         symmetries: Vec<(Vec<usize>, (f64, f64))>,
         lhss: usize,
     ) -> PyResult<Self> {
-        let byte_seeds = parse_seeds(&seeds)?;
+        let byte_seeds = parse_seeds(&seeds, lhss)?;
         let mut basis = SpinBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
-        apply_symmetries(&mut basis, &symmetries)?;
+        apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
         build_spin_basis(&mut basis, ham, &byte_seeds)?;
         Ok(PySpinBasis { inner: basis })
     }
@@ -165,7 +143,7 @@ impl PySpinBasis {
     ///
     /// `state_str` must be a `'0'`/`'1'` string of length `n_sites`.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = seed_from_str(state_str).map_err(Error::from)?;
+        let bytes = parse_state_str(state_str, self.inner.lhss)?;
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 

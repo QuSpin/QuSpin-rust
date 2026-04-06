@@ -1,10 +1,7 @@
 /// Bosonic basis type [`BosonBasis`].
 use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
-use super::space::{FullSpace, Subspace};
-use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
-use crate::bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 use crate::error::QuSpinError;
 use crate::operator::{BondOperatorInner, BosonOperatorInner};
 use crate::{
@@ -47,71 +44,7 @@ impl BosonBasis {
                 "lhss must be >= 2, got {lhss}"
             )));
         }
-
-        let bits_per_dit = if lhss <= 2 {
-            1
-        } else {
-            (usize::BITS - (lhss - 1).leading_zeros()) as usize
-        };
-        let n_bits = n_sites * bits_per_dit;
-
-        let inner = match space_kind {
-            SpaceKind::Full => {
-                if n_bits > 64 {
-                    return Err(QuSpinError::ValueError(format!(
-                        "Full basis requires n_bits <= 64, but n_sites={n_sites} with \
-                         lhss={lhss} needs {n_bits} bits"
-                    )));
-                }
-                if n_bits <= 32 {
-                    SpaceInner::Full32(FullSpace::<u32>::new(lhss, n_sites, false))
-                } else {
-                    SpaceInner::Full64(FullSpace::<u64>::new(lhss, n_sites, false))
-                }
-            }
-            SpaceKind::Sub => crate::select_b_for_n_sites!(
-                n_bits,
-                B,
-                return Err(QuSpinError::ValueError(format!(
-                    "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
-                     exceeding the 8192-bit maximum"
-                ))),
-                { SpaceInner::from(Subspace::<B>::new_empty(lhss, n_sites, false)) }
-            ),
-            SpaceKind::Symm => {
-                macro_rules! overflow_err {
-                    () => {
-                        return Err(QuSpinError::ValueError(format!(
-                            "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
-                             exceeding the 8192-bit maximum"
-                        )))
-                    };
-                }
-                match lhss {
-                    2 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                    3 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, PermDitValues<3>, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                    4 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, PermDitValues<4>, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                    _ => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, DynamicPermDitValues, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                }
-            }
-        };
-
+        let inner = super::make_space_inner(n_sites, lhss, space_kind, false)?;
         Ok(BosonBasis {
             n_sites,
             lhss,
@@ -275,97 +208,7 @@ impl BosonBasis {
         ham: &BondOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        use crate::operator::Operator;
-        use smallvec::SmallVec;
-
-        if self.space_kind == SpaceKind::Full {
-            return Err(QuSpinError::ValueError(
-                "Full basis requires no build step".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError("basis is already built".into()));
-        }
-        if ham.lhss() != self.lhss {
-            return Err(QuSpinError::ValueError(format!(
-                "ham.lhss()={} does not match basis lhss={}",
-                ham.lhss(),
-                self.lhss
-            )));
-        }
-
-        macro_rules! bond_apply_fn {
-            ($ham_inner:expr, $state:expr) => {{
-                let mut out: SmallVec<[(Complex<f64>, _, u8); 8]> = SmallVec::new();
-                match $ham_inner {
-                    BondOperatorInner::Ham8(h) => {
-                        h.apply($state, |c, amp, ns| out.push((amp, ns, c)));
-                    }
-                    BondOperatorInner::Ham16(h) => {
-                        h.apply($state, |c, amp, ns| out.push((amp, ns, c as u8)));
-                    }
-                }
-                out
-            }};
-        }
-
-        let lhss = self.lhss;
-        macro_rules! decode_seed_bond {
-            ($B:ty, $seed:expr) => {
-                if lhss == 2 {
-                    seed_from_bytes::<$B>($seed)
-                } else {
-                    use crate::bitbasis::manip::DynamicDitManip;
-                    dit_seed_from_bytes::<$B>($seed, &DynamicDitManip::new(lhss))
-                }
-            };
-        }
-
-        match self.space_kind {
-            SpaceKind::Sub => {
-                with_sub_basis_mut!(&mut self.inner, B, subspace, {
-                    for seed in seeds {
-                        let s = decode_seed_bond!(B, seed);
-                        subspace.build(s, |state| bond_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Symm if self.lhss == 2 => {
-                with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed_bond!(B, seed);
-                        sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Symm if self.lhss == 3 => {
-                with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed_bond!(B, seed);
-                        sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Symm if self.lhss == 4 => {
-                with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed_bond!(B, seed);
-                        sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Symm => {
-                with_dit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed_bond!(B, seed);
-                        sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Full => unreachable!(),
-        }
-
-        Ok(())
+        super::build_bond_inner(&mut self.inner, self.space_kind, self.lhss, ham, seeds)
     }
 }
 

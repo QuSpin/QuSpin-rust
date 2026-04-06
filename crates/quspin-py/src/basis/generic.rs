@@ -1,9 +1,9 @@
+use crate::basis::{apply_symmetries, parse_seeds, parse_state_str};
 use crate::error::Error;
 use crate::operator::monomial::PyMonomialOperator;
 use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use quspin_core::basis::seed::{dit_seed_from_str, seed_from_str};
 use quspin_core::basis::{GenericBasis, SpaceKind};
 
 /// Python-facing generic basis for any on-site Hilbert-space size.
@@ -13,33 +13,6 @@ use quspin_core::basis::{GenericBasis, SpaceKind};
 #[pyclass(name = "GenericBasis", module = "quspin._rs")]
 pub struct PyGenericBasis {
     pub inner: GenericBasis,
-}
-
-fn parse_seeds(seeds: &[String], lhss: usize) -> PyResult<Vec<Vec<u8>>> {
-    seeds
-        .iter()
-        .map(|s| {
-            if lhss == 2 {
-                seed_from_str(s).map_err(Error::from).map_err(PyErr::from)
-            } else {
-                dit_seed_from_str(s, lhss)
-                    .map_err(Error::from)
-                    .map_err(PyErr::from)
-            }
-        })
-        .collect()
-}
-
-fn apply_lattice_symmetries(
-    basis: &mut GenericBasis,
-    symmetries: &[(Vec<usize>, (f64, f64))],
-) -> PyResult<()> {
-    for (perm, (re, im)) in symmetries {
-        basis
-            .add_lattice(Complex::new(*re, *im), perm.clone())
-            .map_err(Error::from)?;
-    }
-    Ok(())
 }
 
 /// Parse a `local_symmetries` entry.  Each entry is either a 2-tuple
@@ -178,7 +151,7 @@ impl PyGenericBasis {
         let py = _cls.py();
         let byte_seeds = parse_seeds(&seeds, lhss)?;
         let mut basis = GenericBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
-        apply_lattice_symmetries(&mut basis, &symmetries)?;
+        apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
         apply_local_symmetries(py, &mut basis, &local_symmetries)?;
         basis
             .build_monomial(&ham.inner, &byte_seeds)
@@ -227,11 +200,7 @@ impl PyGenericBasis {
 
     /// Return the index of `state_str`, or `None` if absent.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = if self.inner.lhss == 2 {
-            seed_from_str(state_str).map_err(Error::from)?
-        } else {
-            dit_seed_from_str(state_str, self.inner.lhss).map_err(Error::from)?
-        };
+        let bytes = parse_state_str(state_str, self.inner.lhss)?;
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 

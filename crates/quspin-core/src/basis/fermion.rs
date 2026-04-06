@@ -1,10 +1,7 @@
 /// Fermionic basis type [`FermionBasis`].
 use super::dispatch::SpaceInner;
 use super::seed::seed_from_bytes;
-use super::space::{FullSpace, Subspace};
-use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
-use crate::bitbasis::PermDitMask;
 use crate::error::QuSpinError;
 use crate::operator::{BondOperatorInner, FermionOperatorInner};
 use crate::{with_sub_basis_mut, with_sym_basis_mut};
@@ -41,43 +38,7 @@ impl FermionBasis {
     /// - [`SpaceKind::Sub`] / [`SpaceKind::Symm`] with `n_sites > 8192`
     pub fn new(n_sites: usize, space_kind: SpaceKind) -> Result<Self, QuSpinError> {
         // Fermions: lhss=2, 1 bit per site, fermionic=true.
-        let n_bits = n_sites;
-
-        let inner = match space_kind {
-            SpaceKind::Full => {
-                if n_bits > 64 {
-                    return Err(QuSpinError::ValueError(format!(
-                        "Full fermion basis requires n_sites <= 64, got n_sites={n_sites}"
-                    )));
-                }
-                if n_bits <= 32 {
-                    SpaceInner::Full32(FullSpace::<u32>::new(2, n_sites, true))
-                } else {
-                    SpaceInner::Full64(FullSpace::<u64>::new(2, n_sites, true))
-                }
-            }
-            SpaceKind::Sub => crate::select_b_for_n_sites!(
-                n_bits,
-                B,
-                return Err(QuSpinError::ValueError(format!(
-                    "n_sites={n_sites} exceeds the maximum supported value of 8192"
-                ))),
-                { SpaceInner::from(Subspace::<B>::new_empty(2, n_sites, true)) }
-            ),
-            SpaceKind::Symm => crate::select_b_for_n_sites!(
-                n_bits,
-                B,
-                return Err(QuSpinError::ValueError(format!(
-                    "n_sites={n_sites} exceeds the maximum supported value of 8192"
-                ))),
-                {
-                    SpaceInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
-                        2, n_sites, true,
-                    ))
-                }
-            ),
-        };
-
+        let inner = super::make_space_inner(n_sites, 2, space_kind, true)?;
         Ok(FermionBasis {
             n_sites,
             space_kind,
@@ -172,60 +133,7 @@ impl FermionBasis {
         ham: &BondOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        use crate::operator::Operator;
-        use smallvec::SmallVec;
-
-        if self.space_kind == SpaceKind::Full {
-            return Err(QuSpinError::ValueError(
-                "Full basis requires no build step".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError("basis is already built".into()));
-        }
-        if ham.lhss() != 2 {
-            return Err(QuSpinError::ValueError(format!(
-                "ham.lhss()={} does not match fermion basis lhss=2",
-                ham.lhss()
-            )));
-        }
-
-        macro_rules! bond_apply_fn {
-            ($ham_inner:expr, $state:expr) => {{
-                let mut out: SmallVec<[(Complex<f64>, _, u8); 8]> = SmallVec::new();
-                match $ham_inner {
-                    BondOperatorInner::Ham8(h) => {
-                        h.apply($state, |c, amp, ns| out.push((amp, ns, c)));
-                    }
-                    BondOperatorInner::Ham16(h) => {
-                        h.apply($state, |c, amp, ns| out.push((amp, ns, c as u8)));
-                    }
-                }
-                out
-            }};
-        }
-
-        match self.space_kind {
-            SpaceKind::Sub => {
-                with_sub_basis_mut!(&mut self.inner, B, subspace, {
-                    for seed in seeds {
-                        let s = seed_from_bytes::<B>(seed);
-                        subspace.build(s, |state| bond_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Symm => {
-                with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = seed_from_bytes::<B>(seed);
-                        sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Full => unreachable!(),
-        }
-
-        Ok(())
+        super::build_bond_inner(&mut self.inner, self.space_kind, 2, ham, seeds)
     }
 }
 
