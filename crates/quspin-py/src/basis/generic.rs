@@ -25,8 +25,8 @@ fn apply_local_symmetries(
     basis: &mut GenericBasis,
     local_symmetries: &[PyObject],
 ) -> PyResult<()> {
-    let n_sites = basis.n_sites;
-    let lhss = basis.lhss;
+    let n_sites = basis.inner.n_sites();
+    let lhss = basis.inner.lhss();
 
     for (i, sym_obj) in local_symmetries.iter().enumerate() {
         let sym = sym_obj.bind(py);
@@ -165,12 +165,12 @@ impl PyGenericBasis {
 
     #[getter]
     fn n_sites(&self) -> usize {
-        self.inner.n_sites
+        self.inner.inner.n_sites()
     }
 
     #[getter]
     fn lhss(&self) -> usize {
-        self.inner.lhss
+        self.inner.inner.lhss()
     }
 
     #[getter]
@@ -200,15 +200,15 @@ impl PyGenericBasis {
 
     /// Return the index of `state_str`, or `None` if absent.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = parse_state_str(state_str, self.inner.lhss)?;
+        let bytes = parse_state_str(state_str, self.inner.inner.lhss())?;
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 
     fn __repr__(&self) -> String {
         format!(
             "GenericBasis(n_sites={}, lhss={}, size={}, kind={})",
-            self.inner.n_sites,
-            self.inner.lhss,
+            self.inner.inner.n_sites(),
+            self.inner.inner.lhss(),
             self.inner.inner.size(),
             self.inner.inner.kind(),
         )

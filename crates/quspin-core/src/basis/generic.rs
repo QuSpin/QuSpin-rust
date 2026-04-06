@@ -28,8 +28,6 @@ use num_complex::Complex;
 ///   with [`add_lattice`](GenericBasis::add_lattice) and/or
 ///   [`add_local`](GenericBasis::add_local) before building.
 pub struct GenericBasis {
-    pub n_sites: usize,
-    pub lhss: usize,
     space_kind: SpaceKind,
     pub inner: SpaceInner,
 }
@@ -42,18 +40,8 @@ impl GenericBasis {
     /// - [`SpaceKind::Full`] with more than 64 bits required
     /// - [`SpaceKind::Sub`] / [`SpaceKind::Symm`] with more than 8192 bits
     pub fn new(n_sites: usize, lhss: usize, space_kind: SpaceKind) -> Result<Self, QuSpinError> {
-        if lhss < 2 {
-            return Err(QuSpinError::ValueError(format!(
-                "lhss must be >= 2, got {lhss}"
-            )));
-        }
         let inner = super::make_space_inner(n_sites, lhss, space_kind, false)?;
-        Ok(GenericBasis {
-            n_sites,
-            lhss,
-            space_kind,
-            inner,
-        })
+        Ok(GenericBasis { space_kind, inner })
     }
 
     /// The [`SpaceKind`] this basis was constructed with.
@@ -117,15 +105,14 @@ impl GenericBasis {
         if self.inner.is_built() {
             return Err(QuSpinError::ValueError("basis is already built".into()));
         }
-        if ham.lhss() != self.lhss {
+        let lhss = self.inner.lhss();
+        if ham.lhss() != lhss {
             return Err(QuSpinError::ValueError(format!(
                 "ham.lhss()={} does not match basis lhss={}",
                 ham.lhss(),
-                self.lhss
+                lhss
             )));
         }
-
-        let lhss = self.lhss;
         macro_rules! decode_seed {
             ($B:ty, $seed:expr) => {
                 if lhss == 2 {
@@ -162,7 +149,7 @@ impl GenericBasis {
                     }
                 });
             }
-            SpaceKind::Symm if self.lhss == 2 => {
+            SpaceKind::Symm if lhss == 2 => {
                 with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
@@ -170,7 +157,7 @@ impl GenericBasis {
                     }
                 });
             }
-            SpaceKind::Symm if self.lhss == 3 => {
+            SpaceKind::Symm if lhss == 3 => {
                 with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
@@ -178,7 +165,7 @@ impl GenericBasis {
                     }
                 });
             }
-            SpaceKind::Symm if self.lhss == 4 => {
+            SpaceKind::Symm if lhss == 4 => {
                 with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);

@@ -38,8 +38,6 @@ pub enum SpaceKind {
 ///   with [`add_lattice`](SpinBasis::add_lattice) /
 ///   [`add_inv`](SpinBasis::add_inv) before calling a `build_*` method.
 pub struct SpinBasis {
-    pub n_sites: usize,
-    pub lhss: usize,
     space_kind: SpaceKind,
     pub inner: SpaceInner,
 }
@@ -52,18 +50,8 @@ impl SpinBasis {
     /// - [`SpaceKind::Full`] with more than 64 bits required
     /// - [`SpaceKind::Sub`] / [`SpaceKind::Symm`] with more than 8192 bits
     pub fn new(n_sites: usize, lhss: usize, space_kind: SpaceKind) -> Result<Self, QuSpinError> {
-        if lhss < 2 {
-            return Err(QuSpinError::ValueError(format!(
-                "lhss must be >= 2, got {lhss}"
-            )));
-        }
         let inner = super::make_space_inner(n_sites, lhss, space_kind, false)?;
-        Ok(SpinBasis {
-            n_sites,
-            lhss,
-            space_kind,
-            inner,
-        })
+        Ok(SpinBasis { space_kind, inner })
     }
 
     /// The [`SpaceKind`] this basis was constructed with.
@@ -90,13 +78,15 @@ impl SpinBasis {
     ///
     /// `locs = None` applies the operation to all sites.
     pub fn add_inv(&mut self, locs: Option<Vec<u32>>) -> Result<(), QuSpinError> {
-        let locs_u32 = locs.unwrap_or_else(|| (0..self.n_sites as u32).collect());
+        let n_sites = self.inner.n_sites();
+        let lhss = self.inner.lhss();
+        let locs_u32 = locs.unwrap_or_else(|| (0..n_sites as u32).collect());
         let locs_usize: Vec<usize> = locs_u32.iter().map(|&v| v as usize).collect();
         let char = Complex::new(-1.0, 0.0);
-        if self.lhss == 2 {
+        if lhss == 2 {
             self.inner.add_inv(char, &locs_usize)
         } else {
-            let perm: Vec<u8> = (0..self.lhss).rev().map(|v| v as u8).collect();
+            let perm: Vec<u8> = (0..lhss).rev().map(|v| v as u8).collect();
             self.inner.add_local(char, perm, locs_usize)
         }
     }
@@ -122,16 +112,16 @@ impl SpinBasis {
         if self.inner.is_built() {
             return Err(QuSpinError::ValueError("basis is already built".into()));
         }
-        if ham.lhss() != self.lhss {
+        let lhss = self.inner.lhss();
+        if ham.lhss() != lhss {
             return Err(QuSpinError::ValueError(format!(
                 "ham.lhss()={} does not match basis lhss={}",
                 ham.lhss(),
-                self.lhss
+                lhss
             )));
         }
 
         // For lhss=2, seeds are bit-encoded; for lhss>2 they are dit-encoded.
-        let lhss = self.lhss;
         macro_rules! decode_seed {
             ($B:ty, $seed:expr) => {
                 if lhss == 2 {
@@ -159,7 +149,7 @@ impl SpinBasis {
                     }
                 });
             }
-            SpaceKind::Symm if self.lhss == 2 => {
+            SpaceKind::Symm if lhss == 2 => {
                 with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
@@ -174,7 +164,7 @@ impl SpinBasis {
                     }
                 });
             }
-            SpaceKind::Symm if self.lhss == 3 => {
+            SpaceKind::Symm if lhss == 3 => {
                 with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
@@ -189,7 +179,7 @@ impl SpinBasis {
                     }
                 });
             }
-            SpaceKind::Symm if self.lhss == 4 => {
+            SpaceKind::Symm if lhss == 4 => {
                 with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
@@ -238,7 +228,7 @@ impl SpinBasis {
         ham: &HardcoreOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        if self.lhss != 2 {
+        if self.inner.lhss() != 2 {
             return Err(QuSpinError::ValueError(
                 "build_hardcore requires lhss=2".into(),
             ));
@@ -302,7 +292,8 @@ impl SpinBasis {
         ham: &BondOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        super::build_bond_inner(&mut self.inner, self.space_kind, self.lhss, ham, seeds)
+        let lhss = self.inner.lhss();
+        super::build_bond_inner(&mut self.inner, self.space_kind, lhss, ham, seeds)
     }
 }
 
@@ -331,15 +322,15 @@ mod tests {
     fn spin_basis_new_symm_lhss2_ok() {
         let basis = SpinBasis::new(4, 2, SpaceKind::Symm).unwrap();
         assert!(!basis.inner.is_built());
-        assert_eq!(basis.lhss, 2);
-        assert_eq!(basis.n_sites, 4);
+        assert_eq!(basis.inner.lhss(), 2);
+        assert_eq!(basis.inner.n_sites(), 4);
     }
 
     #[test]
     fn spin_basis_new_symm_lhss3_ok() {
         let basis = SpinBasis::new(4, 3, SpaceKind::Symm).unwrap();
         assert!(!basis.inner.is_built());
-        assert_eq!(basis.lhss, 3);
+        assert_eq!(basis.inner.lhss(), 3);
     }
 
     #[test]

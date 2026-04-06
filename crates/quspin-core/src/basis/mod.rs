@@ -49,6 +49,11 @@ pub(crate) fn make_space_inner(
     space_kind: SpaceKind,
     fermionic: bool,
 ) -> Result<SpaceInner, QuSpinError> {
+    if lhss < 2 {
+        return Err(QuSpinError::ValueError(format!(
+            "lhss must be >= 2, got {lhss}"
+        )));
+    }
     let bits_per_dit = if lhss <= 2 {
         1
     } else {

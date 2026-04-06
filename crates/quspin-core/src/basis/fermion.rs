@@ -23,7 +23,6 @@ use num_complex::Complex;
 ///   elements with [`add_lattice`](FermionBasis::add_lattice) before calling
 ///   a `build_*` method.
 pub struct FermionBasis {
-    pub n_sites: usize,
     space_kind: SpaceKind,
     pub inner: SpaceInner,
 }
@@ -39,11 +38,7 @@ impl FermionBasis {
     pub fn new(n_sites: usize, space_kind: SpaceKind) -> Result<Self, QuSpinError> {
         // Fermions: lhss=2, 1 bit per site, fermionic=true.
         let inner = super::make_space_inner(n_sites, 2, space_kind, true)?;
-        Ok(FermionBasis {
-            n_sites,
-            space_kind,
-            inner,
-        })
+        Ok(FermionBasis { space_kind, inner })
     }
 
     /// The [`SpaceKind`] this basis was constructed with.
@@ -157,14 +152,14 @@ mod tests {
     fn fermion_basis_new_sub_ok() {
         let basis = FermionBasis::new(4, SpaceKind::Sub).unwrap();
         assert!(!basis.inner.is_built());
-        assert_eq!(basis.n_sites, 4);
+        assert_eq!(basis.inner.n_sites(), 4);
     }
 
     #[test]
     fn fermion_basis_new_symm_ok() {
         let basis = FermionBasis::new(4, SpaceKind::Symm).unwrap();
         assert!(!basis.inner.is_built());
-        assert_eq!(basis.n_sites, 4);
+        assert_eq!(basis.inner.n_sites(), 4);
     }
 
     #[test]

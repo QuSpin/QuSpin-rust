@@ -99,12 +99,12 @@ impl PyBosonBasis {
 
     #[getter]
     fn n_sites(&self) -> usize {
-        self.inner.n_sites
+        self.inner.inner.n_sites()
     }
 
     #[getter]
     fn lhss(&self) -> usize {
-        self.inner.lhss
+        self.inner.inner.lhss()
     }
 
     #[getter]
@@ -134,15 +134,15 @@ impl PyBosonBasis {
 
     /// Return the index of `state_str`, or `None` if absent.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = parse_state_str(state_str, self.inner.lhss)?;
+        let bytes = parse_state_str(state_str, self.inner.inner.lhss())?;
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 
     fn __repr__(&self) -> String {
         format!(
             "BosonBasis(n_sites={}, lhss={}, size={}, kind={})",
-            self.inner.n_sites,
-            self.inner.lhss,
+            self.inner.inner.n_sites(),
+            self.inner.inner.lhss(),
             self.inner.inner.size(),
             self.inner.inner.kind(),
         )

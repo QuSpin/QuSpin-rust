@@ -106,12 +106,12 @@ impl PySpinBasis {
 
     #[getter]
     fn n_sites(&self) -> usize {
-        self.inner.n_sites
+        self.inner.inner.n_sites()
     }
 
     #[getter]
     fn lhss(&self) -> usize {
-        self.inner.lhss
+        self.inner.inner.lhss()
     }
 
     #[getter]
@@ -143,15 +143,15 @@ impl PySpinBasis {
     ///
     /// `state_str` must be a `'0'`/`'1'` string of length `n_sites`.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = parse_state_str(state_str, self.inner.lhss)?;
+        let bytes = parse_state_str(state_str, self.inner.inner.lhss())?;
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 
     fn __repr__(&self) -> String {
         format!(
             "SpinBasis(n_sites={}, lhss={}, size={}, kind={})",
-            self.inner.n_sites,
-            self.inner.lhss,
+            self.inner.inner.n_sites(),
+            self.inner.inner.lhss(),
             self.inner.inner.size(),
             self.inner.inner.kind(),
         )

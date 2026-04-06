@@ -94,7 +94,7 @@ impl PyFermionBasis {
 
     #[getter]
     fn n_sites(&self) -> usize {
-        self.inner.n_sites
+        self.inner.inner.n_sites()
     }
 
     #[getter]
@@ -136,7 +136,7 @@ impl PyFermionBasis {
     fn __repr__(&self) -> String {
         format!(
             "FermionBasis(n_sites={}, size={}, kind={})",
-            self.inner.n_sites,
+            self.inner.inner.n_sites(),
             self.inner.inner.size(),
             self.inner.inner.kind(),
         )
