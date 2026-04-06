@@ -309,6 +309,25 @@ impl SpaceInner {
         }
     }
 
+    /// Which kind of space this basis represents.
+    pub fn space_kind(&self) -> crate::basis::spin::SpaceKind {
+        use crate::basis::spin::SpaceKind;
+        match self {
+            SpaceInner::Full32(_) | SpaceInner::Full64(_) => SpaceKind::Full,
+            SpaceInner::Sub32(_)
+            | SpaceInner::Sub64(_)
+            | SpaceInner::Sub128(_)
+            | SpaceInner::Sub256(_) => SpaceKind::Sub,
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sub512(_)
+            | SpaceInner::Sub1024(_)
+            | SpaceInner::Sub2048(_)
+            | SpaceInner::Sub4096(_)
+            | SpaceInner::Sub8192(_) => SpaceKind::Sub,
+            _ => SpaceKind::Symm,
+        }
+    }
+
     /// Number of basis states.
     pub fn size(&self) -> usize {
         match self {

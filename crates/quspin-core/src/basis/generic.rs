@@ -28,7 +28,6 @@ use num_complex::Complex;
 ///   with [`add_lattice`](GenericBasis::add_lattice) and/or
 ///   [`add_local`](GenericBasis::add_local) before building.
 pub struct GenericBasis {
-    space_kind: SpaceKind,
     pub inner: SpaceInner,
 }
 
@@ -41,12 +40,12 @@ impl GenericBasis {
     /// - [`SpaceKind::Sub`] / [`SpaceKind::Symm`] with more than 8192 bits
     pub fn new(n_sites: usize, lhss: usize, space_kind: SpaceKind) -> Result<Self, QuSpinError> {
         let inner = super::make_space_inner(n_sites, lhss, space_kind, false)?;
-        Ok(GenericBasis { space_kind, inner })
+        Ok(GenericBasis { inner })
     }
 
     /// The [`SpaceKind`] this basis was constructed with.
     pub fn space_kind(&self) -> SpaceKind {
-        self.space_kind
+        self.inner.space_kind()
     }
 
     /// Add a lattice (site-permutation) symmetry element.
@@ -97,7 +96,7 @@ impl GenericBasis {
     ) -> Result<(), QuSpinError> {
         use crate::operator::Operator;
 
-        if self.space_kind == SpaceKind::Full {
+        if self.inner.space_kind() == SpaceKind::Full {
             return Err(QuSpinError::ValueError(
                 "Full basis requires no build step".into(),
             ));
@@ -140,7 +139,7 @@ impl GenericBasis {
             }};
         }
 
-        match self.space_kind {
+        match self.inner.space_kind() {
             SpaceKind::Sub => {
                 with_sub_basis_mut!(&mut self.inner, B, subspace, {
                     for seed in seeds {

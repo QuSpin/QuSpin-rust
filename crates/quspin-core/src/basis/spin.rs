@@ -38,7 +38,6 @@ pub enum SpaceKind {
 ///   with [`add_lattice`](SpinBasis::add_lattice) /
 ///   [`add_inv`](SpinBasis::add_inv) before calling a `build_*` method.
 pub struct SpinBasis {
-    space_kind: SpaceKind,
     pub inner: SpaceInner,
 }
 
@@ -51,12 +50,12 @@ impl SpinBasis {
     /// - [`SpaceKind::Sub`] / [`SpaceKind::Symm`] with more than 8192 bits
     pub fn new(n_sites: usize, lhss: usize, space_kind: SpaceKind) -> Result<Self, QuSpinError> {
         let inner = super::make_space_inner(n_sites, lhss, space_kind, false)?;
-        Ok(SpinBasis { space_kind, inner })
+        Ok(SpinBasis { inner })
     }
 
     /// The [`SpaceKind`] this basis was constructed with.
     pub fn space_kind(&self) -> SpaceKind {
-        self.space_kind
+        self.inner.space_kind()
     }
 
     /// Add a lattice (site-permutation) symmetry element.
@@ -104,7 +103,7 @@ impl SpinBasis {
         ham: &SpinOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        if self.space_kind == SpaceKind::Full {
+        if self.inner.space_kind() == SpaceKind::Full {
             return Err(QuSpinError::ValueError(
                 "Full basis requires no build step".into(),
             ));
@@ -133,7 +132,7 @@ impl SpinBasis {
             };
         }
 
-        match self.space_kind {
+        match self.inner.space_kind() {
             SpaceKind::Sub => {
                 with_sub_basis_mut!(&mut self.inner, B, subspace, {
                     for seed in seeds {
@@ -233,7 +232,7 @@ impl SpinBasis {
                 "build_hardcore requires lhss=2".into(),
             ));
         }
-        if self.space_kind == SpaceKind::Full {
+        if self.inner.space_kind() == SpaceKind::Full {
             return Err(QuSpinError::ValueError(
                 "Full basis requires no build step".into(),
             ));
@@ -242,7 +241,7 @@ impl SpinBasis {
             return Err(QuSpinError::ValueError("basis is already built".into()));
         }
 
-        match self.space_kind {
+        match self.inner.space_kind() {
             SpaceKind::Sub => {
                 with_sub_basis_mut!(&mut self.inner, B, subspace, {
                     for seed in seeds {
@@ -293,7 +292,8 @@ impl SpinBasis {
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
         let lhss = self.inner.lhss();
-        super::build_bond_inner(&mut self.inner, self.space_kind, lhss, ham, seeds)
+        let space_kind = self.inner.space_kind();
+        super::build_bond_inner(&mut self.inner, space_kind, lhss, ham, seeds)
     }
 }
 

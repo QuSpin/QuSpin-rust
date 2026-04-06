@@ -23,7 +23,6 @@ use num_complex::Complex;
 ///   elements with [`add_lattice`](FermionBasis::add_lattice) before calling
 ///   a `build_*` method.
 pub struct FermionBasis {
-    space_kind: SpaceKind,
     pub inner: SpaceInner,
 }
 
@@ -38,12 +37,12 @@ impl FermionBasis {
     pub fn new(n_sites: usize, space_kind: SpaceKind) -> Result<Self, QuSpinError> {
         // Fermions: lhss=2, 1 bit per site, fermionic=true.
         let inner = super::make_space_inner(n_sites, 2, space_kind, true)?;
-        Ok(FermionBasis { space_kind, inner })
+        Ok(FermionBasis { inner })
     }
 
     /// The [`SpaceKind`] this basis was constructed with.
     pub fn space_kind(&self) -> SpaceKind {
-        self.space_kind
+        self.inner.space_kind()
     }
 
     /// Add a lattice (site-permutation) symmetry element with fermionic sign tracking.
@@ -69,7 +68,7 @@ impl FermionBasis {
         ham: &FermionOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        if self.space_kind == SpaceKind::Full {
+        if self.inner.space_kind() == SpaceKind::Full {
             return Err(QuSpinError::ValueError(
                 "Full basis requires no build step".into(),
             ));
@@ -78,7 +77,7 @@ impl FermionBasis {
             return Err(QuSpinError::ValueError("basis is already built".into()));
         }
 
-        match self.space_kind {
+        match self.inner.space_kind() {
             SpaceKind::Sub => {
                 with_sub_basis_mut!(&mut self.inner, B, subspace, {
                     for seed in seeds {
@@ -128,7 +127,8 @@ impl FermionBasis {
         ham: &BondOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        super::build_bond_inner(&mut self.inner, self.space_kind, 2, ham, seeds)
+        let space_kind = self.inner.space_kind();
+        super::build_bond_inner(&mut self.inner, space_kind, 2, ham, seeds)
     }
 }
 
