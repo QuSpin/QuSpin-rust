@@ -1,10 +1,7 @@
 /// Generic basis type [`GenericBasis`].
 use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
-use super::space::{FullSpace, Subspace};
-use super::sym::SymBasis;
 use crate::basis::spin::SpaceKind;
-use crate::bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 use crate::error::QuSpinError;
 use crate::operator::MonomialOperatorInner;
 use crate::{
@@ -31,9 +28,6 @@ use num_complex::Complex;
 ///   with [`add_lattice`](GenericBasis::add_lattice) and/or
 ///   [`add_local`](GenericBasis::add_local) before building.
 pub struct GenericBasis {
-    pub n_sites: usize,
-    pub lhss: usize,
-    space_kind: SpaceKind,
     pub inner: SpaceInner,
 }
 
@@ -45,87 +39,13 @@ impl GenericBasis {
     /// - [`SpaceKind::Full`] with more than 64 bits required
     /// - [`SpaceKind::Sub`] / [`SpaceKind::Symm`] with more than 8192 bits
     pub fn new(n_sites: usize, lhss: usize, space_kind: SpaceKind) -> Result<Self, QuSpinError> {
-        if lhss < 2 {
-            return Err(QuSpinError::ValueError(format!(
-                "lhss must be >= 2, got {lhss}"
-            )));
-        }
-
-        let bits_per_dit = if lhss <= 2 {
-            1
-        } else {
-            (usize::BITS - (lhss - 1).leading_zeros()) as usize
-        };
-        let n_bits = n_sites * bits_per_dit;
-
-        let inner = match space_kind {
-            SpaceKind::Full => {
-                if n_bits > 64 {
-                    return Err(QuSpinError::ValueError(format!(
-                        "Full basis requires n_bits <= 64, but n_sites={n_sites} with \
-                         lhss={lhss} needs {n_bits} bits"
-                    )));
-                }
-                if n_bits <= 32 {
-                    SpaceInner::Full32(FullSpace::<u32>::new(lhss, n_sites, false))
-                } else {
-                    SpaceInner::Full64(FullSpace::<u64>::new(lhss, n_sites, false))
-                }
-            }
-            SpaceKind::Sub => crate::select_b_for_n_sites!(
-                n_bits,
-                B,
-                return Err(QuSpinError::ValueError(format!(
-                    "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
-                     exceeding the 8192-bit maximum"
-                ))),
-                { SpaceInner::from(Subspace::<B>::new_empty(lhss, n_sites, false)) }
-            ),
-            SpaceKind::Symm => {
-                macro_rules! overflow_err {
-                    () => {
-                        return Err(QuSpinError::ValueError(format!(
-                            "n_sites={n_sites} with lhss={lhss} requires {n_bits} bits, \
-                             exceeding the 8192-bit maximum"
-                        )))
-                    };
-                }
-                match lhss {
-                    2 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, PermDitMask<B>, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                    3 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, PermDitValues<3>, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                    4 => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, PermDitValues<4>, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                    _ => crate::select_b_for_n_sites!(n_bits, B, overflow_err!(), {
-                        SpaceInner::from(SymBasis::<B, DynamicPermDitValues, _>::new_empty(
-                            lhss, n_sites, false,
-                        ))
-                    }),
-                }
-            }
-        };
-
-        Ok(GenericBasis {
-            n_sites,
-            lhss,
-            space_kind,
-            inner,
-        })
+        let inner = super::make_space_inner(n_sites, lhss, space_kind, false)?;
+        Ok(GenericBasis { inner })
     }
 
     /// The [`SpaceKind`] this basis was constructed with.
     pub fn space_kind(&self) -> SpaceKind {
-        self.space_kind
+        self.inner.space_kind()
     }
 
     /// Add a lattice (site-permutation) symmetry element.
@@ -176,7 +96,7 @@ impl GenericBasis {
     ) -> Result<(), QuSpinError> {
         use crate::operator::Operator;
 
-        if self.space_kind == SpaceKind::Full {
+        if self.inner.space_kind() == SpaceKind::Full {
             return Err(QuSpinError::ValueError(
                 "Full basis requires no build step".into(),
             ));
@@ -184,15 +104,14 @@ impl GenericBasis {
         if self.inner.is_built() {
             return Err(QuSpinError::ValueError("basis is already built".into()));
         }
-        if ham.lhss() != self.lhss {
+        let lhss = self.inner.lhss();
+        if ham.lhss() != lhss {
             return Err(QuSpinError::ValueError(format!(
                 "ham.lhss()={} does not match basis lhss={}",
                 ham.lhss(),
-                self.lhss
+                lhss
             )));
         }
-
-        let lhss = self.lhss;
         macro_rules! decode_seed {
             ($B:ty, $seed:expr) => {
                 if lhss == 2 {
@@ -220,7 +139,7 @@ impl GenericBasis {
             }};
         }
 
-        match self.space_kind {
+        match self.inner.space_kind() {
             SpaceKind::Sub => {
                 with_sub_basis_mut!(&mut self.inner, B, subspace, {
                     for seed in seeds {
@@ -229,7 +148,7 @@ impl GenericBasis {
                     }
                 });
             }
-            SpaceKind::Symm if self.lhss == 2 => {
+            SpaceKind::Symm if lhss == 2 => {
                 with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
@@ -237,7 +156,7 @@ impl GenericBasis {
                     }
                 });
             }
-            SpaceKind::Symm if self.lhss == 3 => {
+            SpaceKind::Symm if lhss == 3 => {
                 with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
@@ -245,7 +164,7 @@ impl GenericBasis {
                     }
                 });
             }
-            SpaceKind::Symm if self.lhss == 4 => {
+            SpaceKind::Symm if lhss == 4 => {
                 with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
                     for seed in seeds {
                         let s = decode_seed!(B, seed);
