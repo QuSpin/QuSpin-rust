@@ -56,7 +56,9 @@ impl PySpinBasis {
     /// Args:
     ///     n_sites: number of lattice sites.
     ///     ham:     `PauliOperator` or `BondOperator` used for BFS.
-    ///     seeds:   list of seed state strings (`'0'`/`'1'` chars per site).
+    ///     seeds:   list of seed state strings. For `lhss == 2`: one `'0'`/`'1'`
+    ///              char per site. For `lhss > 2`: one decimal digit per site in
+    ///              the range `0..lhss`.
     ///     lhss:    local Hilbert-space size (default 2).
     #[classmethod]
     #[pyo3(signature = (n_sites, ham, seeds, lhss = 2))]
@@ -128,7 +130,10 @@ impl PySpinBasis {
     // Methods
     // ------------------------------------------------------------------
 
-    /// Return the `i`-th basis state as a bit-string (`'0'`/`'1'` per site).
+    /// Return the `i`-th basis state as a string of site occupations.
+    ///
+    /// For `lhss == 2` returns a `'0'`/`'1'` string; for `lhss > 2` returns
+    /// decimal digit characters (one per site, value in `0..lhss`).
     fn state_at(&self, i: usize) -> PyResult<String> {
         if i >= self.inner.inner.size() {
             return Err(pyo3::exceptions::PyIndexError::new_err(format!(
@@ -141,7 +146,9 @@ impl PySpinBasis {
 
     /// Return the index of `state_str` in this basis, or `None` if absent.
     ///
-    /// `state_str` must be a `'0'`/`'1'` string of length `n_sites`.
+    /// `state_str` must be a string of length `n_sites`. For `lhss == 2`: one
+    /// `'0'`/`'1'` character per site. For `lhss > 2`: one decimal digit per
+    /// site in the range `0..lhss`.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
         let bytes = parse_state_str(state_str, self.inner.inner.lhss())?;
         Ok(self.inner.inner.index_of_bytes(&bytes))

@@ -18,7 +18,7 @@
 /// are not physically meaningful.
 use crate::basis::{
     BasisSpace,
-    seed::{dit_state_to_str, seed_from_bytes, state_to_str},
+    seed::{dit_seed_from_bytes, dit_state_to_str, seed_from_bytes, state_to_str},
     space::{FullSpace, Subspace},
     sym::SymBasis,
 };
@@ -486,81 +486,98 @@ impl SpaceInner {
 
     /// Look up the index of the state encoded as a site-occupation byte slice.
     ///
+    /// For `lhss == 2` each byte is a 0/1 occupation; for `lhss > 2` each byte
+    /// is a dit value in `0..lhss`.  The encoding must match what was used when
+    /// building the basis (i.e. `seed_from_bytes` for binary, `dit_seed_from_bytes`
+    /// for multi-valued).
+    ///
     /// Returns `None` if the state is not in the basis.
     pub fn index_of_bytes(&self, bytes: &[u8]) -> Option<usize> {
+        // Converts `bytes` to the correct integer seed type, branching on lhss.
+        macro_rules! index_bytes {
+            ($b:expr) => {{
+                let lhss = $b.lhss();
+                let seed = if lhss == 2 {
+                    seed_from_bytes(bytes)
+                } else {
+                    dit_seed_from_bytes(bytes, &DynamicDitManip::new(lhss))
+                };
+                $b.index(seed)
+            }};
+        }
         match self {
-            SpaceInner::Full32(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::Full64(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::Sub32(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::Sub64(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::Sub128(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::Sub256(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Full32(b) => index_bytes!(b),
+            SpaceInner::Full64(b) => index_bytes!(b),
+            SpaceInner::Sub32(b) => index_bytes!(b),
+            SpaceInner::Sub64(b) => index_bytes!(b),
+            SpaceInner::Sub128(b) => index_bytes!(b),
+            SpaceInner::Sub256(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sub512(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Sub512(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sub1024(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Sub1024(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sub2048(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Sub2048(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sub4096(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Sub4096(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sub8192(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::Sym32(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::Sym64(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::Sym128(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::Sym256(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Sub8192(b) => index_bytes!(b),
+            SpaceInner::Sym32(b) => index_bytes!(b),
+            SpaceInner::Sym64(b) => index_bytes!(b),
+            SpaceInner::Sym128(b) => index_bytes!(b),
+            SpaceInner::Sym256(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym512(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Sym512(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym1024(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Sym1024(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym2048(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Sym2048(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym4096(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Sym4096(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym8192(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::DitSym32(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::DitSym64(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::DitSym128(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::DitSym256(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::Sym8192(b) => index_bytes!(b),
+            SpaceInner::DitSym32(b) => index_bytes!(b),
+            SpaceInner::DitSym64(b) => index_bytes!(b),
+            SpaceInner::DitSym128(b) => index_bytes!(b),
+            SpaceInner::DitSym256(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym512(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::DitSym512(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym1024(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::DitSym1024(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym2048(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::DitSym2048(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym4096(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::DitSym4096(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym8192(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::TritSym32(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::TritSym64(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::TritSym128(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::TritSym256(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::DitSym8192(b) => index_bytes!(b),
+            SpaceInner::TritSym32(b) => index_bytes!(b),
+            SpaceInner::TritSym64(b) => index_bytes!(b),
+            SpaceInner::TritSym128(b) => index_bytes!(b),
+            SpaceInner::TritSym256(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::TritSym512(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym512(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::TritSym1024(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym1024(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::TritSym2048(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym2048(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::TritSym4096(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym4096(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::TritSym8192(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::QuatSym32(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::QuatSym64(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::QuatSym128(b) => b.index(seed_from_bytes(bytes)),
-            SpaceInner::QuatSym256(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::TritSym8192(b) => index_bytes!(b),
+            SpaceInner::QuatSym32(b) => index_bytes!(b),
+            SpaceInner::QuatSym64(b) => index_bytes!(b),
+            SpaceInner::QuatSym128(b) => index_bytes!(b),
+            SpaceInner::QuatSym256(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::QuatSym512(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::QuatSym512(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::QuatSym1024(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::QuatSym1024(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::QuatSym2048(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::QuatSym2048(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::QuatSym4096(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::QuatSym4096(b) => index_bytes!(b),
             #[cfg(feature = "large-int")]
-            SpaceInner::QuatSym8192(b) => b.index(seed_from_bytes(bytes)),
+            SpaceInner::QuatSym8192(b) => index_bytes!(b),
         }
     }
 
