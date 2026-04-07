@@ -7,10 +7,9 @@
 use ndarray::ArrayViewMut2;
 
 use crate::error::QuSpinError;
-use crate::primitive::Primitive;
-use crate::qmatrix::matrix::{CIndex, Index, QMatrix};
 
 use super::compute::ExpmComputation;
+use super::linear_operator::LinearOperator;
 
 // ---------------------------------------------------------------------------
 // Scalar variant
@@ -26,22 +25,20 @@ use super::compute::ExpmComputation;
 /// ```
 ///
 /// # Arguments
-/// - `matrix`  — sparse matrix A
-/// - `coeffs`  — operator coefficients (`len = matrix.num_coeff()`)
+/// - `op`      — linear operator implementing `A · x`
 /// - `a`       — global scalar factor
 /// - `mu`      — diagonal shift μ (usually `trace(A)/n`)
 /// - `s`       — partition count (scaling factor)
 /// - `m_star`  — Taylor truncation order per partition
 /// - `tol`     — convergence tolerance (typically `V::machine_eps()`)
-/// - `f`       — input/output vector, length = `matrix.dim()`
-/// - `work`    — scratch buffer, length ≥ `2 * matrix.dim()`
+/// - `f`       — input/output vector, length = `op.dim()`
+/// - `work`    — scratch buffer, length ≥ `2 * op.dim()`
 ///
 /// # Errors
 /// Returns `ValueError` if buffer lengths are inconsistent.
 #[allow(clippy::too_many_arguments)]
-pub fn expm_multiply<M, I, C, V>(
-    matrix: &QMatrix<M, I, C>,
-    coeffs: &[V],
+pub fn expm_multiply<V, Op>(
+    op: &Op,
     a: V,
     mu: V,
     s: usize,
@@ -51,23 +48,21 @@ pub fn expm_multiply<M, I, C, V>(
     work: &mut [V],
 ) -> Result<(), QuSpinError>
 where
-    M: Primitive,
-    I: Index,
-    C: CIndex,
     V: ExpmComputation,
+    Op: LinearOperator<V>,
 {
-    let n = matrix.dim();
+    let n = op.dim();
 
     if f.len() != n {
         return Err(QuSpinError::ValueError(format!(
-            "f.len()={} must equal matrix.dim()={}",
+            "f.len()={} must equal op.dim()={}",
             f.len(),
             n
         )));
     }
     if work.len() < 2 * n {
         return Err(QuSpinError::ValueError(format!(
-            "work.len()={} must be >= 2 * matrix.dim()={}",
+            "work.len()={} must be >= 2 * op.dim()={}",
             work.len(),
             2 * n
         )));
@@ -93,7 +88,7 @@ where
 
         'taylor: for j in 1..=m_star {
             // tmp = A · B  (overwrite=true zeros tmp first)
-            matrix.dot(true, coeffs, b1, tmp)?;
+            op.dot(true, b1, tmp)?;
 
             // scale = a / (j · s)
             let scale = a * V::from_real(V::real_from_f64(1.0 / (j * s) as f64));
@@ -151,9 +146,8 @@ where
 /// # Errors
 /// Returns `ValueError` if array shapes are inconsistent.
 #[allow(clippy::too_many_arguments)]
-pub fn expm_multiply_many<M, I, C, V>(
-    matrix: &QMatrix<M, I, C>,
-    coeffs: &[V],
+pub fn expm_multiply_many<V, Op>(
+    op: &Op,
     a: V,
     mu: V,
     s: usize,
@@ -163,17 +157,15 @@ pub fn expm_multiply_many<M, I, C, V>(
     mut work: ArrayViewMut2<'_, V>,
 ) -> Result<(), QuSpinError>
 where
-    M: Primitive,
-    I: Index,
-    C: CIndex,
     V: ExpmComputation,
+    Op: LinearOperator<V>,
 {
-    let n = matrix.dim();
+    let n = op.dim();
     let n_vecs = f.ncols();
 
     if f.nrows() != n {
         return Err(QuSpinError::ValueError(format!(
-            "f.nrows()={} must equal matrix.dim()={}",
+            "f.nrows()={} must equal op.dim()={}",
             f.nrows(),
             n
         )));
@@ -207,7 +199,7 @@ where
 
         'taylor: for j in 1..=m_star {
             // tmp = A · B  (batch matvec)
-            matrix.dot_many(true, coeffs, b1_view.view(), tmp_view.view_mut())?;
+            op.dot_many(true, b1_view.view(), tmp_view.view_mut())?;
 
             let scale = a * V::from_real(V::real_from_f64(1.0 / (j * s) as f64));
 

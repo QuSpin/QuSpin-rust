@@ -9,11 +9,8 @@
 
 use std::collections::HashMap;
 
-use num_complex::Complex;
-
-use crate::primitive::Primitive;
-use crate::qmatrix::matrix::{CIndex, Index, QMatrix};
-
+use super::compute::ExpmComputation;
+use super::linear_operator::LinearOperator;
 use super::norm_est::onenorm_matrix_power_nnm;
 
 // ---------------------------------------------------------------------------
@@ -97,20 +94,17 @@ fn theta(m: usize) -> f64 {
 /// Lazily evaluated norm information for the operator `B = a*(A - μI)`.
 ///
 /// Mirrors `LazyOperatorNormInfo` in `expm_multiply_parallel_core.py`.
-///
-/// # Type parameters
-/// See [`QMatrix`] — `M` is the stored element type, `I` the row/column index
-/// type, `C` the operator-string index type.
-pub struct LazyNormInfo<'a, M, I, C> {
-    /// The sparse matrix A.
-    matrix: &'a QMatrix<M, I, C>,
-    /// Effective operator coefficients, one per distinct `cindex`.
-    /// Passed verbatim to [`QMatrix::dot`] / [`QMatrix::dot_transpose`].
-    coeffs: Vec<Complex<f64>>,
+pub struct LazyNormInfo<'a, V, Op>
+where
+    V: ExpmComputation,
+    Op: LinearOperator<V>,
+{
+    /// The linear operator wrapping the matrix and baked-in coefficients.
+    op: &'a Op,
     /// Scalar factor: `B = a*(A - μI)`.
-    a: Complex<f64>,
+    a: V,
     /// Diagonal shift `μ = trace(A)/n`.
-    mu: Complex<f64>,
+    mu: V,
     /// Precomputed exact value `|a| · ||A - μI||_1`.
     onenorm_exact: f64,
     /// Cache for `d(p) = ||B^p||_1^(1/p)`.
@@ -119,32 +113,22 @@ pub struct LazyNormInfo<'a, M, I, C> {
     ell: usize,
 }
 
-impl<'a, M, I, C> LazyNormInfo<'a, M, I, C>
+impl<'a, V, Op> LazyNormInfo<'a, V, Op>
 where
-    M: Primitive,
-    I: Index,
-    C: CIndex,
+    V: ExpmComputation,
+    Op: LinearOperator<V>,
 {
     /// Construct a `LazyNormInfo`.
     ///
     /// # Arguments
-    /// - `matrix`        — reference to the sparse matrix `A`
-    /// - `coeffs`        — evaluated operator coefficients (one per `cindex`)
+    /// - `op`            — linear operator (matrix + baked-in coefficients)
     /// - `a`             — scalar factor in `B = a*(A - μI)`
     /// - `mu`            — diagonal shift (usually `trace(A) / n`)
     /// - `onenorm_exact` — precomputed value `|a| · ||A - μI||_1`
     /// - `ell`           — number of probe vectors for the 1-norm estimator
-    pub fn new(
-        matrix: &'a QMatrix<M, I, C>,
-        coeffs: Vec<Complex<f64>>,
-        a: Complex<f64>,
-        mu: Complex<f64>,
-        onenorm_exact: f64,
-        ell: usize,
-    ) -> Self {
+    pub fn new(op: &'a Op, a: V, mu: V, onenorm_exact: f64, ell: usize) -> Self {
         Self {
-            matrix,
-            coeffs,
+            op,
             a,
             mu,
             onenorm_exact,
@@ -167,12 +151,14 @@ where
         if let Some(&cached) = self.d_cache.get(&p) {
             return cached;
         }
-        let est = onenorm_matrix_power_nnm(self.matrix, &self.coeffs, self.a, self.mu, p, self.ell);
+        let est = onenorm_matrix_power_nnm(self.op, self.a, self.mu, p, self.ell);
+        // Convert V::Real → f64 via round-trip through Complex<f64>.
+        let est_f64 = V::from_real(est).to_complex().re;
         // d(p) = ||B^p||_1^(1/p)
-        let d_p = if est == 0.0 {
+        let d_p = if est_f64 == 0.0 {
             0.0
         } else {
-            est.powf(1.0 / p as f64)
+            est_f64.powf(1.0 / p as f64)
         };
         self.d_cache.insert(p, d_p);
         d_p
@@ -209,16 +195,15 @@ where
 /// `s` is the number of matrix-exponential partitions (scaling count).
 ///
 /// Returns `(0, 1)` when the matrix is small enough to skip scaling entirely.
-pub fn fragment_3_1<M, I, C>(
-    norm_info: &mut LazyNormInfo<M, I, C>,
+pub fn fragment_3_1<V, Op>(
+    norm_info: &mut LazyNormInfo<V, Op>,
     n0: usize,
     _tol: f64,
     m_max: usize,
 ) -> (usize, usize)
 where
-    M: Primitive,
-    I: Index,
-    C: CIndex,
+    V: ExpmComputation,
+    Op: LinearOperator<V>,
 {
     // Condition 3.13: norm is small enough that s=1 suffices for all m.
     if condition_3_13(norm_info, n0, m_max) {
@@ -277,11 +262,10 @@ where
 /// says s = 1 suffices, not that m_star = 0 is valid) is deliberately not
 /// used here: returning `(0, 1)` with a non-zero norm would drop all Taylor
 /// corrections and give an incorrect result.
-fn condition_3_13<M, I, C>(norm_info: &mut LazyNormInfo<M, I, C>, _n0: usize, _m_max: usize) -> bool
+fn condition_3_13<V, Op>(norm_info: &mut LazyNormInfo<V, Op>, _n0: usize, _m_max: usize) -> bool
 where
-    M: Primitive,
-    I: Index,
-    C: CIndex,
+    V: ExpmComputation,
+    Op: LinearOperator<V>,
 {
     norm_info.onenorm() == 0.0
 }
@@ -293,7 +277,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::expm::linear_operator::QMatrixOperator;
     use crate::qmatrix::matrix::{Entry, QMatrix};
+    use num_complex::Complex;
 
     /// Build a simple 2×2 diagonal QMatrix with a single cindex.
     fn diag2(a: f64, b: f64) -> QMatrix<f64, i32, u8> {
@@ -315,7 +301,6 @@ mod tests {
         // For the 2×2 identity with tiny ||A||, condition 3.13 should hold
         // and we should get (m_star=0, s=1).
         let mat = diag2(1.0, 1.0);
-        let n = mat.dim();
         let a = Complex::new(1e-17_f64, 0.0); // tiny scalar → tiny onenorm
         let mu = Complex::new(1.0, 0.0);
         // onenorm = |a| * ||I - I||_1 = 0
@@ -323,11 +308,11 @@ mod tests {
         let coeffs = vec![Complex::new(1.0, 0.0); mat.num_coeff()];
         let tol = f64::EPSILON / 2.0;
 
-        let mut norm_info = LazyNormInfo::new(&mat, coeffs, a, mu, onenorm_exact, 2);
+        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
+        let mut norm_info = LazyNormInfo::new(&op, a, mu, onenorm_exact, 2);
         let (m_star, s) = fragment_3_1(&mut norm_info, 1, tol, 55);
         assert_eq!(m_star, 0, "expected m_star=0 for tiny matrix");
         assert_eq!(s, 1, "expected s=1 for tiny matrix");
-        let _ = n;
     }
 
     #[test]
@@ -344,7 +329,8 @@ mod tests {
         let coeffs = vec![Complex::new(1.0, 0.0); mat.num_coeff()];
         let tol = f64::EPSILON / 2.0;
 
-        let mut norm_info = LazyNormInfo::new(&mat, coeffs, a, mu, onenorm_exact, 2);
+        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
+        let mut norm_info = LazyNormInfo::new(&op, a, mu, onenorm_exact, 2);
         let (m_star, s) = fragment_3_1(&mut norm_info, 1, tol, 55);
         // With large norm the algorithm must scale (s > 1) and use Taylor terms.
         assert!(s > 1, "expected s>1 for large-norm matrix, got s={s}");
