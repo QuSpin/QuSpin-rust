@@ -204,6 +204,10 @@ impl PyGenericBasis {
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 
+    fn __str__(&self) -> String {
+        format!("{}", self.inner.inner)
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "GenericBasis(n_sites={}, lhss={}, size={}, kind={})",

@@ -138,6 +138,10 @@ impl PyBosonBasis {
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 
+    fn __str__(&self) -> String {
+        format!("{}", self.inner.inner)
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "BosonBasis(n_sites={}, lhss={}, size={}, kind={})",

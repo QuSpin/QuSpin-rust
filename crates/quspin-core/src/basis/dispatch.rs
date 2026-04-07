@@ -484,6 +484,87 @@ impl SpaceInner {
         }
     }
 
+    /// Return the `i`-th basis state as a decimal integer string.
+    ///
+    /// The integer is the raw internal state value (LSB = site 0).  Useful for
+    /// the third column of the QuSpin-style display.
+    pub fn state_at_decimal_str(&self, i: usize) -> String {
+        match self {
+            SpaceInner::Full32(b) => format!("{}", b.state_at(i)),
+            SpaceInner::Full64(b) => format!("{}", b.state_at(i)),
+            SpaceInner::Sub32(b) => format!("{}", b.state_at(i)),
+            SpaceInner::Sub64(b) => format!("{}", b.state_at(i)),
+            SpaceInner::Sub128(b) => format!("{}", b.state_at(i)),
+            SpaceInner::Sub256(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sub512(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sub1024(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sub2048(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sub4096(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sub8192(b) => format!("{}", b.state_at(i)),
+            SpaceInner::Sym32(b) => format!("{}", b.state_at(i)),
+            SpaceInner::Sym64(b) => format!("{}", b.state_at(i)),
+            SpaceInner::Sym128(b) => format!("{}", b.state_at(i)),
+            SpaceInner::Sym256(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sym512(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sym1024(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sym2048(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sym4096(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::Sym8192(b) => format!("{}", b.state_at(i)),
+            SpaceInner::DitSym32(b) => format!("{}", b.state_at(i)),
+            SpaceInner::DitSym64(b) => format!("{}", b.state_at(i)),
+            SpaceInner::DitSym128(b) => format!("{}", b.state_at(i)),
+            SpaceInner::DitSym256(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::DitSym512(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::DitSym1024(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::DitSym2048(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::DitSym4096(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::DitSym8192(b) => format!("{}", b.state_at(i)),
+            SpaceInner::TritSym32(b) => format!("{}", b.state_at(i)),
+            SpaceInner::TritSym64(b) => format!("{}", b.state_at(i)),
+            SpaceInner::TritSym128(b) => format!("{}", b.state_at(i)),
+            SpaceInner::TritSym256(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::TritSym512(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::TritSym1024(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::TritSym2048(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::TritSym4096(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::TritSym8192(b) => format!("{}", b.state_at(i)),
+            SpaceInner::QuatSym32(b) => format!("{}", b.state_at(i)),
+            SpaceInner::QuatSym64(b) => format!("{}", b.state_at(i)),
+            SpaceInner::QuatSym128(b) => format!("{}", b.state_at(i)),
+            SpaceInner::QuatSym256(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym512(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym1024(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym2048(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym4096(b) => format!("{}", b.state_at(i)),
+            #[cfg(feature = "large-int")]
+            SpaceInner::QuatSym8192(b) => format!("{}", b.state_at(i)),
+        }
+    }
+
     /// Look up the index of the state encoded as a site-occupation byte slice.
     ///
     /// For `lhss == 2` each byte is a 0/1 occupation; for `lhss > 2` each byte
@@ -1107,45 +1188,78 @@ const DISPLAY_TAIL: usize = 25;
 impl std::fmt::Display for SpaceInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let size = self.size();
-        let sym_display = if self.is_symmetric() {
-            "[symmetric]"
-        } else {
-            "[]"
-        };
-        let index_width = size.saturating_sub(1).to_string().len();
+        let lhss = self.lhss();
+        let n_sites = self.n_sites();
 
-        write!(
-            f,
-            "{}(n_sites={}, size={}, symmetries={}):",
-            self.kind(),
-            self.n_sites(),
-            size,
-            sym_display,
-        )?;
+        writeln!(f, "reference states:")?;
+        writeln!(f, "array index   /   Fock state   /   integer repr.")?;
+
+        if size == 0 {
+            if self.is_symmetric() {
+                write!(
+                    f,
+                    "\nThe states printed do NOT correspond to the physical states: \
+                     see review arXiv:1101.3281 for more details about reference \
+                     states for symmetry-reduced blocks."
+                )?;
+            }
+            return Ok(());
+        }
+
+        // Width of the index column (right-aligned).
+        let w_idx = (size - 1).to_string().len();
+        // Digits per site in the Fock-state column.
+        let n_space = (lhss - 1).to_string().len().max(1);
+        // Width of the Fock string "|s0 s1 ... sN>".
+        let fock_w = 1 + n_sites * n_space + n_sites.saturating_sub(1) + 1;
+        // Width of the integer-repr column (last state has the largest value).
+        let w_int = self.state_at_decimal_str(size - 1).len();
+
+        // Build and write a single row given its basis index `i`.
+        macro_rules! write_row {
+            ($i:expr) => {{
+                let compact = self.state_at_str($i);
+                let spaced: String = compact
+                    .chars()
+                    .map(|c| format!("{:>n_space$}", c))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let fock = format!("|{}>", spaced);
+                let int_str = self.state_at_decimal_str($i);
+                writeln!(
+                    f,
+                    " {:>w_idx$}.  {:<fock_w$}  {:>w_int$}",
+                    $i, fock, int_str,
+                )?;
+            }};
+        }
 
         let truncate = size > DISPLAY_HEAD + DISPLAY_TAIL;
-        let indices: Box<dyn Iterator<Item = usize>> = if truncate {
-            Box::new((0..DISPLAY_HEAD).chain(size - DISPLAY_TAIL..size))
-        } else {
-            Box::new(0..size)
-        };
-
-        let mut prev: Option<usize> = None;
-        for i in indices {
-            if truncate
-                && let Some(p) = prev
-                && i > p + 1
-            {
-                write!(f, "\n  {:>width$}", "...", width = index_width + 1)?;
+        if !truncate {
+            for i in 0..size {
+                write_row!(i);
             }
+        } else {
+            for i in 0..DISPLAY_HEAD {
+                write_row!(i);
+            }
+            // Separator: ":" aligned under the centre of the Fock column.
+            // Position of "|" in the row: 1 + w_idx + 3  (leading space + index + ".  ")
+            let pipe_pos = 1 + w_idx + 3;
+            let colon_col = pipe_pos + fock_w / 2;
+            writeln!(f, "{:>colon_col$}", ":")?;
+            for i in size - DISPLAY_TAIL..size {
+                write_row!(i);
+            }
+        }
+
+        if self.is_symmetric() {
             write!(
                 f,
-                "\n  {:>width$}. |{}>",
-                i,
-                self.state_at_str(i),
-                width = index_width,
+                "\nThe states printed do NOT correspond to the physical states: \
+                 see review arXiv:1101.3281 for more details about reference \
+                 states for symmetry-reduced blocks."
             )?;
-            prev = Some(i);
         }
         Ok(())
     }
@@ -2086,51 +2200,78 @@ macro_rules! select_b_for_large_n_sites {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::space::{FullSpace, Subspace};
+    use crate::basis::space::FullSpace;
 
     #[test]
-    fn display_full_space() {
+    fn display_header() {
         let inner = SpaceInner::Full32(FullSpace::new(2, 2, false));
         let s = inner.to_string();
-        assert!(s.starts_with("full(n_sites=2, size=4, symmetries=[]):"));
-        assert!(s.contains("|11>"));
-        assert!(s.contains("|00>"));
+        assert!(
+            s.starts_with("reference states:\narray index   /   Fock state   /   integer repr.")
+        );
     }
 
     #[test]
-    fn display_subspace() {
-        let mut sub = Subspace::<u32>::new(2, 2, false);
-        sub.build(0b01u32, |s| {
-            vec![(num_complex::Complex::new(1.0, 0.0), s ^ 0b11, 0u8)]
-        });
-        let inner = SpaceInner::Sub32(sub);
+    fn display_fock_format() {
+        // lhss=2, n_sites=2: states |0 0>, |0 1>, |1 0>, |1 1>
+        let inner = SpaceInner::Full32(FullSpace::new(2, 2, false));
         let s = inner.to_string();
-        assert!(s.starts_with("subspace(n_sites=2, size="));
-        assert!(s.contains("symmetries=[]"));
+        assert!(s.contains("|0 0>"), "expected spaced fock string");
+        assert!(s.contains("|1 1>"), "expected spaced fock string");
+    }
+
+    #[test]
+    fn display_integer_column() {
+        // Full basis lhss=2, n_sites=2: state 0b11 = 3, state 0b01 = 1
+        let inner = SpaceInner::Full32(FullSpace::new(2, 2, false));
+        let s = inner.to_string();
+        // Each row should end with a decimal integer
+        assert!(s.contains("  3"), "expected integer repr 3");
+        assert!(s.contains("  0"), "expected integer repr 0");
     }
 
     #[test]
     fn display_index_alignment() {
-        // 16 states → indices 0-15, width 2; row 9 and 10 should be right-aligned
+        // 16 states → indices 0-15, width 2; rows 9 and 10 should be right-aligned
         let inner = SpaceInner::Full32(FullSpace::new(2, 4, false));
         let s = inner.to_string();
-        assert!(s.contains("  9."));
-        assert!(s.contains(" 10."));
+        assert!(s.contains("  9."), "expected right-aligned index 9");
+        assert!(s.contains(" 10."), "expected right-aligned index 10");
     }
 
     #[test]
     fn display_truncation() {
-        // 64 states > 50 → should truncate with "..."
+        // 64 states > 50 → should truncate with ":"
         let inner = SpaceInner::Full32(FullSpace::new(2, 6, false));
         let s = inner.to_string();
-        assert!(s.contains("..."), "expected truncation marker");
+        assert!(s.contains(':'), "expected truncation marker");
         // First 25 rows present (index 0 and 24)
-        assert!(s.contains("\n   0."), "expected row 0");
-        assert!(s.contains("\n  24."), "expected row 24");
+        assert!(
+            s.contains("\n  0.") || s.contains("\n   0."),
+            "expected row 0"
+        );
+        assert!(s.contains(" 24."), "expected row 24");
         // Row 25 should be absent (truncated)
-        assert!(!s.contains("\n  25."), "row 25 should be truncated");
-        // Last 25 rows present (index 39 and 63)
-        assert!(s.contains("\n  39."), "expected row 39");
-        assert!(s.contains("\n  63."), "expected row 63");
+        assert!(
+            !s.contains("\n  25.") && !s.contains("\n 25."),
+            "row 25 should be truncated"
+        );
+        // Last 25 rows: for 64 states, tail starts at 39 (64 - 25 = 39)
+        assert!(s.contains(" 39."), "expected row 39");
+        assert!(s.contains(" 63."), "expected row 63");
+    }
+
+    #[test]
+    fn display_symmetric_note() {
+        use crate::basis::sym::SymBasis;
+        use crate::bitbasis::PermDitMask;
+        let inner = SpaceInner::Sym32(SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(
+            2, 2, false,
+        ));
+        let s = inner.to_string();
+        assert!(
+            s.contains("do NOT correspond to the physical states"),
+            "expected symmetry note"
+        );
     }
 }
