@@ -1,9 +1,10 @@
-use crate::basis::{apply_symmetries, parse_seeds, parse_state_str};
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::boson::PyBosonOperator;
+use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
+use quspin_core::basis::seed::{dit_seed_from_str, seed_from_str};
 use quspin_core::basis::{BosonBasis, SpaceKind};
 
 /// Python-facing bosonic basis.
@@ -12,6 +13,33 @@ use quspin_core::basis::{BosonBasis, SpaceKind};
 #[pyclass(name = "BosonBasis", module = "quspin._rs")]
 pub struct PyBosonBasis {
     pub inner: BosonBasis,
+}
+
+fn parse_seeds(seeds: &[String], lhss: usize) -> PyResult<Vec<Vec<u8>>> {
+    seeds
+        .iter()
+        .map(|s| {
+            if lhss == 2 {
+                seed_from_str(s).map_err(Error::from).map_err(PyErr::from)
+            } else {
+                dit_seed_from_str(s, lhss)
+                    .map_err(Error::from)
+                    .map_err(PyErr::from)
+            }
+        })
+        .collect()
+}
+
+fn apply_symmetries(
+    basis: &mut BosonBasis,
+    symmetries: &[(Vec<usize>, (f64, f64))],
+) -> PyResult<()> {
+    for (perm, (re, im)) in symmetries {
+        basis
+            .add_lattice(Complex::new(*re, *im), perm.clone())
+            .map_err(Error::from)?;
+    }
+    Ok(())
 }
 
 fn build_boson_basis(
@@ -88,7 +116,7 @@ impl PyBosonBasis {
     ) -> PyResult<Self> {
         let byte_seeds = parse_seeds(&seeds, lhss)?;
         let mut basis = BosonBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
-        apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
+        apply_symmetries(&mut basis, &symmetries)?;
         build_boson_basis(&mut basis, ham, &byte_seeds)?;
         Ok(PyBosonBasis { inner: basis })
     }
@@ -99,12 +127,12 @@ impl PyBosonBasis {
 
     #[getter]
     fn n_sites(&self) -> usize {
-        self.inner.inner.n_sites()
+        self.inner.n_sites
     }
 
     #[getter]
     fn lhss(&self) -> usize {
-        self.inner.inner.lhss()
+        self.inner.lhss
     }
 
     #[getter]
@@ -134,7 +162,11 @@ impl PyBosonBasis {
 
     /// Return the index of `state_str`, or `None` if absent.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = parse_state_str(state_str, self.inner.inner.lhss())?;
+        let bytes = if self.inner.lhss == 2 {
+            seed_from_str(state_str).map_err(Error::from)?
+        } else {
+            dit_seed_from_str(state_str, self.inner.lhss).map_err(Error::from)?
+        };
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 
@@ -145,8 +177,8 @@ impl PyBosonBasis {
     fn __repr__(&self) -> String {
         format!(
             "BosonBasis(n_sites={}, lhss={}, size={}, kind={})",
-            self.inner.inner.n_sites(),
-            self.inner.inner.lhss(),
+            self.inner.n_sites,
+            self.inner.lhss,
             self.inner.inner.size(),
             self.inner.inner.kind(),
         )
