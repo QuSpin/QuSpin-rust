@@ -67,16 +67,19 @@ pub trait LinearOperator<V: ExpmComputation>: Send + Sync {
         output: ArrayViewMut2<'_, V>,
     ) -> Result<(), QuSpinError>;
 
-    /// Row-range dot product: same as `dot` but only writes to `output[rows]`.
+    /// Row-chunk dot product: computes rows `row_start .. row_start + output_chunk.len()`
+    /// of `A_eff · input` and writes the results into the caller-supplied
+    /// `output_chunk` slice.
     ///
-    /// Reads all of `input`; the caller is responsible for ensuring no other
-    /// thread writes to `output[rows]` concurrently.
+    /// `output_chunk` is the caller's exclusive subslice for these rows; it may
+    /// point into a larger contiguous buffer.  The caller is responsible for
+    /// ensuring no other thread accesses `output_chunk` concurrently.
     fn dot_chunk(
         &self,
         overwrite: bool,
         input: &[V],
-        output: &mut [V],
-        rows: Range<usize>,
+        output_chunk: &mut [V],
+        row_start: usize,
     ) -> Result<(), QuSpinError>;
 
     /// Row-range transpose product: scatter-adds `A_eff^T` contributions from
@@ -204,19 +207,17 @@ where
         &self,
         overwrite: bool,
         input: &[V],
-        output: &mut [V],
-        rows: Range<usize>,
+        output_chunk: &mut [V],
+        row_start: usize,
     ) -> Result<(), QuSpinError> {
         if overwrite {
-            for r in rows.clone() {
-                output[r] = V::default();
-            }
+            output_chunk.iter_mut().for_each(|v| *v = V::default());
         }
-        for r in rows {
+        for (k_local, r) in (row_start..row_start + output_chunk.len()).enumerate() {
             for e in self.matrix.row(r) {
                 let scale =
                     self.coeffs[e.cindex.as_usize()] * V::from_complex(e.value.to_complex());
-                output[r] += scale * input[e.col.as_usize()];
+                output_chunk[k_local] += scale * input[e.col.as_usize()];
             }
         }
         Ok(())

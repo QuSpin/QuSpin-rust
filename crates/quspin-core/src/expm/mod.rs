@@ -29,12 +29,12 @@ pub mod linear_operator;
 pub mod norm_est;
 pub mod params;
 
-pub use algorithm::{expm_multiply, expm_multiply_many};
+pub use algorithm::{PAR_THRESHOLD, expm_multiply, expm_multiply_many, expm_multiply_par};
 pub use compute::{AtomicAccum, ExpmComputation};
 pub use linear_operator::{LinearOperator, QMatrixOperator};
 pub use params::{LazyNormInfo, fragment_3_1};
 
-use ndarray::{Array2, ArrayViewMut2};
+use ndarray::{Array2, ArrayViewMut1, ArrayViewMut2};
 use num_complex::Complex;
 
 use crate::error::QuSpinError;
@@ -181,7 +181,7 @@ where
 pub fn expm_multiply_auto_into<V, Op>(
     op: &Op,
     a: V,
-    f: &mut [V],
+    f: ArrayViewMut1<'_, V>,
     work: &mut [V],
 ) -> Result<(), QuSpinError>
 where
@@ -205,13 +205,17 @@ where
     }
 
     let (m_star, s, mu, tol) = compute_expm_params(op, a)?;
-    expm_multiply(op, a, mu, s, m_star, tol, f, work)
+    if n >= PAR_THRESHOLD {
+        expm_multiply_par(op, a, mu, s, m_star, tol, f, work)
+    } else {
+        expm_multiply(op, a, mu, s, m_star, tol, f, work)
+    }
 }
 
 /// Compute `exp(a·A) · f` in-place, allocating the scratch buffer internally.
 ///
 /// Convenience wrapper around [`expm_multiply_auto_into`].
-pub fn expm_multiply_auto<V, Op>(op: &Op, a: V, f: &mut [V]) -> Result<(), QuSpinError>
+pub fn expm_multiply_auto<V, Op>(op: &Op, a: V, f: ArrayViewMut1<'_, V>) -> Result<(), QuSpinError>
 where
     V: ExpmComputation,
     Op: LinearOperator<V>,
@@ -329,7 +333,17 @@ mod tests {
         let mut work = vec![0.0_f64; 4];
 
         let op = QMatrixOperator::new(&mat, coeffs).unwrap();
-        expm_multiply(&op, a, mu, s, m_star, tol, &mut f, &mut work).unwrap();
+        expm_multiply(
+            &op,
+            a,
+            mu,
+            s,
+            m_star,
+            tol,
+            ndarray::aview_mut1(&mut f),
+            &mut work,
+        )
+        .unwrap();
 
         let e1 = E; // exp(1)
         let e2 = E * E; // exp(2)
@@ -346,7 +360,7 @@ mod tests {
         let mut f = vec![1.0_f64, 1.0_f64];
 
         let op = QMatrixOperator::new(&mat, coeffs).unwrap();
-        expm_multiply_auto(&op, a, &mut f).unwrap();
+        expm_multiply_auto(&op, a, ndarray::aview_mut1(&mut f)).unwrap();
 
         assert!((f[0] - E).abs() < 1e-10, "f[0]={}", f[0]);
         assert!((f[1] - E * E).abs() < 1e-10, "f[1]={}", f[1]);
@@ -368,12 +382,117 @@ mod tests {
         let mut f = vec![Complex::new(1.0, 0.0), Complex::new(1.0, 0.0)];
 
         let op = QMatrixOperator::new(&mat, coeffs).unwrap();
-        expm_multiply_auto(&op, a, &mut f).unwrap();
+        expm_multiply_auto(&op, a, ndarray::aview_mut1(&mut f)).unwrap();
 
         assert!((f[0].re - E).abs() < 1e-10, "f[0].re={}", f[0].re);
         assert!(f[0].im.abs() < 1e-10, "f[0].im={}", f[0].im);
         assert!((f[1].re - E * E).abs() < 1e-10, "f[1].re={}", f[1].re);
         assert!(f[1].im.abs() < 1e-10, "f[1].im={}", f[1].im);
+    }
+
+    #[test]
+    fn expm_multiply_par_matches_sequential_same_params() {
+        // For n = PAR_THRESHOLD, verify that expm_multiply_par produces the
+        // same floating-point result as expm_multiply when given identical
+        // parameters (mu, s, m_star, tol).  Both functions are deterministic
+        // given fixed parameters, so bitwise agreement (up to machine epsilon)
+        // is expected.
+        //
+        // We use A = diag(0.01, 0.02, ..., 0.01*n) so the operator norm is
+        // small (≤ 2.56) and the Taylor series is accurate with a single
+        // partition (s=1, m_star=55).
+        let n = PAR_THRESHOLD;
+        let data: Vec<_> = (0..n)
+            .map(|k| Entry::new((k + 1) as f64 * 0.01, k as i32, 0_u8))
+            .collect();
+        let indptr: Vec<i32> = (0..=(n as i32)).collect();
+        let mat = QMatrix::from_csr(indptr, data);
+
+        let coeffs = vec![1.0_f64];
+        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
+        let a = 1.0_f64;
+        let mu = 0.0_f64;
+        let s = 1;
+        let m_star = 55;
+        let tol = f64::EPSILON / 2.0;
+
+        let mut work = vec![0.0_f64; 2 * n];
+
+        let mut f_seq = vec![1.0_f64; n];
+        expm_multiply(
+            &op,
+            a,
+            mu,
+            s,
+            m_star,
+            tol,
+            ndarray::aview_mut1(&mut f_seq),
+            &mut work,
+        )
+        .unwrap();
+
+        let mut f_par = vec![1.0_f64; n];
+        expm_multiply_par(
+            &op,
+            a,
+            mu,
+            s,
+            m_star,
+            tol,
+            ndarray::aview_mut1(&mut f_par),
+            &mut work,
+        )
+        .unwrap();
+
+        for k in 0..n {
+            // Exact answer: exp(0.01*(k+1)) is small and well-conditioned.
+            let expected = ((k + 1) as f64 * 0.01_f64).exp();
+            let rel_tol = 1e-10;
+            assert!(
+                (f_seq[k] - expected).abs() / expected < rel_tol,
+                "seq[{k}]={} expected {expected}",
+                f_seq[k]
+            );
+            // par and seq must agree within a few ULPs (same computation, same order).
+            assert!(
+                (f_par[k] - f_seq[k]).abs() <= 10.0 * f64::EPSILON * f_seq[k].abs(),
+                "par[{k}]={} seq[{k}]={} differ beyond 10 ULPs",
+                f_par[k],
+                f_seq[k]
+            );
+        }
+    }
+
+    #[test]
+    fn expm_multiply_auto_parallel_dispatch_correctness() {
+        // expm_multiply_auto dispatches to the parallel path for n >= PAR_THRESHOLD.
+        // Verify correctness by comparing against the sequential low-level call
+        // with adaptive parameters computed by compute_expm_params.
+        //
+        // We use a well-conditioned matrix (small eigenvalues) so that both
+        // paths converge accurately and the comparison is meaningful.
+        let n = PAR_THRESHOLD;
+        let data: Vec<_> = (0..n)
+            .map(|k| Entry::new((k + 1) as f64 * 0.01, k as i32, 0_u8))
+            .collect();
+        let indptr: Vec<i32> = (0..=(n as i32)).collect();
+        let mat = QMatrix::from_csr(indptr, data);
+
+        let coeffs = vec![1.0_f64];
+        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
+        let a = 1.0_f64;
+
+        // auto path (parallel for n >= PAR_THRESHOLD)
+        let mut f_auto = vec![1.0_f64; n];
+        expm_multiply_auto(&op, a, ndarray::aview_mut1(&mut f_auto)).unwrap();
+
+        for (k, &fk) in f_auto.iter().enumerate() {
+            let expected = ((k + 1) as f64 * 0.01_f64).exp();
+            assert!(
+                (fk - expected).abs() / expected < 1e-10,
+                "f_auto[{k}]={fk} expected {expected}",
+            );
+        }
     }
 
     #[test]

@@ -171,6 +171,7 @@ pub trait ExpmComputation: Primitive {
     /// The real scalar type: `f32` for `f32`/`Complex<f32>`,
     /// `f64` for `f64`/`Complex<f64>`.
     type Real: Copy
+        + Send
         + PartialOrd
         + Add<Output = Self::Real>
         + Mul<Output = Self::Real>
