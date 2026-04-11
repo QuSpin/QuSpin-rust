@@ -88,7 +88,7 @@ pub trait LinearOperator<V: ExpmComputation>: Send + Sync {
     /// Unlike `dot_chunk`, the transpose scatters writes to arbitrary column
     /// indices, so different threads processing disjoint row ranges will
     /// concurrently write to the same output slots.  The output is therefore
-    /// typed as `&[V::Atomic]` — a shared, atomically-acumulatable array —
+    /// typed as `&[V::Atomic]` — a shared, atomically-accumulatable array —
     /// rather than `&mut [V]`.
     ///
     /// The caller initialises `output` to all-zeros (via `V::Atomic::zero()`)

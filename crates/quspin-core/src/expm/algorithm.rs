@@ -326,26 +326,52 @@ where
     // about barrier-based sequencing statically, so RawSlice is used here.
     let raw_b1 = RawSlice::new(b1_buf);
 
+    // Build exactly `n_threads` disjoint row ranges so the number of spawned
+    // workers always matches the Barrier size.  Using chunks_mut(chunk) can
+    // yield fewer than n_threads chunks when n is not a multiple of chunk
+    // (e.g. n=5, n_threads=4, chunk=2 → 3 chunks), which would deadlock the
+    // barrier.  Explicit (begin, end) ranges guarantee exactly n_threads
+    // partitions; the last few may be empty when n < n_threads * chunk.
+    let ranges: Vec<(usize, usize)> = (0..n_threads)
+        .map(|tid| {
+            let begin = (tid * chunk).min(n);
+            let end = ((tid + 1) * chunk).min(n);
+            (begin, end)
+        })
+        .collect();
+
     // tmp and f are split into per-thread chunks using safe Rust: each thread
     // receives exclusive ownership of its contiguous slice (tmp) or strided
     // sub-view (f) with no aliasing.
-    let tmp_chunks: Vec<&mut [V]> = tmp_buf.chunks_mut(chunk).collect();
+    let mut tmp_chunks: Vec<&mut [V]> = Vec::with_capacity(n_threads);
+    {
+        let mut remaining = tmp_buf;
+        for &(begin, end) in &ranges {
+            let len = end - begin;
+            let (lo, hi) = remaining.split_at_mut(len);
+            tmp_chunks.push(lo);
+            remaining = hi;
+        }
+    }
 
     let mut f_parts: Vec<ArrayViewMut1<'_, V>> = Vec::with_capacity(n_threads);
     {
         let mut remaining = f;
-        for _ in 0..n_threads - 1 {
-            let (lo, hi) = remaining.split_at(Axis(0), chunk);
+        for &(begin, end) in &ranges {
+            let len = end - begin;
+            let (lo, hi) = remaining.split_at(Axis(0), len);
             f_parts.push(lo);
             remaining = hi;
         }
-        f_parts.push(remaining);
     }
 
     std::thread::scope(|scope| {
-        for (tid, (tmp_chunk, mut f_chunk)) in tmp_chunks.into_iter().zip(f_parts).enumerate() {
-            let begin = tid * chunk;
-            let n_local = tmp_chunk.len(); // rows owned by this thread
+        for (tid, ((begin, end), (tmp_chunk, mut f_chunk))) in ranges
+            .into_iter()
+            .zip(tmp_chunks.into_iter().zip(f_parts))
+            .enumerate()
+        {
+            let n_local = end - begin; // rows owned by this thread
 
             let barrier = Arc::clone(&barrier);
             let exit_flag = Arc::clone(&exit_flag);

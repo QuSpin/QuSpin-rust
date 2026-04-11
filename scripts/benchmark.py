@@ -13,10 +13,10 @@ from quspin_rs._rs import (
 
 
 def _make_operator(L: int) -> PauliOperator:
-    """Single-particle XX+YY hopping on L sites with periodic boundary conditions."""
-    zz_bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
-    x_bonds = [[1.0, i] for i in range(L)]
-    return PauliOperator([("xx", zz_bonds)], [("z", x_bonds)])
+    """Nearest-neighbor XX interaction with transverse Z field on L sites (PBC)."""
+    xx_bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
+    z_bonds = [[1.0, i] for i in range(L)]
+    return PauliOperator([("xx", xx_bonds)], [("z", z_bonds)])
 
 
 def _translation_group(
@@ -63,23 +63,24 @@ def Hx(t):
 
 
 ham = Hamiltonian(Q, [Static(), Hx])
-input = np.zeros(basis.size, dtype=np.complex128)
-print(basis.index("0000000000"))
-input[basis.index("0000000000")] = 1.0
-output = np.zeros_like(input)
+psi0 = np.zeros(basis.size, dtype=np.complex128)
+print(basis.index("0" * L))
+psi0[basis.index("0" * L)] = 1.0
+output = np.zeros_like(psi0)
 
 # TODO:
 # * see if we can merge `dot` and `dot_many` into a single python biniding.
 # * expose dot_transpose in the same way.
 # * Try to make output and overwrite optional
 #
-ham.dot_many(0.5, input.reshape((-1, 1)), output.reshape((-1, 1)), True)
+ham.dot_many(0.5, psi0.reshape((-1, 1)), output.reshape((-1, 1)), True)
 
 
 # TODO: Fix this this interface, should have input and output arrays
+# This method is going to be removed later on. after issue https://github.com/QuSpin/QuSpin-rust/issues/33
 a = 0.01j
-print(input)
-ham.expm_dot(0.0, a, input1 := input.copy())
+print(psi0)
+ham.expm_dot(0.0, a, input1 := psi0.copy())
 print(input1)
 ham.expm_dot(0.0, a, input2 := input1.copy())
 print(input2)

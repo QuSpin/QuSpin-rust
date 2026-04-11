@@ -15,6 +15,16 @@ use super::linear_operator::LinearOperator;
 /// - `ell` — number of probe vectors (typically 2)
 ///
 /// Returns a lower bound on `‖B^p‖_1`.
+///
+/// # Precision note
+///
+/// Internal arithmetic runs in `V::Real`, which is `f32` when `V = f32` or
+/// `Complex<f32>`.  The caller (`LazyNormInfo::d`) converts the result to
+/// `f64` before parameter selection, so (m*, s) choices are made in full
+/// double precision regardless of the compute dtype.  The estimator itself
+/// may be slightly less accurate for `f32` inputs, but this is an acceptable
+/// tradeoff — the norm estimate is only used to choose scaling parameters,
+/// not as a final result.
 pub fn onenorm_matrix_power_nnm<V, Op>(op: &Op, a: V, mu: V, p: usize, ell: usize) -> V::Real
 where
     V: ExpmComputation,
