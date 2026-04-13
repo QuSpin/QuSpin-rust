@@ -210,7 +210,8 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
         f: &mut [Complex<f64>],
     ) -> Result<(), QuSpinError> {
         let coeffs = self.eval_coeffs(time);
-        crate::expm::expm_multiply_auto(&self.matrix, &coeffs, a, f)
+        let op = crate::expm::QMatrixOperator::new(&self.matrix, coeffs)?;
+        crate::expm::expm_multiply_auto(&op, a, ndarray::aview_mut1(f))
     }
 
     /// Compute `exp(a · H(time)) · F` in-place for multiple column vectors.
@@ -227,7 +228,8 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
         f: ArrayViewMut2<'_, Complex<f64>>,
     ) -> Result<(), QuSpinError> {
         let coeffs = self.eval_coeffs(time);
-        crate::expm::expm_multiply_many_auto(&self.matrix, &coeffs, a, f)
+        let op = crate::expm::QMatrixOperator::new(&self.matrix, coeffs)?;
+        crate::expm::expm_multiply_many_auto(&op, a, f)
     }
 }
 

@@ -8,10 +8,11 @@
 //!
 //! | file | contents |
 //! |------|----------|
-//! | `compute`    | [`ExpmComputation`] trait + impls for `f32`/`f64`/`Complex<_>` |
-//! | `norm_est`   | Randomised 1-norm estimator (Higham–Tisseur 2000) |
-//! | `params`     | Adaptive parameter selection: [`LazyNormInfo`], [`fragment_3_1`] |
-//! | `algorithm`  | Core Taylor loop: [`expm_multiply`], [`expm_multiply_many`] |
+//! | `compute`          | [`ExpmComputation`] trait + impls for `f32`/`f64`/`Complex<_>` |
+//! | `linear_operator`  | [`LinearOperator`] trait and [`QMatrixOperator`] adapter |
+//! | `norm_est`         | Randomised 1-norm estimator (Higham–Tisseur 2000) |
+//! | `params`           | Adaptive parameter selection: [`LazyNormInfo`], [`fragment_3_1`] |
+//! | `algorithm`        | Core Taylor loop: [`expm_multiply`], [`expm_multiply_many`] |
 //!
 //! # High-level API
 //!
@@ -24,14 +25,16 @@
 
 pub mod algorithm;
 pub mod compute;
+pub mod linear_operator;
 pub mod norm_est;
 pub mod params;
 
-pub use algorithm::{expm_multiply, expm_multiply_many};
-pub use compute::ExpmComputation;
+pub use algorithm::{PAR_THRESHOLD, expm_multiply, expm_multiply_many, expm_multiply_par};
+pub use compute::{AtomicAccum, ExpmComputation};
+pub use linear_operator::{LinearOperator, QMatrixOperator};
 pub use params::{LazyNormInfo, fragment_3_1};
 
-use ndarray::{Array2, ArrayViewMut2};
+use ndarray::{Array2, ArrayViewMut1, ArrayViewMut2};
 use num_complex::Complex;
 
 use crate::error::QuSpinError;
@@ -118,42 +121,33 @@ where
 }
 
 // ---------------------------------------------------------------------------
-// Internal: compute adaptive parameters (μ, m_star, s) for a given matrix
+// Internal: compute adaptive parameters (μ, m_star, s) for a given operator
 // ---------------------------------------------------------------------------
 
 /// Compute `(m_star, s, mu_v, tol)` for `exp(a·A_eff)` via [`fragment_3_1`].
 ///
 /// `mu_v` is the diagonal shift cast to type `V`;
 /// `tol`  is `V::machine_eps()`.
-fn compute_expm_params<M, I, C, V>(
-    matrix: &QMatrix<M, I, C>,
-    coeffs: &[V],
-    a: V,
-) -> Result<(usize, usize, V, V::Real), QuSpinError>
+fn compute_expm_params<V, Op>(op: &Op, a: V) -> Result<(usize, usize, V, V::Real), QuSpinError>
 where
-    M: Primitive,
-    I: Index,
-    C: CIndex,
     V: ExpmComputation,
+    Op: LinearOperator<V>,
 {
-    let n = matrix.dim();
+    let n = op.dim();
     let tol = V::machine_eps();
 
     if n == 0 {
         return Ok((0, 1, V::default(), tol));
     }
 
-    // Convert coefficients to Complex<f64> for the norm-estimation machinery.
-    let coeffs_c64: Vec<Complex<f64>> = coeffs.iter().map(|c| c.to_complex()).collect();
-    let a_c64 = a.to_complex();
-
     // μ = trace(A_eff) / n  (diagonal shift)
-    let mu_c64 = compute_trace_c64(matrix, &coeffs_c64) / n as f64;
-    let mu_v = V::from_complex(mu_c64);
+    let mu_v = op.trace() * V::from_real(V::real_from_f64(1.0 / n as f64));
 
-    // ||A_eff − μI||₁ and the operator norm |a|·||A_eff − μI||₁
-    let a_1_norm = onenorm_shifted_c64(matrix, &coeffs_c64, mu_c64);
-    let onenorm_exact = a_c64.norm() * a_1_norm;
+    // onenorm_exact = |a| * ||A_eff - μI||_1  (in f64)
+    let a_norm = a.to_complex().norm();
+    let a_1_norm_shifted = op.onenorm(mu_v);
+    let a_1_norm_f64 = V::from_real(a_1_norm_shifted).to_complex().re;
+    let onenorm_exact = a_norm * a_1_norm_f64;
 
     // If the operator is zero-valued, skip parameter search.
     if onenorm_exact == 0.0 {
@@ -161,10 +155,9 @@ where
     }
 
     let mut norm_info = LazyNormInfo::new(
-        matrix,
-        coeffs_c64,
-        a_c64,
-        mu_c64,
+        op,
+        a,
+        mu_v,
         onenorm_exact,
         2, // ell = 2 (matches parallel-sparse-tools)
     );
@@ -181,60 +174,54 @@ where
 
 /// Compute `exp(a·A) · f` in-place, deriving μ, m_star, s adaptively.
 ///
-/// The caller supplies the scratch buffer `work` (length ≥ `2 * matrix.dim()`).
+/// The caller supplies the scratch buffer `work` (length ≥ `2 * op.dim()`).
 ///
 /// # Errors
 /// Returns `ValueError` if buffer lengths are inconsistent.
-pub fn expm_multiply_auto_into<M, I, C, V>(
-    matrix: &QMatrix<M, I, C>,
-    coeffs: &[V],
+pub fn expm_multiply_auto_into<V, Op>(
+    op: &Op,
     a: V,
-    f: &mut [V],
+    f: ArrayViewMut1<'_, V>,
     work: &mut [V],
 ) -> Result<(), QuSpinError>
 where
-    M: Primitive,
-    I: Index,
-    C: CIndex,
     V: ExpmComputation,
+    Op: LinearOperator<V>,
 {
-    let n = matrix.dim();
+    let n = op.dim();
     if f.len() != n {
         return Err(QuSpinError::ValueError(format!(
-            "f.len()={} must equal matrix.dim()={}",
+            "f.len()={} must equal op.dim()={}",
             f.len(),
             n
         )));
     }
     if work.len() < 2 * n {
         return Err(QuSpinError::ValueError(format!(
-            "work.len()={} must be >= 2*matrix.dim()={}",
+            "work.len()={} must be >= 2*op.dim()={}",
             work.len(),
             2 * n
         )));
     }
 
-    let (m_star, s, mu, tol) = compute_expm_params(matrix, coeffs, a)?;
-    expm_multiply(matrix, coeffs, a, mu, s, m_star, tol, f, work)
+    let (m_star, s, mu, tol) = compute_expm_params(op, a)?;
+    if n >= PAR_THRESHOLD {
+        expm_multiply_par(op, a, mu, s, m_star, tol, f, work)
+    } else {
+        expm_multiply(op, a, mu, s, m_star, tol, f, work)
+    }
 }
 
 /// Compute `exp(a·A) · f` in-place, allocating the scratch buffer internally.
 ///
 /// Convenience wrapper around [`expm_multiply_auto_into`].
-pub fn expm_multiply_auto<M, I, C, V>(
-    matrix: &QMatrix<M, I, C>,
-    coeffs: &[V],
-    a: V,
-    f: &mut [V],
-) -> Result<(), QuSpinError>
+pub fn expm_multiply_auto<V, Op>(op: &Op, a: V, f: ArrayViewMut1<'_, V>) -> Result<(), QuSpinError>
 where
-    M: Primitive,
-    I: Index,
-    C: CIndex,
     V: ExpmComputation,
+    Op: LinearOperator<V>,
 {
-    let mut work = vec![V::default(); 2 * matrix.dim()];
-    expm_multiply_auto_into(matrix, coeffs, a, f, &mut work)
+    let mut work = vec![V::default(); 2 * op.dim()];
+    expm_multiply_auto_into(op, a, f, &mut work)
 }
 
 // ---------------------------------------------------------------------------
@@ -246,57 +233,51 @@ where
 /// `f`    has shape `(dim, n_vecs)`.
 /// `work` has shape `(2 * dim, n_vecs)`.
 ///
-/// Parameters μ, m_star, s are computed once from the matrix and reused for
+/// Parameters μ, m_star, s are computed once from the operator and reused for
 /// all columns.
 ///
 /// # Errors
 /// Returns `ValueError` if array shapes are inconsistent.
-pub fn expm_multiply_many_auto_into<M, I, C, V>(
-    matrix: &QMatrix<M, I, C>,
-    coeffs: &[V],
+pub fn expm_multiply_many_auto_into<V, Op>(
+    op: &Op,
     a: V,
     f: ArrayViewMut2<'_, V>,
     work: ArrayViewMut2<'_, V>,
 ) -> Result<(), QuSpinError>
 where
-    M: Primitive,
-    I: Index,
-    C: CIndex,
     V: ExpmComputation,
+    Op: LinearOperator<V>,
 {
-    let n = matrix.dim();
+    let n = op.dim();
     if f.nrows() != n {
         return Err(QuSpinError::ValueError(format!(
-            "f.nrows()={} must equal matrix.dim()={}",
+            "f.nrows()={} must equal op.dim()={}",
             f.nrows(),
             n
         )));
     }
 
-    let (m_star, s, mu, tol) = compute_expm_params(matrix, coeffs, a)?;
-    expm_multiply_many(matrix, coeffs, a, mu, s, m_star, tol, f, work)
+    let (m_star, s, mu, tol) = compute_expm_params(op, a)?;
+    expm_multiply_many(op, a, mu, s, m_star, tol, f, work)
 }
 
 /// Compute `exp(a·A) · F` in-place for multiple column vectors, allocating
 /// the scratch buffer internally.
 ///
 /// Convenience wrapper around [`expm_multiply_many_auto_into`].
-pub fn expm_multiply_many_auto<M, I, C, V>(
-    matrix: &QMatrix<M, I, C>,
-    coeffs: &[V],
+pub fn expm_multiply_many_auto<V, Op>(
+    op: &Op,
     a: V,
     mut f: ArrayViewMut2<'_, V>,
 ) -> Result<(), QuSpinError>
 where
-    M: Primitive,
-    I: Index,
-    C: CIndex,
     V: ExpmComputation,
+    Op: LinearOperator<V>,
 {
-    let n = matrix.dim();
+    let n = op.dim();
     let n_vecs = f.ncols();
     let mut work_buf = Array2::from_elem((2 * n, n_vecs), V::default());
-    expm_multiply_many_auto_into(matrix, coeffs, a, f.view_mut(), work_buf.view_mut())
+    expm_multiply_many_auto_into(op, a, f.view_mut(), work_buf.view_mut())
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +332,18 @@ mod tests {
         let mut f = vec![1.0_f64, 1.0_f64];
         let mut work = vec![0.0_f64; 4];
 
-        expm_multiply(&mat, &coeffs, a, mu, s, m_star, tol, &mut f, &mut work).unwrap();
+        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
+        expm_multiply(
+            &op,
+            a,
+            mu,
+            s,
+            m_star,
+            tol,
+            ndarray::aview_mut1(&mut f),
+            &mut work,
+        )
+        .unwrap();
 
         let e1 = E; // exp(1)
         let e2 = E * E; // exp(2)
@@ -367,7 +359,8 @@ mod tests {
         let a = 1.0_f64;
         let mut f = vec![1.0_f64, 1.0_f64];
 
-        expm_multiply_auto(&mat, &coeffs, a, &mut f).unwrap();
+        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
+        expm_multiply_auto(&op, a, ndarray::aview_mut1(&mut f)).unwrap();
 
         assert!((f[0] - E).abs() < 1e-10, "f[0]={}", f[0]);
         assert!((f[1] - E * E).abs() < 1e-10, "f[1]={}", f[1]);
@@ -388,12 +381,118 @@ mod tests {
         let a = Complex::new(0.0, -1.0); // -i
         let mut f = vec![Complex::new(1.0, 0.0), Complex::new(1.0, 0.0)];
 
-        expm_multiply_auto(&mat, &coeffs, a, &mut f).unwrap();
+        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
+        expm_multiply_auto(&op, a, ndarray::aview_mut1(&mut f)).unwrap();
 
         assert!((f[0].re - E).abs() < 1e-10, "f[0].re={}", f[0].re);
         assert!(f[0].im.abs() < 1e-10, "f[0].im={}", f[0].im);
         assert!((f[1].re - E * E).abs() < 1e-10, "f[1].re={}", f[1].re);
         assert!(f[1].im.abs() < 1e-10, "f[1].im={}", f[1].im);
+    }
+
+    #[test]
+    fn expm_multiply_par_matches_sequential_same_params() {
+        // For n = PAR_THRESHOLD, verify that expm_multiply_par produces the
+        // same floating-point result as expm_multiply when given identical
+        // parameters (mu, s, m_star, tol).  Both functions are deterministic
+        // given fixed parameters, so bitwise agreement (up to machine epsilon)
+        // is expected.
+        //
+        // We use A = diag(0.01, 0.02, ..., 0.01*n) so the operator norm is
+        // small (≤ 2.56) and the Taylor series is accurate with a single
+        // partition (s=1, m_star=55).
+        let n = PAR_THRESHOLD;
+        let data: Vec<_> = (0..n)
+            .map(|k| Entry::new((k + 1) as f64 * 0.01, k as i32, 0_u8))
+            .collect();
+        let indptr: Vec<i32> = (0..=(n as i32)).collect();
+        let mat = QMatrix::from_csr(indptr, data);
+
+        let coeffs = vec![1.0_f64];
+        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
+        let a = 1.0_f64;
+        let mu = 0.0_f64;
+        let s = 1;
+        let m_star = 55;
+        let tol = f64::EPSILON / 2.0;
+
+        let mut work = vec![0.0_f64; 2 * n];
+
+        let mut f_seq = vec![1.0_f64; n];
+        expm_multiply(
+            &op,
+            a,
+            mu,
+            s,
+            m_star,
+            tol,
+            ndarray::aview_mut1(&mut f_seq),
+            &mut work,
+        )
+        .unwrap();
+
+        let mut f_par = vec![1.0_f64; n];
+        expm_multiply_par(
+            &op,
+            a,
+            mu,
+            s,
+            m_star,
+            tol,
+            ndarray::aview_mut1(&mut f_par),
+            &mut work,
+        )
+        .unwrap();
+
+        for k in 0..n {
+            // Exact answer: exp(0.01*(k+1)) is small and well-conditioned.
+            let expected = ((k + 1) as f64 * 0.01_f64).exp();
+            let rel_tol = 1e-10;
+            assert!(
+                (f_seq[k] - expected).abs() / expected < rel_tol,
+                "seq[{k}]={} expected {expected}",
+                f_seq[k]
+            );
+            // par and seq must agree within a few ULPs (same computation, same order).
+            assert!(
+                (f_par[k] - f_seq[k]).abs() <= 10.0 * f64::EPSILON * f_seq[k].abs(),
+                "par[{k}]={} seq[{k}]={} differ beyond 10 ULPs",
+                f_par[k],
+                f_seq[k]
+            );
+        }
+    }
+
+    #[test]
+    fn expm_multiply_auto_parallel_dispatch_correctness() {
+        // expm_multiply_auto dispatches to the parallel path for n >= PAR_THRESHOLD.
+        // Verify correctness by comparing against the sequential low-level call
+        // with adaptive parameters computed by compute_expm_params.
+        //
+        // We use a well-conditioned matrix (small eigenvalues) so that both
+        // paths converge accurately and the comparison is meaningful.
+        let n = PAR_THRESHOLD;
+        let data: Vec<_> = (0..n)
+            .map(|k| Entry::new((k + 1) as f64 * 0.01, k as i32, 0_u8))
+            .collect();
+        let indptr: Vec<i32> = (0..=(n as i32)).collect();
+        let mat = QMatrix::from_csr(indptr, data);
+
+        let coeffs = vec![1.0_f64];
+        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
+        let a = 1.0_f64;
+
+        // auto path (parallel for n >= PAR_THRESHOLD)
+        let mut f_auto = vec![1.0_f64; n];
+        expm_multiply_auto(&op, a, ndarray::aview_mut1(&mut f_auto)).unwrap();
+
+        for (k, &fk) in f_auto.iter().enumerate() {
+            let expected = ((k + 1) as f64 * 0.01_f64).exp();
+            assert!(
+                (fk - expected).abs() / expected < 1e-10,
+                "f_auto[{k}]={fk} expected {expected}",
+            );
+        }
     }
 
     #[test]
@@ -403,8 +502,9 @@ mod tests {
         let coeffs = vec![1.0_f64];
         let a = 1.0_f64;
 
+        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
         let mut f_arr = Array2::ones((2, 2_usize));
-        expm_multiply_many_auto(&mat, &coeffs, a, f_arr.view_mut()).unwrap();
+        expm_multiply_many_auto(&op, a, f_arr.view_mut()).unwrap();
 
         for col in 0..2 {
             assert!(
