@@ -3,7 +3,7 @@
 /// Replaces the two-type hierarchy (`SymGrpBase<B,L>` + `SymmetricSubspace<G,N>`)
 /// with a single flat struct. `N` is an explicit type parameter — the B→N
 /// pairing is encoded in `SpaceInner` variant definitions, not a runtime enum.
-use super::bfs::bfs_wave;
+use super::bfs::{AMP_CANCEL_TOL, PARALLEL_FRONTIER_THRESHOLD};
 use super::lattice::{BenesLatticeElement, LatEl, LocalOpItem};
 use super::traits::BasisSpace;
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
@@ -210,10 +210,19 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
 
     /// Build the symmetric subspace reachable from `seed` under `op`.
     ///
-    /// Uses level-synchronous BFS with three phases per wave:
-    /// 1. Parallel operator application over the frontier
-    /// 2. Parallel batch orbit computation (deferred, one large batch)
-    /// 3. Sequential registration of new representative states
+    /// Uses level-synchronous BFS with two parallel phases per wave:
+    ///
+    /// 1. **Fused BFS + orbit mapping** — amplitude-cancellation BFS and
+    ///    `get_refstate` per surviving candidate run in one parallel fold/reduce,
+    ///    yielding a `HashSet<B>` of orbit representatives directly.
+    ///    This replaces the former separate BFS pass and the subsequent
+    ///    `check_refstate_batch` on every candidate (which computed norms that
+    ///    were immediately discarded).
+    /// 2. **Parallel norm computation** — `par_check_refstate_batch` on the
+    ///    unique new representatives only (the smallest possible batch),
+    ///    retaining the SIMD-friendly batch orbit traversal for this step.
+    /// 3. **Sequential registration** — dedup and index-map update on the main
+    ///    thread; frontier for the next wave assembled here.
     pub fn build<Op, I, Iter>(&mut self, seed: B, op: Op)
     where
         Op: Fn(B) -> Iter + Sync,
@@ -234,27 +243,21 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         let mut frontier: Vec<B> = vec![ref_seed];
 
         while !frontier.is_empty() {
-            // Phase 1: discover raw candidate states via operator application.
-            // Per-source amplitude accumulation and cancellation, then union.
-            let candidates: Vec<B> = bfs_wave(&frontier, &op).into_iter().collect();
+            let lattice = &self.lattice;
+            let local = &self.local;
 
-            if candidates.is_empty() {
+            // Phase 1+2a (fused): BFS discovery + orbit-representative mapping
+            // in a single parallel fold — one fork/join instead of two.
+            // Uses get_refstate (no norm computation) per surviving candidate.
+            let candidate_reps: HashSet<B> = bfs_wave_with_reps(&frontier, &op, lattice, local);
+
+            if candidate_reps.is_empty() {
                 frontier.clear();
                 continue;
             }
 
-            // Phase 2a: map candidates to their orbit representatives.
-            let lattice = &self.lattice;
-            let local = &self.local;
-
-            let mut ref_out: Vec<(B, f64)> = vec![(B::from_u64(0), 0.0); candidates.len()];
-            par_check_refstate_batch(lattice, local, &candidates, &mut ref_out);
-
-            // Collect unique new representatives (not already in index_map).
-            let unique_reps: Vec<B> = ref_out
-                .iter()
-                .map(|(rep, _)| *rep)
-                .collect::<HashSet<B>>()
+            // Sequential dedup: keep only reps not already registered.
+            let unique_reps: Vec<B> = candidate_reps
                 .into_iter()
                 .filter(|rep| !self.index_map.contains_key(rep))
                 .collect();
@@ -264,11 +267,12 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
                 continue;
             }
 
-            // Phase 2b: compute orbit norms for unique representatives.
+            // Phase 2b: compute orbit norms for unique new representatives.
+            // Batch call retains SIMD-friendly inner-loop structure.
             let mut norm_out: Vec<(B, f64)> = vec![(B::from_u64(0), 0.0); unique_reps.len()];
             par_check_refstate_batch(lattice, local, &unique_reps, &mut norm_out);
 
-            // Phase 3: register new representatives and form next frontier.
+            // Phase 3: register valid representatives, build next frontier.
             frontier.clear();
             for (&rep, &(_, norm)) in unique_reps.iter().zip(norm_out.iter()) {
                 if norm > 0.0
@@ -290,6 +294,103 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         for (i, &(s, _)) in self.states.iter().enumerate() {
             self.index_map.insert(s, i);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fused BFS + orbit-representative helper
+// ---------------------------------------------------------------------------
+
+/// Fused BFS wave + orbit-representative mapping.
+///
+/// Combines amplitude-cancellation BFS discovery (the work previously done by
+/// `bfs_wave`) with a per-candidate [`orbit::get_refstate`] call in a single
+/// parallel fold/reduce.  This eliminates the separate
+/// `par_check_refstate_batch` pass on every raw candidate that the old code
+/// performed (which computed norms that were immediately discarded during
+/// deduplication).
+///
+/// ## Returns
+///
+/// A [`HashSet<B>`] of orbit-representative states reached from `frontier` in
+/// one BFS wave.  Representatives are already de-duplicated; the caller is
+/// responsible for filtering out those already in `index_map`.
+///
+/// ## Parallelism
+///
+/// - Below [`PARALLEL_FRONTIER_THRESHOLD`]: sequential single-threaded path.
+/// - Above threshold: rayon `par_iter().fold().reduce()` — each thread owns a
+///   disjoint slice of `frontier`, builds a thread-local `HashSet<B>` of
+///   representatives, and the sets are unioned in the reduce step.
+fn bfs_wave_with_reps<B, E, L, Op, I, Iter>(
+    frontier: &[B],
+    op: &Op,
+    lattice: &[E],
+    local: &[L],
+) -> HashSet<B>
+where
+    B: BitInt,
+    E: LatEl<B> + Sync,
+    L: LocalOpItem<B> + Sync,
+    Op: Fn(B) -> Iter + Sync,
+    Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
+{
+    if frontier.len() < PARALLEL_FRONTIER_THRESHOLD {
+        let mut reps = HashSet::new();
+        let mut contributions: HashMap<B, (Complex<f64>, f64)> = HashMap::new();
+        for &state in frontier {
+            contributions.clear();
+            for (amp, next_state, _) in op(state) {
+                if next_state != state {
+                    let e = contributions.entry(next_state).or_default();
+                    e.0 += amp;
+                    e.1 += amp.norm();
+                }
+            }
+            for (&candidate, &(net_amp, scale)) in &contributions {
+                if net_amp.norm() > scale * AMP_CANCEL_TOL {
+                    let (rep, _) = super::orbit::get_refstate(lattice, local, candidate);
+                    reps.insert(rep);
+                }
+            }
+        }
+        reps
+    } else {
+        frontier
+            .par_iter()
+            .fold(
+                || {
+                    (
+                        HashSet::<B>::new(),
+                        HashMap::<B, (Complex<f64>, f64)>::new(),
+                    )
+                },
+                |(mut reps, mut contributions), &state| {
+                    contributions.clear();
+                    for (amp, next_state, _) in op(state) {
+                        if next_state != state {
+                            let e = contributions.entry(next_state).or_default();
+                            e.0 += amp;
+                            e.1 += amp.norm();
+                        }
+                    }
+                    for (&candidate, &(net_amp, scale)) in &contributions {
+                        if net_amp.norm() > scale * AMP_CANCEL_TOL {
+                            let (rep, _) = super::orbit::get_refstate(lattice, local, candidate);
+                            reps.insert(rep);
+                        }
+                    }
+                    (reps, contributions)
+                },
+            )
+            .map(|(reps, _)| reps)
+            .reduce(
+                || HashSet::new(),
+                |mut a, b| {
+                    a.extend(b);
+                    a
+                },
+            )
     }
 }
 
