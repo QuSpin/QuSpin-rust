@@ -24,8 +24,13 @@ use super::{
 use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, manip::DynamicDitManip};
 use ndarray::{Array2, ArrayBase, ArrayView1, Data, Ix1, aview1};
 use num_complex::Complex;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::ops::AddAssign;
+
+/// Minimum number of basis states before switching `expand_to_map` to the
+/// parallel fold/reduce path.
+const PARALLEL_EXPAND_THRESHOLD: usize = 256;
 
 // ---------------------------------------------------------------------------
 // AsStateVec — blanket conversion to ArrayView1
@@ -92,17 +97,42 @@ pub fn expand_to_map<B, T, E, V>(space: &E, vec: &V) -> HashMap<B, Complex<f64>>
 where
     B: BitInt,
     V: ToView<T> + ?Sized,
-    E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
+    T: Sync,
+    E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>> + Sync,
 {
     let vec = vec.to_view();
     debug_assert_eq!(vec.len(), space.size());
-    let mut map: HashMap<B, Complex<f64>> = HashMap::new();
-    for (i, coeff) in vec.iter().enumerate() {
-        for (state, val) in space.expand_ref_state_iter(i, coeff) {
-            *map.entry(state).or_insert(Complex::new(0.0, 0.0)) += val;
+
+    if vec.len() < PARALLEL_EXPAND_THRESHOLD {
+        let mut map: HashMap<B, Complex<f64>> = HashMap::new();
+        for (i, coeff) in vec.iter().enumerate() {
+            for (state, val) in space.expand_ref_state_iter(i, coeff) {
+                *map.entry(state).or_insert(Complex::new(0.0, 0.0)) += val;
+            }
         }
+        map
+    } else {
+        (0..vec.len())
+            .into_par_iter()
+            .fold(
+                || HashMap::<B, Complex<f64>>::new(),
+                |mut local_map, i| {
+                    for (state, val) in space.expand_ref_state_iter(i, &vec[i]) {
+                        *local_map.entry(state).or_insert(Complex::new(0.0, 0.0)) += val;
+                    }
+                    local_map
+                },
+            )
+            .reduce(
+                || HashMap::new(),
+                |mut a, b| {
+                    for (k, v) in b {
+                        *a.entry(k).or_insert(Complex::new(0.0, 0.0)) += v;
+                    }
+                    a
+                },
+            )
     }
-    map
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +157,8 @@ pub fn get_full_vector<B, T, E, FS, V>(
 ) where
     B: BitInt,
     V: ToView<T> + ?Sized,
-    E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
+    T: Sync,
+    E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>> + Sync,
     FS: BasisSpace<B>,
     Complex<f64>: AddAssign,
 {
@@ -195,7 +226,8 @@ pub fn reduced_density_matrix<B, T, E, V>(
 ) where
     B: BitInt,
     V: ToView<T> + ?Sized,
-    E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>>,
+    T: Sync,
+    E: BasisSpace<B> + ExpandRefState<B, T, Complex<f64>> + Sync,
 {
     let vec = vec.to_view();
     debug_assert_eq!(vec.len(), space.size());
@@ -262,13 +294,30 @@ pub fn reduced_density_matrix<B, T, E, V>(
     }
 
     // Step 3: accumulate outer products into the RDM.
-    for group in groups.values() {
-        for &(sa_i, c_i) in group {
-            for &(sa_j, c_j) in group {
-                out[[sa_i, sa_j]] += c_i * c_j.conj();
-            }
-        }
-    }
+    // Each group is independent (different s_B), so parallelise over groups with
+    // thread-local accumulators to avoid write conflicts on `out`.
+    let groups_vec: Vec<_> = groups.values().collect();
+    let combined: Array2<Complex<f64>> = groups_vec
+        .par_iter()
+        .fold(
+            || Array2::<Complex<f64>>::zeros((dim_a, dim_a)),
+            |mut local, group| {
+                for &(sa_i, c_i) in group.iter() {
+                    for &(sa_j, c_j) in group.iter() {
+                        local[[sa_i, sa_j]] += c_i * c_j.conj();
+                    }
+                }
+                local
+            },
+        )
+        .reduce(
+            || Array2::<Complex<f64>>::zeros((dim_a, dim_a)),
+            |mut a, b| {
+                a += &b;
+                a
+            },
+        );
+    *out += &combined;
 }
 
 // ---------------------------------------------------------------------------
