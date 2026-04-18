@@ -1,9 +1,9 @@
 use crate::hamiltonian::ham::Hamiltonian;
-use crate::primitive::Primitive;
 use crate::qmatrix::matrix::{CIndex, Index};
 use nalgebra::DVector;
 use num_complex::Complex;
 use ode_solvers::System;
+use quspin_types::Primitive;
 
 /// `ode_solvers`-compatible wrapper for time-evolving a quantum state.
 ///

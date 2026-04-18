@@ -1,8 +1,8 @@
 use crate::bitbasis::BitInt;
 use crate::bitbasis::manip::{DitManip, DynamicDitManip};
-use crate::error::QuSpinError;
 use crate::operator::Operator;
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 use smallvec::SmallVec;
 
 // ---------------------------------------------------------------------------

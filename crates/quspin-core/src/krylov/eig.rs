@@ -1,7 +1,7 @@
 use super::basis::LanczosBasis;
-use crate::error::QuSpinError;
 use nalgebra::DMatrix;
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 
 type C64 = Complex<f64>;
 

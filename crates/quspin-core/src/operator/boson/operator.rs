@@ -3,8 +3,8 @@ use crate::operator::Operator;
 use num_complex::Complex;
 use smallvec::SmallVec;
 
-use crate::error::QuSpinError;
 use crate::operator::ParseOp;
+use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
 // BosonOp

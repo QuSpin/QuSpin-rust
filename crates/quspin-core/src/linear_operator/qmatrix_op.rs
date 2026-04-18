@@ -5,13 +5,10 @@ use std::ops::Range;
 use ndarray::{ArrayView2, ArrayViewMut2};
 use num_complex::Complex;
 
-use crate::error::QuSpinError;
-use crate::expm::compute::{AtomicAccum, ExpmComputation};
-use crate::expm::{compute_trace_c64, onenorm_shifted_c64};
-use crate::primitive::Primitive;
-use crate::qmatrix::matrix::{CIndex, Index, QMatrix};
+use quspin_types::{AtomicAccum, ExpmComputation, LinearOperator, Primitive, QuSpinError};
 
-use super::LinearOperator;
+use crate::expm::{compute_trace_c64, onenorm_shifted_c64};
+use crate::qmatrix::matrix::{CIndex, Index, QMatrix};
 
 // ---------------------------------------------------------------------------
 // QMatrixOperator

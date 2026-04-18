@@ -13,7 +13,7 @@
 /// `seed_from_str` is a thin wrapper: it validates the string and converts it
 /// to a byte slice, then delegates to `seed_from_bytes`.
 use crate::bitbasis::{BitInt, manip::DynamicDitManip};
-use crate::error::QuSpinError;
+use quspin_types::QuSpinError;
 
 /// Convert a `B` basis state to a `'0'`/`'1'` string.
 ///

@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use ndarray::{ArrayView2, ArrayViewMut2};
 
+use crate::compute::{AtomicAccum, ExpmComputation};
 use crate::error::QuSpinError;
-use crate::expm::compute::{AtomicAccum, ExpmComputation};
 
 use super::LinearOperator;
 

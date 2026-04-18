@@ -9,7 +9,7 @@ use std::sync::{Arc, Barrier};
 
 use ndarray::{ArrayViewMut1, ArrayViewMut2, Axis};
 
-use crate::error::QuSpinError;
+use quspin_types::QuSpinError;
 
 use super::compute::ExpmComputation;
 use super::linear_operator::LinearOperator;

@@ -1,0 +1,9 @@
+[package]
+name = "quspin-types"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+num-complex = { workspace = true }
+ndarray = { workspace = true }
+thiserror = { workspace = true }

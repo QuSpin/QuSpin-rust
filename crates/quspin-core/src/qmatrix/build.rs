@@ -7,8 +7,8 @@ use crate::basis::{
 };
 use crate::bitbasis::{BitInt, BitStateOp, PermDitValues};
 use crate::operator::Operator;
-use crate::primitive::Primitive;
 use num_complex::Complex;
+use quspin_types::Primitive;
 use rayon::prelude::*;
 use smallvec::SmallVec;
 

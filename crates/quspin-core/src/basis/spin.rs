@@ -1,7 +1,6 @@
 /// Spin basis type [`SpinBasis`].
 use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
-use crate::error::QuSpinError;
 use crate::operator::pauli::HardcoreOperatorInner;
 use crate::operator::{BondOperatorInner, SpinOperatorInner};
 use crate::{
@@ -9,6 +8,7 @@ use crate::{
     with_trit_sym_basis_mut,
 };
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
 // SpaceKind

@@ -2,13 +2,13 @@
 use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
 use crate::basis::spin::SpaceKind;
-use crate::error::QuSpinError;
 use crate::operator::MonomialOperatorInner;
 use crate::{
     with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
     with_trit_sym_basis_mut,
 };
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
 // GenericBasis

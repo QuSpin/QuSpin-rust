@@ -4,9 +4,9 @@ use crate::basis::space::{FullSpace, Subspace};
 use crate::basis::sym::{NormInt, SymBasis};
 use crate::basis::traits::BasisSpace;
 use crate::bitbasis::{BitInt, BitStateOp};
-use crate::error::QuSpinError;
 use crate::qmatrix::CIndex;
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 use rayon::prelude::*;
 
 type C64 = Complex<f64>;

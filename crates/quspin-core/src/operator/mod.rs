@@ -13,8 +13,8 @@ pub use monomial::{MonomialOperator, MonomialOperatorInner, MonomialTerm};
 pub use spin::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
 
 use crate::bitbasis::BitInt;
-use crate::error::QuSpinError;
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 
 /// Abstraction over operators that can be applied to basis states.
 ///

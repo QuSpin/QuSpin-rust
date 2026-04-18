@@ -8,16 +8,16 @@ use super::QMatrix;
 /// abbreviation.  For example `QMf64U8` is `QMatrix<f64, i64, u8>`.
 use super::build::build_from_space;
 use crate::basis::dispatch::SpaceInner;
-use crate::dtype::ValueDType;
-use crate::error::QuSpinError;
 use crate::operator::bond::BondOperatorInner;
 use crate::operator::boson::BosonOperatorInner;
 use crate::operator::fermion::FermionOperatorInner;
 use crate::operator::monomial::MonomialOperatorInner;
 use crate::operator::pauli::HardcoreOperatorInner;
-use crate::primitive::Primitive;
 use crate::qmatrix::matrix::{CIndex, Index};
 use ndarray::{ArrayView2, ArrayViewMut2};
+use quspin_types::Primitive;
+use quspin_types::QuSpinError;
+use quspin_types::ValueDType;
 
 /// Return type of `QMatrixInner::materialize`.
 type CsrTriple = (Vec<i64>, Vec<i64>, Vec<num_complex::Complex<f64>>);
