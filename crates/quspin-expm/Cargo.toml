@@ -1,0 +1,10 @@
+[package]
+name = "quspin-expm"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+quspin-types = { path = "../quspin-types" }
+num-complex = { workspace = true }
+ndarray = { workspace = true }
+rayon = { workspace = true }

@@ -4,6 +4,7 @@ use ndarray::Array2;
 use num_complex::Complex;
 use numpy::{Complex64, PyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
+use quspin_core::OperatorDispatch;
 use quspin_core::operator::bond::{BondOperator, BondOperatorInner, BondTerm};
 
 type BondTermInput<'py> = (PyReadonlyArray2<'py, Complex64>, Vec<(u32, u32)>, usize);

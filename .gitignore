@@ -1,7 +1,6 @@
 *.dylib*
 /build*
 /target
-Cargo.lock
 *.so
 *.pyd
 /.vscode
