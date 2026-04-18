@@ -29,9 +29,11 @@ pub mod linear_operator;
 pub mod norm_est;
 pub mod params;
 
+pub use crate::linear_operator::{
+    DynLinearOperator, FnLinearOperator, LinearOperator, QMatrixOperator,
+};
 pub use algorithm::{PAR_THRESHOLD, expm_multiply, expm_multiply_many, expm_multiply_par};
 pub use compute::{AtomicAccum, ExpmComputation};
-pub use linear_operator::{LinearOperator, QMatrixOperator};
 pub use params::{LazyNormInfo, fragment_3_1};
 
 use ndarray::{Array2, ArrayViewMut1, ArrayViewMut2};
@@ -205,7 +207,7 @@ where
     }
 
     let (m_star, s, mu, tol) = compute_expm_params(op, a)?;
-    if n >= PAR_THRESHOLD {
+    if n >= PAR_THRESHOLD && op.parallel_hint() {
         expm_multiply_par(op, a, mu, s, m_star, tol, f, work)
     } else {
         expm_multiply(op, a, mu, s, m_star, tol, f, work)

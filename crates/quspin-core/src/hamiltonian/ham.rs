@@ -187,6 +187,30 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
     }
 
     // ------------------------------------------------------------------
+    // LinearOperator snapshot
+    // ------------------------------------------------------------------
+
+    /// Snapshot the Hamiltonian at `time` as a [`QMatrixOperator`].
+    ///
+    /// Evaluates all time-dependent coefficient functions at `time` and wraps
+    /// `&self.matrix` with the resulting coefficient vector.  The returned
+    /// operator borrows `self` and can be passed to any `expm_multiply_auto*`
+    /// function directly.
+    ///
+    /// # Errors
+    /// Propagates errors from [`QMatrixOperator::new`] (coefficient length
+    /// mismatch, which cannot occur here in practice).
+    ///
+    /// [`QMatrixOperator`]: crate::expm::QMatrixOperator
+    pub fn as_linear_operator(
+        &self,
+        time: f64,
+    ) -> Result<crate::expm::QMatrixOperator<'_, M, I, C, Complex<f64>>, QuSpinError> {
+        let coeffs = self.eval_coeffs(time);
+        crate::expm::QMatrixOperator::new(&self.matrix, coeffs)
+    }
+
+    // ------------------------------------------------------------------
     // Matrix-exponential action
     // ------------------------------------------------------------------
 
@@ -209,8 +233,7 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
         a: Complex<f64>,
         f: &mut [Complex<f64>],
     ) -> Result<(), QuSpinError> {
-        let coeffs = self.eval_coeffs(time);
-        let op = crate::expm::QMatrixOperator::new(&self.matrix, coeffs)?;
+        let op = self.as_linear_operator(time)?;
         crate::expm::expm_multiply_auto(&op, a, ndarray::aview_mut1(f))
     }
 
@@ -227,8 +250,7 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
         a: Complex<f64>,
         f: ArrayViewMut2<'_, Complex<f64>>,
     ) -> Result<(), QuSpinError> {
-        let coeffs = self.eval_coeffs(time);
-        let op = crate::expm::QMatrixOperator::new(&self.matrix, coeffs)?;
+        let op = self.as_linear_operator(time)?;
         crate::expm::expm_multiply_many_auto(&op, a, f)
     }
 }
