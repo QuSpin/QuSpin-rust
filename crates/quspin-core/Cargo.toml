@@ -13,12 +13,8 @@ quspin-operator = { path = "../quspin-operator" }
 quspin-basis = { path = "../quspin-basis" }
 quspin-matrix = { path = "../quspin-matrix" }
 quspin-expm = { path = "../quspin-expm" }
+quspin-krylov = { path = "../quspin-krylov" }
+
+[dev-dependencies]
 num-complex = { workspace = true }
-ndarray = { workspace = true }
-rayon = { workspace = true }
-ruint = { workspace = true }
 smallvec = { workspace = true }
-thiserror = { workspace = true }
-bytemuck = { workspace = true }
-ode_solvers = { workspace = true }
-nalgebra = { workspace = true }
