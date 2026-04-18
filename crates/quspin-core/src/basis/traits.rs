@@ -1,4 +1,4 @@
-use crate::bitbasis::BitInt;
+use quspin_bitbasis::BitInt;
 
 /// Uniform interface over `FullSpace`, `Subspace`, and `SymBasis`.
 ///

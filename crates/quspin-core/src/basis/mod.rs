@@ -29,13 +29,13 @@ pub use traits::{BasisSpace, SymGrp};
 // ---------------------------------------------------------------------------
 
 use self::dispatch::SpaceInner;
-use crate::bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 use crate::operator::BondOperatorInner;
 use crate::{
     with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
     with_trit_sym_basis_mut,
 };
 use num_complex::Complex;
+use quspin_bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 use quspin_types::QuSpinError;
 use smallvec::SmallVec;
 
@@ -169,7 +169,7 @@ pub(crate) fn build_bond_inner(
             if lhss == 2 {
                 seed_from_bytes::<$B>($seed)
             } else {
-                use crate::bitbasis::manip::DynamicDitManip;
+                use quspin_bitbasis::manip::DynamicDitManip;
                 dit_seed_from_bytes::<$B>($seed, &DynamicDitManip::new(lhss))
             }
         };

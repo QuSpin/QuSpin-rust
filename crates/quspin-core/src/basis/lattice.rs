@@ -1,6 +1,6 @@
-/// Lattice element types and local-op traits used by the orbit computation.
-use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, PermDitLocations};
 use num_complex::Complex;
+/// Lattice element types and local-op traits used by the orbit computation.
+use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, PermDitLocations};
 
 // ---------------------------------------------------------------------------
 // LocalOpItem

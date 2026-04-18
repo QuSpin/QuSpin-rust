@@ -22,9 +22,9 @@ use crate::basis::{
     space::{FullSpace, Subspace},
     sym::SymBasis,
 };
-use crate::bitbasis::manip::DynamicDitManip;
-use crate::bitbasis::{BitInt, DynamicPermDitValues, PermDitMask, PermDitValues};
 use num_complex::Complex;
+use quspin_bitbasis::manip::DynamicDitManip;
+use quspin_bitbasis::{BitInt, DynamicPermDitValues, PermDitMask, PermDitValues};
 use quspin_types::QuSpinError;
 
 type B128 = ruint::Uint<128, 2>;
@@ -2264,7 +2264,7 @@ mod tests {
     #[test]
     fn display_symmetric_note() {
         use crate::basis::sym::SymBasis;
-        use crate::bitbasis::PermDitMask;
+        use quspin_bitbasis::PermDitMask;
         let inner = SpaceInner::Sym32(SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(
             2, 2, false,
         ));

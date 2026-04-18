@@ -21,9 +21,9 @@ use super::{
     sym::{NormInt, SymBasis},
     traits::BasisSpace,
 };
-use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, manip::DynamicDitManip};
 use ndarray::{Array2, ArrayBase, ArrayView1, Data, Ix1, aview1};
 use num_complex::Complex;
+use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, manip::DynamicDitManip};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::ops::AddAssign;

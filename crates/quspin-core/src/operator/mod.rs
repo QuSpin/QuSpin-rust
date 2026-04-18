@@ -12,8 +12,8 @@ pub use fermion::{FermionOp, FermionOpEntry, FermionOperator, FermionOperatorInn
 pub use monomial::{MonomialOperator, MonomialOperatorInner, MonomialTerm};
 pub use spin::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
 
-use crate::bitbasis::BitInt;
 use num_complex::Complex;
+use quspin_bitbasis::BitInt;
 use quspin_types::QuSpinError;
 
 /// Abstraction over operators that can be applied to basis states.

@@ -1,7 +1,7 @@
-use crate::bitbasis::BitInt;
 use crate::operator::Operator;
 use crate::operator::ParseOp;
 use num_complex::Complex;
+use quspin_bitbasis::BitInt;
 use quspin_types::QuSpinError;
 use smallvec::SmallVec;
 
