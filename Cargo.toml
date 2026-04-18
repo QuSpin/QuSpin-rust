@@ -6,6 +6,7 @@ members = [
     "crates/quspin-basis",
     "crates/quspin-matrix",
     "crates/quspin-expm",
+    "crates/quspin-krylov",
     "crates/quspin-core",
     "crates/quspin-py",
 ]
