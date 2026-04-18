@@ -5,6 +5,7 @@ pub mod error;
 pub mod expm;
 pub mod hamiltonian;
 pub mod krylov;
+pub mod linear_operator;
 pub mod operator;
 pub mod primitive;
 pub mod qmatrix;
@@ -15,5 +16,6 @@ pub use expm::{
     expm_multiply_many, expm_multiply_many_auto, expm_multiply_many_auto_into,
 };
 pub use hamiltonian::{Hamiltonian, HamiltonianInner, IntoHamiltonianInner, SchrodingerEq};
+pub use linear_operator::{DynLinearOperator, FnLinearOperator, LinearOperator, QMatrixOperator};
 pub use operator::{Operator, ParseOp};
 pub use primitive::Primitive;

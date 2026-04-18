@@ -187,6 +187,30 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
     }
 
     // ------------------------------------------------------------------
+    // LinearOperator snapshot
+    // ------------------------------------------------------------------
+
+    /// Snapshot the Hamiltonian at `time` as a [`QMatrixOperator`].
+    ///
+    /// Evaluates all time-dependent coefficient functions at `time` and wraps
+    /// `&self.matrix` with the resulting coefficient vector.  The returned
+    /// operator borrows `self` and can be passed to any `expm_multiply_auto*`
+    /// function directly.
+    ///
+    /// # Errors
+    /// Propagates errors from [`QMatrixOperator::new`] (coefficient length
+    /// mismatch, which cannot occur here in practice).
+    ///
+    /// [`QMatrixOperator`]: crate::linear_operator::QMatrixOperator
+    pub fn as_linear_operator(
+        &self,
+        time: f64,
+    ) -> Result<crate::expm::QMatrixOperator<'_, M, I, C, Complex<f64>>, QuSpinError> {
+        let coeffs = self.eval_coeffs(time);
+        crate::expm::QMatrixOperator::new(&self.matrix, coeffs)
+    }
+
+    // ------------------------------------------------------------------
     // Matrix-exponential action
     // ------------------------------------------------------------------
 
@@ -209,8 +233,7 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
         a: Complex<f64>,
         f: &mut [Complex<f64>],
     ) -> Result<(), QuSpinError> {
-        let coeffs = self.eval_coeffs(time);
-        let op = crate::expm::QMatrixOperator::new(&self.matrix, coeffs)?;
+        let op = self.as_linear_operator(time)?;
         crate::expm::expm_multiply_auto(&op, a, ndarray::aview_mut1(f))
     }
 
@@ -227,8 +250,7 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
         a: Complex<f64>,
         f: ArrayViewMut2<'_, Complex<f64>>,
     ) -> Result<(), QuSpinError> {
-        let coeffs = self.eval_coeffs(time);
-        let op = crate::expm::QMatrixOperator::new(&self.matrix, coeffs)?;
+        let op = self.as_linear_operator(time)?;
         crate::expm::expm_multiply_many_auto(&op, a, f)
     }
 }
@@ -458,5 +480,29 @@ mod tests {
         assert_eq!(merged.len(), 1);
         assert_eq!(map1, vec![0u8, 0u8]);
         assert_eq!(map2, vec![0u8, 0u8]);
+    }
+
+    #[test]
+    fn as_linear_operator_dot_matches_hamiltonian_dot() {
+        // Verify that the QMatrixOperator snapshot produced by as_linear_operator
+        // gives the same matrix-vector product as Hamiltonian::dot at the same time.
+        let mat = xx_qmatrix();
+        let ham = Hamiltonian::new(mat, vec![None]).unwrap();
+
+        let input: Vec<Complex<f64>> = (0..4).map(|i| Complex::new(i as f64, 0.0)).collect();
+
+        // Reference: Hamiltonian::dot at t = 0.0
+        let mut out_ham = vec![Complex::default(); 4];
+        ham.dot(true, 0.0, &input, &mut out_ham).unwrap();
+
+        // Via as_linear_operator snapshot
+        let op = ham.as_linear_operator(0.0).unwrap();
+        let mut out_op = vec![Complex::default(); 4];
+        use crate::linear_operator::LinearOperator;
+        op.dot(true, &input, &mut out_op).unwrap();
+
+        for (a, b) in out_ham.iter().zip(out_op.iter()) {
+            assert!((a - b).norm() < 1e-12, "ham={a}, op={b}");
+        }
     }
 }
