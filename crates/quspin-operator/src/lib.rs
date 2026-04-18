@@ -1,8 +1,8 @@
 //! Operator type definitions and apply kernels.
 //!
-//! No basis knowledge — the `*Inner` dispatch enums and `apply_and_project_to`
-//! live in downstream crates. That keeps this crate compilable in parallel
-//! with `quspin-basis`.
+//! No basis knowledge. The `apply_and_project_to` extension methods on
+//! `*OperatorInner` (which require basis types) live in downstream crates
+//! (currently `quspin-core`, moving to `quspin-matrix` in PR 5).
 
 pub mod bond;
 pub mod boson;
@@ -11,12 +11,12 @@ pub mod monomial;
 pub mod pauli;
 pub mod spin;
 
-pub use bond::{BondOperator, BondTerm};
-pub use boson::{BosonOp, BosonOpEntry, BosonOperator};
-pub use fermion::{FermionOp, FermionOpEntry, FermionOperator};
-pub use monomial::{MonomialOperator, MonomialTerm};
-pub use pauli::{HardcoreOp, HardcoreOperator, OpEntry};
-pub use spin::{SpinOp, SpinOpEntry, SpinOperator};
+pub use bond::{BondOperator, BondOperatorInner, BondTerm};
+pub use boson::{BosonOp, BosonOpEntry, BosonOperator, BosonOperatorInner};
+pub use fermion::{FermionOp, FermionOpEntry, FermionOperator, FermionOperatorInner};
+pub use monomial::{MonomialOperator, MonomialOperatorInner, MonomialTerm};
+pub use pauli::{HardcoreOp, HardcoreOperator, HardcoreOperatorInner, OpEntry};
+pub use spin::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
 
 use num_complex::Complex;
 use quspin_bitbasis::BitInt;

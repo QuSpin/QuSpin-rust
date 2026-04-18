@@ -5,6 +5,7 @@ use crate::operator::{
 };
 use numpy::{Complex64, PyArray1};
 use pyo3::prelude::*;
+use quspin_core::OperatorDispatch;
 use quspin_core::operator::pauli::{HardcoreOp, HardcoreOperator, HardcoreOperatorInner, OpEntry};
 
 /// Python-facing Pauli / hardcore-boson / spin-½ operator.
