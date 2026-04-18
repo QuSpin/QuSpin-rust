@@ -7,8 +7,12 @@ use crate::bitbasis::{BitInt, BitStateOp};
 use crate::error::QuSpinError;
 use crate::qmatrix::CIndex;
 use num_complex::Complex;
+use rayon::prelude::*;
 
 type C64 = Complex<f64>;
+
+/// Minimum input-space size before switching to parallel application.
+const PARALLEL_APPLY_THRESHOLD: usize = 256;
 
 // ---------------------------------------------------------------------------
 // ProjectState — zero-cost abstraction over output projection
@@ -77,11 +81,11 @@ pub fn apply_and_project_to_inner<H, B, C, IS, OS>(
     overwrite: bool,
 ) -> Result<(), QuSpinError>
 where
-    H: Operator<C>,
+    H: Operator<C> + Sync,
     B: BitInt,
     C: CIndex,
-    IS: BasisSpace<B> + ExpandRefState<B, C64, C64>,
-    OS: ProjectState<B>,
+    IS: BasisSpace<B> + ExpandRefState<B, C64, C64> + Sync,
+    OS: ProjectState<B> + Sync,
 {
     validate_args(
         op.num_cindices(),
@@ -100,16 +104,51 @@ where
         output.iter_mut().for_each(|c| *c = C64::default());
     }
 
-    for (i, coeff) in input.iter().enumerate() {
-        for (state, amp) in input_space.expand_ref_state_iter(i, coeff) {
-            if amp.norm_sqr() == 0.0 {
-                continue;
-            }
-            op.apply(state, |cindex, op_amp, new_state| {
-                if let Some((j, scale)) = output_space.project(new_state) {
-                    output[j] += coeffs[cindex.as_usize()] * op_amp * amp * scale;
+    if input.len() < PARALLEL_APPLY_THRESHOLD {
+        for (i, coeff) in input.iter().enumerate() {
+            for (state, amp) in input_space.expand_ref_state_iter(i, coeff) {
+                if amp.norm_sqr() == 0.0 {
+                    continue;
                 }
-            });
+                op.apply(state, |cindex, op_amp, new_state| {
+                    if let Some((j, scale)) = output_space.project(new_state) {
+                        output[j] += coeffs[cindex.as_usize()] * op_amp * amp * scale;
+                    }
+                });
+            }
+        }
+    } else {
+        let output_size = output_space.size();
+        let combined: Vec<C64> = input
+            .par_iter()
+            .enumerate()
+            .fold(
+                || vec![C64::default(); output_size],
+                |mut local_out, (i, coeff)| {
+                    for (state, amp) in input_space.expand_ref_state_iter(i, coeff) {
+                        if amp.norm_sqr() == 0.0 {
+                            continue;
+                        }
+                        op.apply(state, |cindex, op_amp, new_state| {
+                            if let Some((j, scale)) = output_space.project(new_state) {
+                                local_out[j] += coeffs[cindex.as_usize()] * op_amp * amp * scale;
+                            }
+                        });
+                    }
+                    local_out
+                },
+            )
+            .reduce(
+                || vec![C64::default(); output_size],
+                |mut a, b| {
+                    for (x, y) in a.iter_mut().zip(b.iter()) {
+                        *x += y;
+                    }
+                    a
+                },
+            );
+        for (o, c) in output.iter_mut().zip(combined.iter()) {
+            *o += c;
         }
     }
 
@@ -135,8 +174,8 @@ pub fn project_to_inner<B, IS, OS>(
 ) -> Result<(), QuSpinError>
 where
     B: BitInt,
-    IS: BasisSpace<B> + ExpandRefState<B, C64, C64>,
-    OS: ProjectState<B>,
+    IS: BasisSpace<B> + ExpandRefState<B, C64, C64> + Sync,
+    OS: ProjectState<B> + Sync,
 {
     if input_space.n_sites() != output_space.n_sites() {
         return Err(QuSpinError::ValueError(format!(
@@ -171,14 +210,47 @@ where
         output.iter_mut().for_each(|c| *c = C64::default());
     }
 
-    for (i, coeff) in input.iter().enumerate() {
-        for (state, amp) in input_space.expand_ref_state_iter(i, coeff) {
-            if amp.norm_sqr() == 0.0 {
-                continue;
+    if input.len() < PARALLEL_APPLY_THRESHOLD {
+        for (i, coeff) in input.iter().enumerate() {
+            for (state, amp) in input_space.expand_ref_state_iter(i, coeff) {
+                if amp.norm_sqr() == 0.0 {
+                    continue;
+                }
+                if let Some((j, scale)) = output_space.project(state) {
+                    output[j] += amp * scale;
+                }
             }
-            if let Some((j, scale)) = output_space.project(state) {
-                output[j] += amp * scale;
-            }
+        }
+    } else {
+        let output_size = output_space.size();
+        let combined: Vec<C64> = input
+            .par_iter()
+            .enumerate()
+            .fold(
+                || vec![C64::default(); output_size],
+                |mut local_out, (i, coeff)| {
+                    for (state, amp) in input_space.expand_ref_state_iter(i, coeff) {
+                        if amp.norm_sqr() == 0.0 {
+                            continue;
+                        }
+                        if let Some((j, scale)) = output_space.project(state) {
+                            local_out[j] += amp * scale;
+                        }
+                    }
+                    local_out
+                },
+            )
+            .reduce(
+                || vec![C64::default(); output_size],
+                |mut a, b| {
+                    for (x, y) in a.iter_mut().zip(b.iter()) {
+                        *x += y;
+                    }
+                    a
+                },
+            );
+        for (o, c) in output.iter_mut().zip(combined.iter()) {
+            *o += c;
         }
     }
 
@@ -305,7 +377,7 @@ pub fn apply_and_project_to<H, C>(
     overwrite: bool,
 ) -> Result<(), QuSpinError>
 where
-    H: Operator<C>,
+    H: Operator<C> + Sync,
     C: CIndex,
 {
     #[allow(unused_imports)]
