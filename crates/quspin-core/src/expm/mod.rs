@@ -522,4 +522,44 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn parallel_hint_false_never_calls_dot_chunk() {
+        // An operator whose dot_chunk panics — if expm_multiply_auto dispatches
+        // to the parallel path for n >= PAR_THRESHOLD this test will panic.
+        // Verifies that parallel_hint() = false forces the sequential path.
+        use crate::linear_operator::FnLinearOperator;
+        use num_complex::Complex;
+
+        let n = PAR_THRESHOLD; // exactly at the parallel threshold
+        let a = Complex::new(0.0_f64, 0.0);
+
+        let op = FnLinearOperator::builder(
+            n,
+            Complex::new(0.0, 0.0),
+            |_shift| 0.0_f64,
+            |overwrite, _input, output| {
+                if overwrite {
+                    output.iter_mut().for_each(|v| *v = Complex::new(0.0, 0.0));
+                }
+                Ok(())
+            },
+            |overwrite, _input, output| {
+                if overwrite {
+                    output.iter_mut().for_each(|v| *v = Complex::new(0.0, 0.0));
+                }
+                Ok(())
+            },
+        )
+        .build();
+
+        assert!(
+            !op.parallel_hint(),
+            "FnLinearOperator must return parallel_hint = false"
+        );
+
+        let mut f = vec![Complex::new(1.0, 0.0); n];
+        // If dot_chunk were called this would panic inside the parallel path.
+        expm_multiply_auto(&op, a, ndarray::aview_mut1(&mut f)).unwrap();
+    }
 }

@@ -183,6 +183,18 @@ impl<V: ExpmComputation> LinearOperator<V> for FnLinearOperator<V> {
         input: ArrayView2<'_, V>,
         mut output: ArrayViewMut2<'_, V>,
     ) -> Result<(), QuSpinError> {
+        let n_vecs = input.ncols();
+        if input.nrows() != self.dim || output.nrows() != self.dim || output.ncols() != n_vecs {
+            return Err(QuSpinError::ValueError(format!(
+                "dot_many shape mismatch: expected ({}, n_vecs) for both, \
+                 got input=({}, {}), output=({}, {})",
+                self.dim,
+                input.nrows(),
+                input.ncols(),
+                output.nrows(),
+                output.ncols(),
+            )));
+        }
         match &self.dot_many_fn {
             Some(f) => f(overwrite, input, output),
             None => {
