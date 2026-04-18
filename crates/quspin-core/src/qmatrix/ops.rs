@@ -1,6 +1,6 @@
 use super::matrix::PARALLEL_DIM_THRESHOLD;
 use super::{CIndex, Entry, Index, QMatrix};
-use crate::primitive::Primitive;
+use quspin_types::Primitive;
 use rayon::prelude::*;
 use std::ops::{Add, Sub};
 

@@ -1,8 +1,8 @@
-use crate::error::QuSpinError;
-use crate::primitive::Primitive;
 use crate::qmatrix::matrix::{CIndex, Index, QMatrix};
 use ndarray::{ArrayView2, ArrayViewMut2};
 use num_complex::Complex;
+use quspin_types::Primitive;
+use quspin_types::QuSpinError;
 use std::ops::{Add, Sub};
 use std::sync::Arc;
 

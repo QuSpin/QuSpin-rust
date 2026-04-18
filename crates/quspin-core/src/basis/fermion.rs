@@ -2,10 +2,10 @@
 use super::dispatch::SpaceInner;
 use super::seed::seed_from_bytes;
 use crate::basis::spin::SpaceKind;
-use crate::error::QuSpinError;
 use crate::operator::{BondOperatorInner, FermionOperatorInner};
 use crate::{with_sub_basis_mut, with_sym_basis_mut};
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
 // FermionBasis

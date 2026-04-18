@@ -30,13 +30,13 @@ pub use traits::{BasisSpace, SymGrp};
 
 use self::dispatch::SpaceInner;
 use crate::bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
-use crate::error::QuSpinError;
 use crate::operator::BondOperatorInner;
 use crate::{
     with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
     with_trit_sym_basis_mut,
 };
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 use smallvec::SmallVec;
 
 /// Construct a [`SpaceInner`] for the given lattice parameters.

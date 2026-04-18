@@ -24,8 +24,8 @@ use crate::basis::{
 };
 use crate::bitbasis::manip::DynamicDitManip;
 use crate::bitbasis::{BitInt, DynamicPermDitValues, PermDitMask, PermDitValues};
-use crate::error::QuSpinError;
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 
 type B128 = ruint::Uint<128, 2>;
 type B256 = ruint::Uint<256, 4>;

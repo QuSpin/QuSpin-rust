@@ -6,10 +6,10 @@
 /// Naming convention: `HM` prefix, value type abbreviation, cindex type
 /// abbreviation.  For example `HMf64U8` is `Hamiltonian<f64, i64, u8>`.
 use super::ham::{CoeffFn, Hamiltonian};
-use crate::error::QuSpinError;
 use crate::qmatrix::QMatrixInner;
 use ndarray::{ArrayView2, ArrayViewMut2};
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
 // with_hamiltonian! macro  (must be defined before HamiltonianInner impl uses it)

@@ -39,9 +39,9 @@ pub use params::{LazyNormInfo, fragment_3_1};
 use ndarray::{Array2, ArrayViewMut1, ArrayViewMut2};
 use num_complex::Complex;
 
-use crate::error::QuSpinError;
-use crate::primitive::Primitive;
 use crate::qmatrix::matrix::{CIndex, Index, QMatrix};
+use quspin_types::Primitive;
+use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
 // Internal helpers: trace and 1-norm of the effective shifted matrix

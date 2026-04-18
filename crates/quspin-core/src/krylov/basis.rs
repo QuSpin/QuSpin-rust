@@ -1,5 +1,5 @@
-use crate::error::QuSpinError;
 use num_complex::Complex;
+use quspin_types::QuSpinError;
 
 type C64 = Complex<f64>;
 

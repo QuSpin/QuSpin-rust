@@ -1,6 +1,6 @@
-use crate::error::QuSpinError;
-use crate::primitive::Primitive;
 use ndarray::{ArrayView2, ArrayViewMut2};
+use quspin_types::Primitive;
+use quspin_types::QuSpinError;
 use rayon::prelude::*;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
