@@ -1,13 +1,13 @@
 use super::matrix::PARALLEL_DIM_THRESHOLD;
 use super::{CIndex, Entry, Index, QMatrix};
-use crate::basis::dispatch::SpaceInner;
-use crate::basis::{
+use num_complex::Complex;
+use quspin_basis::dispatch::SpaceInner;
+use quspin_basis::{
     BasisSpace,
     sym::{NormInt, SymBasis},
 };
-use crate::operator::Operator;
-use num_complex::Complex;
 use quspin_bitbasis::{BitInt, BitStateOp, PermDitValues};
+use quspin_operator::Operator;
 use quspin_types::Primitive;
 use rayon::prelude::*;
 use smallvec::SmallVec;
@@ -177,11 +177,11 @@ where
 /// 29-arm match for every `(M, C)` combination.
 pub fn build_from_space<H, M, C>(ham: &H, space: &SpaceInner) -> QMatrix<M, i64, C>
 where
-    H: crate::operator::Operator<C> + Sync,
-    M: crate::primitive::Primitive,
+    H: quspin_operator::Operator<C> + Sync,
+    M: quspin_types::Primitive,
     C: CIndex + Copy + Ord,
 {
-    use crate::basis::dispatch::SpaceInner;
+    use quspin_basis::dispatch::SpaceInner;
     use quspin_bitbasis::{DynamicPermDitValues, PermDitMask};
 
     type B128 = ruint::Uint<128, 2>;
@@ -357,13 +357,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::space::{FullSpace, Subspace};
-    use crate::operator::pauli::HardcoreOperator;
     use num_complex::Complex;
+    use quspin_basis::space::{FullSpace, Subspace};
+    use quspin_operator::pauli::HardcoreOperator;
     use smallvec::smallvec;
 
     fn xx_ham() -> HardcoreOperator<u8> {
-        use crate::operator::pauli::{HardcoreOp, OpEntry};
+        use quspin_operator::pauli::{HardcoreOp, OpEntry};
         // H = Σ_i X_i X_{i+1}, two-site chain
         // Term 0: X_0 X_1, cindex=0, coeff=1
         let ops0 = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
@@ -403,7 +403,7 @@ mod tests {
         // 1-particle sector of 2-site XX: states {|01⟩=1, |10⟩=2}
         // XX connects them: H|01⟩=|10⟩, H|10⟩=|01⟩
         // Subspace sorted ascending: state_at(0)=1, state_at(1)=2
-        use crate::operator::pauli::{HardcoreOp, OpEntry};
+        use quspin_operator::pauli::{HardcoreOp, OpEntry};
         let ops = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)];
         let ham = HardcoreOperator::new(terms);
@@ -447,7 +447,7 @@ mod tests {
 
     /// Build XX chain Hamiltonian for `n_sites` (periodic boundary).
     fn xx_chain(n_sites: usize) -> HardcoreOperator<u8> {
-        use crate::operator::pauli::{HardcoreOp, OpEntry};
+        use quspin_operator::pauli::{HardcoreOp, OpEntry};
         let mut terms = Vec::new();
         for i in 0..n_sites {
             let j = (i + 1) % n_sites;

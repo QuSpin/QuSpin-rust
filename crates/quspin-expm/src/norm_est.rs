@@ -1,5 +1,5 @@
-use super::compute::ExpmComputation;
-use super::linear_operator::LinearOperator;
+use quspin_types::ExpmComputation;
+use quspin_types::LinearOperator;
 
 /// Estimate `‖(a·(A − μI))^p‖_1` using a randomised block 1-norm estimator.
 ///

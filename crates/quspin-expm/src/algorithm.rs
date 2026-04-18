@@ -11,8 +11,8 @@ use ndarray::{ArrayViewMut1, ArrayViewMut2, Axis};
 
 use quspin_types::QuSpinError;
 
-use super::compute::ExpmComputation;
-use super::linear_operator::LinearOperator;
+use quspin_types::ExpmComputation;
+use quspin_types::LinearOperator;
 
 /// Minimum dimension for the persistent-thread parallel path.
 ///

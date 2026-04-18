@@ -1,24 +1,25 @@
 [package]
-name = "quspin-core"
+name = "quspin-matrix"
 version.workspace = true
 edition.workspace = true
 
 [features]
-large-int = ["quspin-matrix/large-int"]
+large-int = [
+    "quspin-basis/large-int",
+    "quspin-bitbasis/large-int",
+]
 
 [dependencies]
 quspin-types = { path = "../quspin-types" }
 quspin-bitbasis = { path = "../quspin-bitbasis" }
 quspin-operator = { path = "../quspin-operator" }
 quspin-basis = { path = "../quspin-basis" }
-quspin-matrix = { path = "../quspin-matrix" }
 quspin-expm = { path = "../quspin-expm" }
 num-complex = { workspace = true }
 ndarray = { workspace = true }
+bytemuck = { workspace = true }
 rayon = { workspace = true }
 ruint = { workspace = true }
 smallvec = { workspace = true }
-thiserror = { workspace = true }
-bytemuck = { workspace = true }
 ode_solvers = { workspace = true }
 nalgebra = { workspace = true }

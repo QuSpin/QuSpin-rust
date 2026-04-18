@@ -1,7 +1,3 @@
-// Forwarding shim — trait + `FnLinearOperator` definitions live in `quspin-types`.
-// `QMatrixOperator` remains here because it depends on `QMatrix`, which
-// is still in `quspin-core`. It will move to `quspin-matrix` in PR 5.
+// Forwarding shim — trait lives in `quspin-types`, `QMatrixOperator` in `quspin-matrix`.
+pub use quspin_matrix::QMatrixOperator;
 pub use quspin_types::linear_operator::*;
-
-mod qmatrix_op;
-pub use qmatrix_op::QMatrixOperator;

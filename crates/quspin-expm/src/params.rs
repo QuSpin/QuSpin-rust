@@ -9,9 +9,9 @@
 
 use std::collections::HashMap;
 
-use super::compute::ExpmComputation;
-use super::linear_operator::LinearOperator;
 use super::norm_est::onenorm_matrix_power_nnm;
+use quspin_types::ExpmComputation;
+use quspin_types::LinearOperator;
 
 // ---------------------------------------------------------------------------
 // θ_m table — Table A.3 of Al-Mohy & Higham (2011) / Higham (2008)
@@ -277,16 +277,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::expm::linear_operator::QMatrixOperator;
-    use crate::qmatrix::matrix::{Entry, QMatrix};
-    use num_complex::Complex;
-
-    /// Build a simple 2×2 diagonal QMatrix with a single cindex.
-    fn diag2(a: f64, b: f64) -> QMatrix<f64, i32, u8> {
-        let data = vec![Entry::new(a, 0_i32, 0_u8), Entry::new(b, 1_i32, 0_u8)];
-        let indptr = vec![0_i32, 1, 2];
-        QMatrix::from_csr(indptr, data)
-    }
 
     #[test]
     fn theta_lookup() {
@@ -294,49 +284,5 @@ mod tests {
         assert!((theta(1) - 2.29e-16).abs() < 1e-18);
         assert!((theta(10) - 1.44e-1).abs() < 1e-10);
         assert!((theta(55) - 11.08).abs() < 1e-6);
-    }
-
-    #[test]
-    fn fragment_3_1_identity() {
-        // For the 2×2 identity with tiny ||A||, condition 3.13 should hold
-        // and we should get (m_star=0, s=1).
-        let mat = diag2(1.0, 1.0);
-        let a = Complex::new(1e-17_f64, 0.0); // tiny scalar → tiny onenorm
-        let mu = Complex::new(1.0, 0.0);
-        // onenorm = |a| * ||I - I||_1 = 0
-        let onenorm_exact = a.norm() * 0.0;
-        let coeffs = vec![Complex::new(1.0, 0.0); mat.num_coeff()];
-        let tol = f64::EPSILON / 2.0;
-
-        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
-        let mut norm_info = LazyNormInfo::new(&op, a, mu, onenorm_exact, 2);
-        let (m_star, s) = fragment_3_1(&mut norm_info, 1, tol, 55);
-        assert_eq!(m_star, 0, "expected m_star=0 for tiny matrix");
-        assert_eq!(s, 1, "expected s=1 for tiny matrix");
-    }
-
-    #[test]
-    fn fragment_3_1_large_norm() {
-        // Condition 3.13 threshold is approximately
-        //   2*ell*p_max*(p_max+3)*theta(m_max)/m_max ≈ 748  (m_max=55, ell=2, n0=1)
-        // To guarantee that condition_3_13 is *not* satisfied and the
-        // optimisation loop runs, use a norm well above the threshold.
-        let mat = diag2(100.0, 200.0);
-        // a=100 → onenorm = 100 * ||A-0*I||_1 = 100 * 200 = 20_000 >> 748
-        let a = Complex::new(100.0_f64, 0.0);
-        let mu = Complex::new(0.0, 0.0);
-        let onenorm_exact = a.norm() * 200.0; // 20_000
-        let coeffs = vec![Complex::new(1.0, 0.0); mat.num_coeff()];
-        let tol = f64::EPSILON / 2.0;
-
-        let op = QMatrixOperator::new(&mat, coeffs).unwrap();
-        let mut norm_info = LazyNormInfo::new(&op, a, mu, onenorm_exact, 2);
-        let (m_star, s) = fragment_3_1(&mut norm_info, 1, tol, 55);
-        // With large norm the algorithm must scale (s > 1) and use Taylor terms.
-        assert!(s > 1, "expected s>1 for large-norm matrix, got s={s}");
-        assert!(
-            m_star >= 1,
-            "expected m_star>=1 for large-norm matrix, got m_star={m_star}"
-        );
     }
 }

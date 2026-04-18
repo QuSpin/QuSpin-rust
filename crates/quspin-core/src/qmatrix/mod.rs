@@ -1,8 +1,2 @@
-pub mod build;
-pub mod dispatch;
-pub mod matrix;
-pub mod ops;
-
-pub use build::build_from_space;
-pub use dispatch::{IntoQMatrixInner, QMatrixInner};
-pub use matrix::{CIndex, Entry, Index, QMatrix};
+// Forwarding shim — qmatrix types now live in `quspin-matrix`.
+pub use quspin_matrix::qmatrix::*;

@@ -205,9 +205,9 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
     pub fn as_linear_operator(
         &self,
         time: f64,
-    ) -> Result<crate::expm::QMatrixOperator<'_, M, I, C, Complex<f64>>, QuSpinError> {
+    ) -> Result<crate::QMatrixOperator<'_, M, I, C, Complex<f64>>, QuSpinError> {
         let coeffs = self.eval_coeffs(time);
-        crate::expm::QMatrixOperator::new(&self.matrix, coeffs)
+        crate::QMatrixOperator::new(&self.matrix, coeffs)
     }
 
     // ------------------------------------------------------------------
@@ -234,7 +234,7 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
         f: &mut [Complex<f64>],
     ) -> Result<(), QuSpinError> {
         let op = self.as_linear_operator(time)?;
-        crate::expm::expm_multiply_auto(&op, a, ndarray::aview_mut1(f))
+        quspin_expm::expm_multiply_auto(&op, a, ndarray::aview_mut1(f))
     }
 
     /// Compute `exp(a · H(time)) · F` in-place for multiple column vectors.
@@ -251,7 +251,7 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
         f: ArrayViewMut2<'_, Complex<f64>>,
     ) -> Result<(), QuSpinError> {
         let op = self.as_linear_operator(time)?;
-        crate::expm::expm_multiply_many_auto(&op, a, f)
+        quspin_expm::expm_multiply_many_auto(&op, a, f)
     }
 }
 
@@ -354,10 +354,10 @@ fn build_merged_cindex_maps<C: CIndex>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::space::FullSpace;
-    use crate::operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
     use crate::qmatrix::build::build_from_basis;
     use num_complex::Complex;
+    use quspin_basis::space::FullSpace;
+    use quspin_operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
     use smallvec::smallvec;
 
     // Helper: build a simple 2-site XX Hamiltonian → QMatrix<f64, i64, u8>
@@ -498,7 +498,7 @@ mod tests {
         // Via as_linear_operator snapshot
         let op = ham.as_linear_operator(0.0).unwrap();
         let mut out_op = vec![Complex::default(); 4];
-        use crate::linear_operator::LinearOperator;
+        use quspin_types::LinearOperator;
         op.dot(true, &input, &mut out_op).unwrap();
 
         for (a, b) in out_ham.iter().zip(out_op.iter()) {

@@ -7,8 +7,8 @@ use num_complex::Complex;
 
 use quspin_types::{AtomicAccum, ExpmComputation, LinearOperator, Primitive, QuSpinError};
 
-use crate::expm::{compute_trace_c64, onenorm_shifted_c64};
 use crate::qmatrix::matrix::{CIndex, Index, QMatrix};
+use crate::qmatrix_helpers::{compute_trace_c64, onenorm_shifted_c64};
 
 // ---------------------------------------------------------------------------
 // QMatrixOperator

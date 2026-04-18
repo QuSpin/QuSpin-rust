@@ -7,14 +7,14 @@ use super::QMatrix;
 /// Naming convention: `QM` prefix, value type abbreviation, cindex type
 /// abbreviation.  For example `QMf64U8` is `QMatrix<f64, i64, u8>`.
 use super::build::build_from_space;
-use crate::basis::dispatch::SpaceInner;
-use crate::operator::bond::BondOperatorInner;
-use crate::operator::boson::BosonOperatorInner;
-use crate::operator::fermion::FermionOperatorInner;
-use crate::operator::monomial::MonomialOperatorInner;
-use crate::operator::pauli::HardcoreOperatorInner;
 use crate::qmatrix::matrix::{CIndex, Index};
 use ndarray::{ArrayView2, ArrayViewMut2};
+use quspin_basis::dispatch::SpaceInner;
+use quspin_operator::bond::BondOperatorInner;
+use quspin_operator::boson::BosonOperatorInner;
+use quspin_operator::fermion::FermionOperatorInner;
+use quspin_operator::monomial::MonomialOperatorInner;
+use quspin_operator::pauli::HardcoreOperatorInner;
 use quspin_types::Primitive;
 use quspin_types::QuSpinError;
 use quspin_types::ValueDType;
@@ -95,7 +95,7 @@ impl QMatrixInner {
         }
     }
 
-    pub fn dot<V: crate::primitive::Primitive>(
+    pub fn dot<V: quspin_types::Primitive>(
         &self,
         overwrite: bool,
         coeff: &[V],
@@ -107,7 +107,7 @@ impl QMatrixInner {
         })
     }
 
-    pub fn dot_transpose<V: crate::primitive::Primitive>(
+    pub fn dot_transpose<V: quspin_types::Primitive>(
         &self,
         overwrite: bool,
         coeff: &[V],
@@ -119,7 +119,7 @@ impl QMatrixInner {
         })
     }
 
-    pub fn dot_many<V: crate::primitive::Primitive>(
+    pub fn dot_many<V: quspin_types::Primitive>(
         &self,
         overwrite: bool,
         coeff: &[V],
@@ -131,7 +131,7 @@ impl QMatrixInner {
         })
     }
 
-    pub fn dot_transpose_many<V: crate::primitive::Primitive>(
+    pub fn dot_transpose_many<V: quspin_types::Primitive>(
         &self,
         overwrite: bool,
         coeff: &[V],

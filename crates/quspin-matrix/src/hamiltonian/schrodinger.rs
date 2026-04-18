@@ -84,11 +84,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::space::FullSpace;
-    use crate::operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
     use crate::qmatrix::build::build_from_basis;
     use num_complex::Complex;
     use ode_solvers::dopri5::Dopri5;
+    use quspin_basis::space::FullSpace;
+    use quspin_operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
     use smallvec::smallvec;
 
     /// Pauli X on a 1-site basis: H = X = [[0,1],[1,0]]

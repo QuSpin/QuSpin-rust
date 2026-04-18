@@ -11,13 +11,14 @@ pub mod linear_operator;
 pub mod operator;
 pub mod qmatrix;
 
-pub use expm::{
+pub use hamiltonian::{Hamiltonian, HamiltonianInner, IntoHamiltonianInner, SchrodingerEq};
+pub use linear_operator::{LinearOperator, QMatrixOperator};
+pub use operator::{Operator, ParseOp};
+pub use quspin_expm::{
     expm_multiply, expm_multiply_auto, expm_multiply_auto_into, expm_multiply_many,
     expm_multiply_many_auto, expm_multiply_many_auto_into,
 };
-pub use hamiltonian::{Hamiltonian, HamiltonianInner, IntoHamiltonianInner, SchrodingerEq};
-pub use linear_operator::{LinearOperator, QMatrixOperator};
-pub use operator::{Operator, OperatorDispatch, ParseOp};
+pub use quspin_matrix::OperatorDispatch;
 pub use quspin_types::{
     AtomicAccum, CIndexDType, DynLinearOperator, ExpmComputation, FnLinearOperator,
     FnLinearOperatorBuilder, Primitive, QuSpinError, ValueDType,
