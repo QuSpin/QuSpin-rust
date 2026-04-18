@@ -1,5 +1,5 @@
-use crate::operator::Operator;
-use crate::operator::ParseOp;
+use crate::Operator;
+use crate::ParseOp;
 use num_complex::Complex;
 use quspin_bitbasis::{BitInt, manip::DynamicDitManip};
 use quspin_types::QuSpinError;
@@ -243,7 +243,7 @@ impl<C: Copy + Ord> Operator<C> for SpinOperator<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operator::spin::{SpinOp, SpinOpEntry};
+    use crate::spin::{SpinOp, SpinOpEntry};
     use num_complex::Complex;
     use smallvec::smallvec;
 

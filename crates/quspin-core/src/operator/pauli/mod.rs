@@ -1,5 +1,5 @@
 pub mod dispatch;
-pub mod operator;
 
 pub use dispatch::HardcoreOperatorInner;
-pub use operator::{HardcoreOp, HardcoreOperator, OpEntry};
+pub use quspin_operator::pauli::operator;
+pub use quspin_operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};

@@ -1,9 +1,9 @@
-use crate::operator::Operator;
+use crate::Operator;
 use num_complex::Complex;
 use quspin_bitbasis::{BitInt, manip::DynamicDitManip};
 use smallvec::SmallVec;
 
-use crate::operator::ParseOp;
+use crate::ParseOp;
 use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
@@ -236,7 +236,7 @@ impl<C: Copy + Ord> Operator<C> for BosonOperator<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operator::boson::{BosonOp, BosonOpEntry};
+    use crate::boson::{BosonOp, BosonOpEntry};
     use num_complex::Complex;
     use smallvec::smallvec;
 

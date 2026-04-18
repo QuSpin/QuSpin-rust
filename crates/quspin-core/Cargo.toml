@@ -9,6 +9,7 @@ large-int = ["quspin-bitbasis/large-int"]
 [dependencies]
 quspin-types = { path = "../quspin-types" }
 quspin-bitbasis = { path = "../quspin-bitbasis" }
+quspin-operator = { path = "../quspin-operator" }
 num-complex = { workspace = true }
 ndarray = { workspace = true }
 rayon = { workspace = true }

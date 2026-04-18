@@ -1,8 +1,8 @@
 use num_complex::Complex;
 use smallvec::SmallVec;
 
-use crate::operator::Operator;
-use crate::operator::ParseOp;
+use crate::Operator;
+use crate::ParseOp;
 use quspin_bitbasis::BitInt;
 use quspin_types::QuSpinError;
 
@@ -260,7 +260,7 @@ impl<C: Copy + Ord> Operator<C> for FermionOperator<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operator::fermion::{FermionOp, FermionOpEntry};
+    use crate::fermion::{FermionOp, FermionOpEntry};
     use num_complex::Complex;
     use smallvec::smallvec;
 

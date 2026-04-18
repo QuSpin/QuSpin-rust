@@ -1,5 +1,5 @@
 use super::BondOperator;
-use crate::operator::Operator;
+use quspin_operator::Operator;
 
 /// Type-erased `BondOperator`: either u8 or u16 cindex type.
 ///
@@ -40,7 +40,7 @@ impl BondOperatorInner {
         in_vec: &[num_complex::Complex<f64>],
         out_vec: &mut [num_complex::Complex<f64>],
         overwrite: bool,
-    ) -> Result<(), crate::error::QuSpinError> {
+    ) -> Result<(), quspin_types::QuSpinError> {
         match self {
             Self::Ham8(h) => super::super::apply::apply_and_project_to(
                 h, input, output, coeffs, in_vec, out_vec, overwrite,
@@ -58,7 +58,7 @@ impl BondOperatorInner {
         in_vec: &[num_complex::Complex<f64>],
         out_vec: &mut [num_complex::Complex<f64>],
         overwrite: bool,
-    ) -> Result<(), crate::error::QuSpinError> {
+    ) -> Result<(), quspin_types::QuSpinError> {
         match self {
             Self::Ham8(h) => super::super::apply::apply_and_project_to(
                 h, space, space, coeffs, in_vec, out_vec, overwrite,

@@ -1,4 +1,4 @@
-use crate::operator::Operator;
+use crate::Operator;
 use ndarray::Array2;
 use num_complex::Complex;
 use quspin_bitbasis::BitInt;
@@ -223,7 +223,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
+    use crate::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
     use ndarray::Array2;
     use num_complex::Complex;
     use smallvec::smallvec;

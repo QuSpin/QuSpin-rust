@@ -1,0 +1,12 @@
+[package]
+name = "quspin-operator"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+quspin-types = { path = "../quspin-types" }
+quspin-bitbasis = { path = "../quspin-bitbasis" }
+num-complex = { workspace = true }
+ndarray = { workspace = true }
+smallvec = { workspace = true }
+rayon = { workspace = true }

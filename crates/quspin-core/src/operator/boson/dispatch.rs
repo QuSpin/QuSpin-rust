@@ -36,7 +36,7 @@ impl BosonOperatorInner {
         in_vec: &[num_complex::Complex<f64>],
         out_vec: &mut [num_complex::Complex<f64>],
         overwrite: bool,
-    ) -> Result<(), crate::error::QuSpinError> {
+    ) -> Result<(), quspin_types::QuSpinError> {
         match self {
             Self::Ham8(h) => super::super::apply::apply_and_project_to(
                 h, input, output, coeffs, in_vec, out_vec, overwrite,
@@ -54,7 +54,7 @@ impl BosonOperatorInner {
         in_vec: &[num_complex::Complex<f64>],
         out_vec: &mut [num_complex::Complex<f64>],
         overwrite: bool,
-    ) -> Result<(), crate::error::QuSpinError> {
+    ) -> Result<(), quspin_types::QuSpinError> {
         match self {
             Self::Ham8(h) => super::super::apply::apply_and_project_to(
                 h, space, space, coeffs, in_vec, out_vec, overwrite,

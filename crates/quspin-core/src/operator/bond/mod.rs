@@ -1,5 +1,5 @@
 pub mod dispatch;
-pub mod operator;
 
 pub use dispatch::BondOperatorInner;
-pub use operator::{BondOperator, BondTerm};
+pub use quspin_operator::bond::operator;
+pub use quspin_operator::bond::{BondOperator, BondTerm};

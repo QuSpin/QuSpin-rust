@@ -1,4 +1,4 @@
-use crate::operator::Operator;
+use crate::Operator;
 use num_complex::Complex;
 use quspin_bitbasis::BitInt;
 use quspin_bitbasis::manip::{DitManip, DynamicDitManip};
@@ -341,7 +341,7 @@ mod tests {
         let term = make_swap_term(2);
         let op = MonomialOperator::new(vec![term], 2).unwrap();
 
-        let manip = crate::bitbasis::manip::DynamicDitManip::new(2);
+        let manip = quspin_bitbasis::DynamicDitManip::new(2);
 
         // state = 0b01 (site0=0, site1=1) -> expected 0b10
         let mut s: u32 = 0;
@@ -363,7 +363,7 @@ mod tests {
     fn swap_lhss3_static_path() {
         let term = make_swap_term(3);
         let op = MonomialOperator::new(vec![term], 3).unwrap();
-        let manip = crate::bitbasis::manip::DynamicDitManip::new(3);
+        let manip = quspin_bitbasis::DynamicDitManip::new(3);
 
         // state: site0=1, site1=2 -> expected site0=2, site1=1
         let mut s: u64 = 0;
@@ -384,7 +384,7 @@ mod tests {
     fn swap_lhss5_dynamic_path() {
         let term = make_swap_term(5);
         let op = MonomialOperator::new(vec![term], 5).unwrap();
-        let manip = crate::bitbasis::manip::DynamicDitManip::new(5);
+        let manip = quspin_bitbasis::DynamicDitManip::new(5);
 
         let mut s: u64 = 0;
         s = manip.set_dit(s, 1, 0);
@@ -430,7 +430,7 @@ mod tests {
         };
         let op = MonomialOperator::new(vec![term], lhss).unwrap();
 
-        let manip = crate::bitbasis::manip::DynamicDitManip::new(2);
+        let manip = quspin_bitbasis::DynamicDitManip::new(2);
         let mut s: u32 = 0;
         s = manip.set_dit(s, 0, 0);
         s = manip.set_dit(s, 1, 1); // idx=1

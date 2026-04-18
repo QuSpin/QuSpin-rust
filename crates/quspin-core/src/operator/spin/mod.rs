@@ -1,5 +1,5 @@
 pub mod dispatch;
-pub mod operator;
 
 pub use dispatch::SpinOperatorInner;
-pub use operator::{SpinOp, SpinOpEntry, SpinOperator};
+pub use quspin_operator::spin::operator;
+pub use quspin_operator::spin::{SpinOp, SpinOpEntry, SpinOperator};

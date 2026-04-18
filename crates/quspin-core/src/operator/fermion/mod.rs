@@ -1,5 +1,5 @@
 pub mod dispatch;
-pub mod operator;
 
 pub use dispatch::FermionOperatorInner;
-pub use operator::{FermionOp, FermionOpEntry, FermionOperator};
+pub use quspin_operator::fermion::operator;
+pub use quspin_operator::fermion::{FermionOp, FermionOpEntry, FermionOperator};

@@ -1,5 +1,5 @@
 pub mod dispatch;
-pub mod operator;
 
 pub use dispatch::BosonOperatorInner;
-pub use operator::{BosonOp, BosonOpEntry, BosonOperator};
+pub use quspin_operator::boson::operator;
+pub use quspin_operator::boson::{BosonOp, BosonOpEntry, BosonOperator};
