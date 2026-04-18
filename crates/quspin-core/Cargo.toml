@@ -4,10 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-large-int = []
+large-int = ["quspin-bitbasis/large-int"]
 
 [dependencies]
 quspin-types = { path = "../quspin-types" }
+quspin-bitbasis = { path = "../quspin-bitbasis" }
 num-complex = { workspace = true }
 ndarray = { workspace = true }
 rayon = { workspace = true }

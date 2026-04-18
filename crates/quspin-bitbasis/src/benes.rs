@@ -5,7 +5,7 @@
 ///
 /// A [`BenesNetwork<B>`] is constructed by [`gen_benes`] from a target permutation
 /// and applied via [`BenesNetwork::apply`] (or the [`benes_fwd`] free-function shim).
-use crate::bitbasis::BitInt;
+use crate::int::BitInt;
 use smallvec::SmallVec;
 
 // Sentinel: index slot is empty / "don't care".

@@ -1,8 +1,8 @@
 //! Shared BFS wave helpers used by both [`Subspace`](super::Subspace) and
 //! [`SymBasis`](super::SymBasis).
 
-use crate::bitbasis::BitInt;
 use num_complex::Complex;
+use quspin_bitbasis::BitInt;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 

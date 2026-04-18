@@ -5,9 +5,9 @@ use crate::basis::{
     BasisSpace,
     sym::{NormInt, SymBasis},
 };
-use crate::bitbasis::{BitInt, BitStateOp, PermDitValues};
 use crate::operator::Operator;
 use num_complex::Complex;
+use quspin_bitbasis::{BitInt, BitStateOp, PermDitValues};
 use quspin_types::Primitive;
 use rayon::prelude::*;
 use smallvec::SmallVec;
@@ -182,7 +182,7 @@ where
     C: CIndex + Copy + Ord,
 {
     use crate::basis::dispatch::SpaceInner;
-    use crate::bitbasis::{DynamicPermDitValues, PermDitMask};
+    use quspin_bitbasis::{DynamicPermDitValues, PermDitMask};
 
     type B128 = ruint::Uint<128, 2>;
     type B256 = ruint::Uint<256, 4>;

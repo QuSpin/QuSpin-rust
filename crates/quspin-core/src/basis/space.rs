@@ -1,6 +1,6 @@
 use super::BasisSpace;
 use super::bfs::bfs_wave;
-use crate::bitbasis::{
+use quspin_bitbasis::{
     BitInt,
     manip::{DitManip, DynamicDitManip},
 };

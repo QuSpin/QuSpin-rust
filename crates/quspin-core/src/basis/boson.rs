@@ -93,7 +93,7 @@ impl BosonBasis {
                 if lhss == 2 {
                     seed_from_bytes::<$B>($seed)
                 } else {
-                    use crate::bitbasis::manip::DynamicDitManip;
+                    use quspin_bitbasis::manip::DynamicDitManip;
                     dit_seed_from_bytes::<$B>($seed, &DynamicDitManip::new(lhss))
                 }
             };
@@ -315,7 +315,7 @@ mod tests {
         let mut basis = BosonBasis::new(n_sites, lhss, SpaceKind::Sub).unwrap();
         // Seed: 1 boson at site 0 (dit=1), all others empty (dit=0).
         // Encodes single-particle sector.
-        use crate::bitbasis::manip::DynamicDitManip;
+        use quspin_bitbasis::manip::DynamicDitManip;
         let manip = DynamicDitManip::new(lhss);
         let mut seed_state: u32 = 0;
         seed_state = manip.set_dit(seed_state, 1, 0);

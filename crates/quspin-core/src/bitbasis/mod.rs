@@ -1,12 +1,2 @@
-pub mod benes;
-pub mod int;
-pub mod manip;
-pub mod transform;
-
-pub use benes::{BenesNetwork, benes_fwd, gen_benes};
-pub use int::BitInt;
-pub use manip::{DitManip, DynamicDitManip};
-pub use transform::{
-    BenesPermDitLocations, BitStateOp, DynamicPermDitValues, PermDitLocations, PermDitMask,
-    PermDitValues,
-};
+// Forwarding shim — bitbasis types now live in `quspin-bitbasis`.
+pub use quspin_bitbasis::*;

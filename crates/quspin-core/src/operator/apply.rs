@@ -3,9 +3,9 @@ use crate::basis::expand::ExpandRefState;
 use crate::basis::space::{FullSpace, Subspace};
 use crate::basis::sym::{NormInt, SymBasis};
 use crate::basis::traits::BasisSpace;
-use crate::bitbasis::{BitInt, BitStateOp};
 use crate::qmatrix::CIndex;
 use num_complex::Complex;
+use quspin_bitbasis::{BitInt, BitStateOp};
 use quspin_types::QuSpinError;
 use rayon::prelude::*;
 
@@ -381,7 +381,7 @@ where
     C: CIndex,
 {
     #[allow(unused_imports)]
-    use crate::bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
+    use quspin_bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 
     type B128 = ruint::Uint<128, 2>;
     type B256 = ruint::Uint<256, 4>;
@@ -559,7 +559,7 @@ pub fn project_to(
     }
 
     #[allow(unused_imports)]
-    use crate::bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
+    use quspin_bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 
     type B128 = ruint::Uint<128, 2>;
     type B256 = ruint::Uint<256, 4>;
@@ -851,8 +851,8 @@ mod tests {
         // 3-site system with translation symmetry (k=0), using X operator to
         // connect all states.
         use crate::basis::sym::SymBasis;
-        use crate::bitbasis::PermDitMask;
         use crate::qmatrix::build::build_from_symmetric;
+        use quspin_bitbasis::PermDitMask;
 
         let n_sites = 3;
         // Use same X operator as the SymBasis tests to connect all states

@@ -6,8 +6,8 @@
 use super::bfs::{AMP_CANCEL_TOL, PARALLEL_FRONTIER_THRESHOLD};
 use super::lattice::{BenesLatticeElement, LatEl, LocalOpItem};
 use super::traits::BasisSpace;
-use crate::bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
 use num_complex::Complex;
+use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
@@ -465,8 +465,8 @@ impl<B: BitInt, L, N: NormInt> BasisSpace<B> for SymBasis<B, L, N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bitbasis::PermDitMask;
     use num_complex::Complex;
+    use quspin_bitbasis::PermDitMask;
 
     fn x_op(n_sites: u32) -> impl Fn(u32) -> Vec<(Complex<f64>, u32, u8)> {
         move |state: u32| {

@@ -1,6 +1,6 @@
-use crate::bitbasis::{BitInt, manip::DynamicDitManip};
 use crate::operator::Operator;
 use num_complex::Complex;
+use quspin_bitbasis::{BitInt, manip::DynamicDitManip};
 use smallvec::SmallVec;
 
 use crate::operator::ParseOp;

@@ -126,7 +126,7 @@ impl SpinBasis {
                 if lhss == 2 {
                     seed_from_bytes::<$B>($seed)
                 } else {
-                    use crate::bitbasis::manip::DynamicDitManip;
+                    use quspin_bitbasis::manip::DynamicDitManip;
                     dit_seed_from_bytes::<$B>($seed, &DynamicDitManip::new(lhss))
                 }
             };

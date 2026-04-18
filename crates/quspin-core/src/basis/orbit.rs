@@ -6,8 +6,8 @@
 /// - [`check_refstate_batch`] — batch variant of `check_refstate` structured
 ///   for auto-vectorisation across a slice of states.
 use super::lattice::{LatEl, LocalOpItem};
-use crate::bitbasis::BitInt;
 use num_complex::Complex;
+use quspin_bitbasis::BitInt;
 use smallvec::SmallVec;
 
 /// Inline capacity for the orbit image buffer.
@@ -229,8 +229,8 @@ pub(crate) fn check_refstate_batch<B: BitInt, E: LatEl<B>, L: LocalOpItem<B>>(
 mod tests {
     use super::*;
     use crate::basis::lattice::LatticeElement;
-    use crate::bitbasis::{PermDitLocations, PermDitMask};
     use num_complex::Complex;
+    use quspin_bitbasis::{PermDitLocations, PermDitMask};
 
     fn one() -> Complex<f64> {
         Complex::new(1.0, 0.0)
