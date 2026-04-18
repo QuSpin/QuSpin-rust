@@ -347,7 +347,7 @@ mod tests {
         // added to the subspace when the net amplitude is zero.
         // Starting from a seed with k ones the subspace dimension must equal
         // C(n_sites, k) for all k in 0..=n_sites.
-        use crate::operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
+        use quspin_operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
         use smallvec::smallvec;
 
         let n_sites: usize = 6;
@@ -437,7 +437,7 @@ mod tests {
     fn subspace_parallel_xx_yy_conserves_particle_number() {
         // Same as the small test but at 12 sites — frontier grows large enough
         // to trigger parallel BFS.  Amplitude cancellation must still be exact.
-        use crate::operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
+        use quspin_operator::pauli::{HardcoreOp, HardcoreOperator, OpEntry};
         use smallvec::smallvec;
 
         let n_sites: usize = 12;

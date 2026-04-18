@@ -1,13 +1,13 @@
 /// Spin basis type [`SpinBasis`].
 use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
-use crate::operator::pauli::HardcoreOperatorInner;
-use crate::operator::{BondOperatorInner, SpinOperatorInner};
 use crate::{
     with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
     with_trit_sym_basis_mut,
 };
 use num_complex::Complex;
+use quspin_operator::pauli::HardcoreOperatorInner;
+use quspin_operator::{BondOperatorInner, SpinOperatorInner};
 use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn spin_basis_build_spin_half() {
-        use crate::operator::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
+        use quspin_operator::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
         use smallvec::smallvec;
 
         // H = S+_0 S-_1 + S-_0 S+_1  (hopping / XX+YY-type), lhss=2
@@ -389,7 +389,7 @@ mod tests {
 
     #[test]
     fn spin_basis_build_spin_one_lhss3() {
-        use crate::operator::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
+        use quspin_operator::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
         use smallvec::smallvec;
 
         // H = S+_0 S-_1 + S-_0 S+_1  (spin-1 hopping), lhss=3

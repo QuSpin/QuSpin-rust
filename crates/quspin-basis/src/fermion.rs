@@ -1,10 +1,10 @@
 /// Fermionic basis type [`FermionBasis`].
 use super::dispatch::SpaceInner;
 use super::seed::seed_from_bytes;
-use crate::basis::spin::SpaceKind;
-use crate::operator::{BondOperatorInner, FermionOperatorInner};
+use crate::spin::SpaceKind;
 use crate::{with_sub_basis_mut, with_sym_basis_mut};
 use num_complex::Complex;
+use quspin_operator::{BondOperatorInner, FermionOperatorInner};
 use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn fermion_basis_build_fermion() {
-        use crate::operator::fermion::{FermionOp, FermionOpEntry, FermionOperator};
+        use quspin_operator::fermion::{FermionOp, FermionOpEntry, FermionOperator};
         use smallvec::smallvec;
 
         // Hopping Hamiltonian: H = sum_i (c†_i c_{i+1} + c†_{i+1} c_i), 4 sites.
@@ -210,8 +210,8 @@ mod tests {
 
     #[test]
     fn fermion_basis_build_bond() {
-        use crate::operator::bond::{BondOperator, BondTerm};
         use ndarray::array;
+        use quspin_operator::bond::{BondOperator, BondTerm};
 
         // Hopping matrix for LHSS=2: [[0,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,0]]
         // This swaps |01> <-> |10> (single-particle hopping).

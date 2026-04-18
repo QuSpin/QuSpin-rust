@@ -17,7 +17,7 @@ pub use expm::{
 };
 pub use hamiltonian::{Hamiltonian, HamiltonianInner, IntoHamiltonianInner, SchrodingerEq};
 pub use linear_operator::{LinearOperator, QMatrixOperator};
-pub use operator::{Operator, ParseOp};
+pub use operator::{Operator, OperatorDispatch, ParseOp};
 pub use quspin_types::{
     AtomicAccum, CIndexDType, DynLinearOperator, ExpmComputation, FnLinearOperator,
     FnLinearOperatorBuilder, Primitive, QuSpinError, ValueDType,

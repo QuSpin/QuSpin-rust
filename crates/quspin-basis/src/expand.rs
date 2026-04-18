@@ -391,7 +391,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::space::{FullSpace, Subspace};
+    use crate::space::{FullSpace, Subspace};
     use ndarray::Array2;
 
     /// For a 2-site spin-1/2 system in the product state |↓↑⟩ (site 0 = 0,

@@ -26,7 +26,7 @@ pub trait BasisSpace<B: BitInt> {
 
 /// Interface for symmetry groups over a fixed `BitInt` state type.
 ///
-/// Orbit computation is provided directly by [`SymBasis<B, L, N>`](crate::basis::sym_basis::SymBasis)
+/// Orbit computation is provided directly by [`SymBasis<B, L, N>`](crate::sym_basis::SymBasis)
 /// via inherent methods rather than through this trait.  This trait retains
 /// only the metadata accessor needed for construction-time validation.
 pub trait SymGrp {

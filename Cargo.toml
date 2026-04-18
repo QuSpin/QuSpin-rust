@@ -3,6 +3,7 @@ members = [
     "crates/quspin-types",
     "crates/quspin-bitbasis",
     "crates/quspin-operator",
+    "crates/quspin-basis",
     "crates/quspin-core",
     "crates/quspin-py",
 ]

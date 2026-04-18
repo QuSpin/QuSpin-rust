@@ -30,7 +30,7 @@ const PARALLEL_BATCH_THRESHOLD: usize = 256;
 /// - B = u64  → N = u16
 /// - B = Uint<128..8192> → N = u32
 ///
-/// This pairing is enforced statically via [`SpaceInner`](crate::basis::dispatch::SpaceInner)
+/// This pairing is enforced statically via [`SpaceInner`](crate::dispatch::SpaceInner)
 /// variant definitions and the `with_sym_grp!` macro.
 pub trait NormInt: Copy + Send + Sync + 'static {
     fn from_norm(norm: f64) -> Self;
@@ -87,8 +87,8 @@ impl NormInt for u32 {
 /// - `L` — local-op type: [`PermDitMask<B>`] for LHSS=2, [`DynamicPermDitValues`] for LHSS≥3
 /// - `N` — norm storage type ([`NormInt`]): `u8`, `u16`, or `u32`
 ///
-/// [`PermDitMask<B>`]: crate::bitbasis::PermDitMask
-/// [`DynamicPermDitValues`]: crate::bitbasis::DynamicPermDitValues
+/// [`PermDitMask<B>`]: quspin_bitbasis::PermDitMask
+/// [`DynamicPermDitValues`]: quspin_bitbasis::DynamicPermDitValues
 pub struct SymBasis<B: BitInt, L, N: NormInt> {
     // Group data (was SymGrpBase<B, L>)
     pub(crate) lhss: usize,

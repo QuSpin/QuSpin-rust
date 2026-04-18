@@ -1,13 +1,13 @@
 /// Bosonic basis type [`BosonBasis`].
 use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
-use crate::basis::spin::SpaceKind;
-use crate::operator::{BondOperatorInner, BosonOperatorInner};
+use crate::spin::SpaceKind;
 use crate::{
     with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
     with_trit_sym_basis_mut,
 };
 use num_complex::Complex;
+use quspin_operator::{BondOperatorInner, BosonOperatorInner};
 use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn boson_basis_build_boson_lhss2() {
-        use crate::operator::boson::{BosonOp, BosonOpEntry, BosonOperator};
+        use quspin_operator::boson::{BosonOp, BosonOpEntry, BosonOperator};
         use smallvec::smallvec;
 
         // H = a†_0 a_1 + a_0 a†_1  (hopping), lhss=2, 4 sites
@@ -288,8 +288,8 @@ mod tests {
 
     #[test]
     fn boson_basis_build_bond_lhss3() {
-        use crate::operator::bond::{BondOperator, BondTerm};
         use ndarray::Array2;
+        use quspin_operator::bond::{BondOperator, BondTerm};
 
         // Hopping matrix for lhss=3 (9x9): swaps |1,0> <-> |0,1> at two sites.
         // Two-site local Hilbert space dimension: 3^2 = 9.

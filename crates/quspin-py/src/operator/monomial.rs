@@ -3,6 +3,7 @@ use crate::operator::{as_c64_vec, with_space_inner, with_two_space_inners, write
 use num_complex::Complex;
 use numpy::{Complex64, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
+use quspin_core::OperatorDispatch;
 use quspin_core::operator::monomial::{MonomialOperator, MonomialOperatorInner, MonomialTerm};
 use smallvec::SmallVec;
 

@@ -1,13 +1,13 @@
 /// Generic basis type [`GenericBasis`].
 use super::dispatch::SpaceInner;
 use super::seed::{dit_seed_from_bytes, seed_from_bytes};
-use crate::basis::spin::SpaceKind;
-use crate::operator::MonomialOperatorInner;
+use crate::spin::SpaceKind;
 use crate::{
     with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
     with_trit_sym_basis_mut,
 };
 use num_complex::Complex;
+use quspin_operator::MonomialOperatorInner;
 use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
@@ -94,7 +94,7 @@ impl GenericBasis {
         ham: &MonomialOperatorInner,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        use crate::operator::Operator;
+        use quspin_operator::Operator;
 
         if self.inner.space_kind() == SpaceKind::Full {
             return Err(QuSpinError::ValueError(
@@ -194,8 +194,8 @@ impl GenericBasis {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operator::monomial::{MonomialOperator, MonomialTerm};
     use num_complex::Complex;
+    use quspin_operator::monomial::{MonomialOperator, MonomialTerm};
     use smallvec::smallvec;
 
     fn cyclic_term(lhss: usize, n_sites: usize) -> MonomialTerm<u8> {

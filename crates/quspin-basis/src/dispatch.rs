@@ -16,7 +16,7 @@
 ///
 /// `FullSpace` is only instantiated for `u32` and `u64`; larger full spaces
 /// are not physically meaningful.
-use crate::basis::{
+use crate::{
     BasisSpace,
     seed::{dit_seed_from_bytes, dit_state_to_str, seed_from_bytes, state_to_str},
     space::{FullSpace, Subspace},
@@ -143,7 +143,7 @@ pub enum SpaceInner {
 /// Format a basis state as a string, using bit-encoding for LHSS=2 and
 /// decimal dit-encoding for LHSS≥3.
 #[inline]
-fn fmt_state<B: crate::bitbasis::BitInt>(state: B, n_sites: usize, lhss: usize) -> String {
+fn fmt_state<B: quspin_bitbasis::BitInt>(state: B, n_sites: usize, lhss: usize) -> String {
     if lhss == 2 {
         state_to_str(state, n_sites)
     } else {
@@ -310,8 +310,8 @@ impl SpaceInner {
     }
 
     /// Which kind of space this basis represents.
-    pub fn space_kind(&self) -> crate::basis::spin::SpaceKind {
-        use crate::basis::spin::SpaceKind;
+    pub fn space_kind(&self) -> crate::spin::SpaceKind {
+        use crate::spin::SpaceKind;
         match self {
             SpaceInner::Full32(_) | SpaceInner::Full64(_) => SpaceKind::Full,
             SpaceInner::Sub32(_)
@@ -1371,216 +1371,216 @@ impl_from_quat_sym_spaces!(B8192, u32, QuatSym8192);
 macro_rules! with_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::Full32($basis) => {
+            $crate::dispatch::SpaceInner::Full32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Full64($basis) => {
+            $crate::dispatch::SpaceInner::Full64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub32($basis) => {
+            $crate::dispatch::SpaceInner::Sub32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub64($basis) => {
+            $crate::dispatch::SpaceInner::Sub64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub128($basis) => {
+            $crate::dispatch::SpaceInner::Sub128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub256($basis) => {
+            $crate::dispatch::SpaceInner::Sub256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub512($basis) => {
+            $crate::dispatch::SpaceInner::Sub512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub1024($basis) => {
+            $crate::dispatch::SpaceInner::Sub1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub2048($basis) => {
+            $crate::dispatch::SpaceInner::Sub2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub4096($basis) => {
+            $crate::dispatch::SpaceInner::Sub4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub8192($basis) => {
+            $crate::dispatch::SpaceInner::Sub8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sym32($basis) => {
+            $crate::dispatch::SpaceInner::Sym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sym64($basis) => {
+            $crate::dispatch::SpaceInner::Sym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sym128($basis) => {
+            $crate::dispatch::SpaceInner::Sym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sym256($basis) => {
+            $crate::dispatch::SpaceInner::Sym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym512($basis) => {
+            $crate::dispatch::SpaceInner::Sym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym1024($basis) => {
+            $crate::dispatch::SpaceInner::Sym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym2048($basis) => {
+            $crate::dispatch::SpaceInner::Sym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym4096($basis) => {
+            $crate::dispatch::SpaceInner::Sym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym8192($basis) => {
+            $crate::dispatch::SpaceInner::Sym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::DitSym32($basis) => {
+            $crate::dispatch::SpaceInner::DitSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::DitSym64($basis) => {
+            $crate::dispatch::SpaceInner::DitSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::DitSym128($basis) => {
+            $crate::dispatch::SpaceInner::DitSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::DitSym256($basis) => {
+            $crate::dispatch::SpaceInner::DitSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym512($basis) => {
+            $crate::dispatch::SpaceInner::DitSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym1024($basis) => {
+            $crate::dispatch::SpaceInner::DitSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym2048($basis) => {
+            $crate::dispatch::SpaceInner::DitSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym4096($basis) => {
+            $crate::dispatch::SpaceInner::DitSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym8192($basis) => {
+            $crate::dispatch::SpaceInner::DitSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::TritSym32($basis) => {
+            $crate::dispatch::SpaceInner::TritSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::TritSym64($basis) => {
+            $crate::dispatch::SpaceInner::TritSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::TritSym128($basis) => {
+            $crate::dispatch::SpaceInner::TritSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::TritSym256($basis) => {
+            $crate::dispatch::SpaceInner::TritSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym512($basis) => {
+            $crate::dispatch::SpaceInner::TritSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym1024($basis) => {
+            $crate::dispatch::SpaceInner::TritSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym2048($basis) => {
+            $crate::dispatch::SpaceInner::TritSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym4096($basis) => {
+            $crate::dispatch::SpaceInner::TritSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym8192($basis) => {
+            $crate::dispatch::SpaceInner::TritSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::QuatSym32($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::QuatSym64($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::QuatSym128($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::QuatSym256($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym512($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym1024($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym2048($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym4096($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym8192($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -1593,52 +1593,52 @@ macro_rules! with_basis {
 macro_rules! with_plain_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::Full32($basis) => {
+            $crate::dispatch::SpaceInner::Full32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Full64($basis) => {
+            $crate::dispatch::SpaceInner::Full64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub32($basis) => {
+            $crate::dispatch::SpaceInner::Sub32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub64($basis) => {
+            $crate::dispatch::SpaceInner::Sub64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub128($basis) => {
+            $crate::dispatch::SpaceInner::Sub128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub256($basis) => {
+            $crate::dispatch::SpaceInner::Sub256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub512($basis) => {
+            $crate::dispatch::SpaceInner::Sub512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub1024($basis) => {
+            $crate::dispatch::SpaceInner::Sub1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub2048($basis) => {
+            $crate::dispatch::SpaceInner::Sub2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub4096($basis) => {
+            $crate::dispatch::SpaceInner::Sub4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub8192($basis) => {
+            $crate::dispatch::SpaceInner::Sub8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -1654,44 +1654,44 @@ macro_rules! with_plain_basis {
 macro_rules! with_sym_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::Sym32($basis) => {
+            $crate::dispatch::SpaceInner::Sym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sym64($basis) => {
+            $crate::dispatch::SpaceInner::Sym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sym128($basis) => {
+            $crate::dispatch::SpaceInner::Sym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sym256($basis) => {
+            $crate::dispatch::SpaceInner::Sym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym512($basis) => {
+            $crate::dispatch::SpaceInner::Sym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym1024($basis) => {
+            $crate::dispatch::SpaceInner::Sym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym2048($basis) => {
+            $crate::dispatch::SpaceInner::Sym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym4096($basis) => {
+            $crate::dispatch::SpaceInner::Sym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym8192($basis) => {
+            $crate::dispatch::SpaceInner::Sym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -1707,44 +1707,44 @@ macro_rules! with_sym_basis {
 macro_rules! with_dit_sym_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::DitSym32($basis) => {
+            $crate::dispatch::SpaceInner::DitSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::DitSym64($basis) => {
+            $crate::dispatch::SpaceInner::DitSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::DitSym128($basis) => {
+            $crate::dispatch::SpaceInner::DitSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::DitSym256($basis) => {
+            $crate::dispatch::SpaceInner::DitSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym512($basis) => {
+            $crate::dispatch::SpaceInner::DitSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym1024($basis) => {
+            $crate::dispatch::SpaceInner::DitSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym2048($basis) => {
+            $crate::dispatch::SpaceInner::DitSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym4096($basis) => {
+            $crate::dispatch::SpaceInner::DitSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym8192($basis) => {
+            $crate::dispatch::SpaceInner::DitSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -1758,44 +1758,44 @@ macro_rules! with_dit_sym_basis {
 macro_rules! with_sym_basis_mut {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::Sym32($basis) => {
+            $crate::dispatch::SpaceInner::Sym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sym64($basis) => {
+            $crate::dispatch::SpaceInner::Sym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sym128($basis) => {
+            $crate::dispatch::SpaceInner::Sym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sym256($basis) => {
+            $crate::dispatch::SpaceInner::Sym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym512($basis) => {
+            $crate::dispatch::SpaceInner::Sym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym1024($basis) => {
+            $crate::dispatch::SpaceInner::Sym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym2048($basis) => {
+            $crate::dispatch::SpaceInner::Sym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym4096($basis) => {
+            $crate::dispatch::SpaceInner::Sym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sym8192($basis) => {
+            $crate::dispatch::SpaceInner::Sym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -1809,44 +1809,44 @@ macro_rules! with_sym_basis_mut {
 macro_rules! with_dit_sym_basis_mut {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::DitSym32($basis) => {
+            $crate::dispatch::SpaceInner::DitSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::DitSym64($basis) => {
+            $crate::dispatch::SpaceInner::DitSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::DitSym128($basis) => {
+            $crate::dispatch::SpaceInner::DitSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::DitSym256($basis) => {
+            $crate::dispatch::SpaceInner::DitSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym512($basis) => {
+            $crate::dispatch::SpaceInner::DitSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym1024($basis) => {
+            $crate::dispatch::SpaceInner::DitSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym2048($basis) => {
+            $crate::dispatch::SpaceInner::DitSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym4096($basis) => {
+            $crate::dispatch::SpaceInner::DitSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::DitSym8192($basis) => {
+            $crate::dispatch::SpaceInner::DitSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -1860,44 +1860,44 @@ macro_rules! with_dit_sym_basis_mut {
 macro_rules! with_trit_sym_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::TritSym32($basis) => {
+            $crate::dispatch::SpaceInner::TritSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::TritSym64($basis) => {
+            $crate::dispatch::SpaceInner::TritSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::TritSym128($basis) => {
+            $crate::dispatch::SpaceInner::TritSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::TritSym256($basis) => {
+            $crate::dispatch::SpaceInner::TritSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym512($basis) => {
+            $crate::dispatch::SpaceInner::TritSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym1024($basis) => {
+            $crate::dispatch::SpaceInner::TritSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym2048($basis) => {
+            $crate::dispatch::SpaceInner::TritSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym4096($basis) => {
+            $crate::dispatch::SpaceInner::TritSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym8192($basis) => {
+            $crate::dispatch::SpaceInner::TritSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -1911,44 +1911,44 @@ macro_rules! with_trit_sym_basis {
 macro_rules! with_trit_sym_basis_mut {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::TritSym32($basis) => {
+            $crate::dispatch::SpaceInner::TritSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::TritSym64($basis) => {
+            $crate::dispatch::SpaceInner::TritSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::TritSym128($basis) => {
+            $crate::dispatch::SpaceInner::TritSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::TritSym256($basis) => {
+            $crate::dispatch::SpaceInner::TritSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym512($basis) => {
+            $crate::dispatch::SpaceInner::TritSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym1024($basis) => {
+            $crate::dispatch::SpaceInner::TritSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym2048($basis) => {
+            $crate::dispatch::SpaceInner::TritSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym4096($basis) => {
+            $crate::dispatch::SpaceInner::TritSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::TritSym8192($basis) => {
+            $crate::dispatch::SpaceInner::TritSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -1962,44 +1962,44 @@ macro_rules! with_trit_sym_basis_mut {
 macro_rules! with_quat_sym_basis {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::QuatSym32($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::QuatSym64($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::QuatSym128($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::QuatSym256($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym512($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym1024($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym2048($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym4096($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym8192($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -2013,44 +2013,44 @@ macro_rules! with_quat_sym_basis {
 macro_rules! with_quat_sym_basis_mut {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::QuatSym32($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::QuatSym64($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::QuatSym128($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::QuatSym256($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym512($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym1024($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym2048($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym4096($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::QuatSym8192($basis) => {
+            $crate::dispatch::SpaceInner::QuatSym8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -2066,44 +2066,44 @@ macro_rules! with_quat_sym_basis_mut {
 macro_rules! with_sub_basis_mut {
     ($inner:expr, $B:ident, $basis:ident, $body:block) => {
         match $inner {
-            $crate::basis::dispatch::SpaceInner::Sub32($basis) => {
+            $crate::dispatch::SpaceInner::Sub32($basis) => {
                 type $B = u32;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub64($basis) => {
+            $crate::dispatch::SpaceInner::Sub64($basis) => {
                 type $B = u64;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub128($basis) => {
+            $crate::dispatch::SpaceInner::Sub128($basis) => {
                 type $B = ::ruint::Uint<128, 2>;
                 $body
             }
-            $crate::basis::dispatch::SpaceInner::Sub256($basis) => {
+            $crate::dispatch::SpaceInner::Sub256($basis) => {
                 type $B = ::ruint::Uint<256, 4>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub512($basis) => {
+            $crate::dispatch::SpaceInner::Sub512($basis) => {
                 type $B = ::ruint::Uint<512, 8>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub1024($basis) => {
+            $crate::dispatch::SpaceInner::Sub1024($basis) => {
                 type $B = ::ruint::Uint<1024, 16>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub2048($basis) => {
+            $crate::dispatch::SpaceInner::Sub2048($basis) => {
                 type $B = ::ruint::Uint<2048, 32>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub4096($basis) => {
+            $crate::dispatch::SpaceInner::Sub4096($basis) => {
                 type $B = ::ruint::Uint<4096, 64>;
                 $body
             }
             #[cfg(feature = "large-int")]
-            $crate::basis::dispatch::SpaceInner::Sub8192($basis) => {
+            $crate::dispatch::SpaceInner::Sub8192($basis) => {
                 type $B = ::ruint::Uint<8192, 128>;
                 $body
             }
@@ -2200,7 +2200,7 @@ macro_rules! select_b_for_large_n_sites {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basis::space::FullSpace;
+    use crate::space::FullSpace;
 
     #[test]
     fn display_header() {
@@ -2263,7 +2263,7 @@ mod tests {
 
     #[test]
     fn display_symmetric_note() {
-        use crate::basis::sym::SymBasis;
+        use crate::sym::SymBasis;
         use quspin_bitbasis::PermDitMask;
         let inner = SpaceInner::Sym32(SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(
             2, 2, false,
