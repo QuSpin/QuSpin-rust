@@ -7,7 +7,7 @@ use super::bfs::{AMP_CANCEL_TOL, PARALLEL_FRONTIER_THRESHOLD};
 use super::lattice::{BenesLatticeElement, LatEl, LocalOpItem};
 use super::traits::BasisSpace;
 use num_complex::Complex;
-use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, StateGraph};
+use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, StateTransitions};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
@@ -225,7 +225,7 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
     ///    thread; frontier for the next wave assembled here.
     pub fn build<G>(&mut self, seed: B, graph: &G)
     where
-        G: StateGraph,
+        G: StateTransitions,
         L: Sync,
     {
         self.built = true;
@@ -331,7 +331,7 @@ where
     B: BitInt,
     E: LatEl<B> + Sync,
     L: LocalOpItem<B> + Sync,
-    G: StateGraph,
+    G: StateTransitions,
 {
     if frontier.len() < PARALLEL_FRONTIER_THRESHOLD {
         let mut reps = HashSet::new();
@@ -466,12 +466,12 @@ mod tests {
     use num_complex::Complex;
     use quspin_bitbasis::PermDitMask;
 
-    /// X on every site, exposed as a `StateGraph` for BFS tests.
+    /// X on every site, exposed as a `StateTransitions` for BFS tests.
     struct XAllSites {
         n_sites: u32,
     }
 
-    impl StateGraph for XAllSites {
+    impl StateTransitions for XAllSites {
         fn lhss(&self) -> usize {
             2
         }

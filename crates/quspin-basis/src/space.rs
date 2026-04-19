@@ -1,7 +1,7 @@
 use super::BasisSpace;
 use super::bfs::bfs_wave;
 use quspin_bitbasis::{
-    BitInt, StateGraph,
+    BitInt, StateTransitions,
     manip::{DitManip, DynamicDitManip},
 };
 use std::collections::HashMap;
@@ -168,7 +168,7 @@ impl<B: BitInt> Subspace<B> {
     /// in parallel (when large enough), discovers new states, and forms the
     /// next frontier.  After the walk, states are sorted ascending and the
     /// index map is rebuilt.
-    pub fn build<G: StateGraph>(&mut self, seed: B, graph: &G) {
+    pub fn build<G: StateTransitions>(&mut self, seed: B, graph: &G) {
         self.built = true;
 
         let is_new =
@@ -285,12 +285,12 @@ mod tests {
 
     // --- Subspace build via X-only hopping (connects all 2^N states) ---
 
-    /// X on every site, emitted as a `StateGraph`.
+    /// X on every site, emitted as a `StateTransitions`.
     struct XAllSites {
         n_sites: u32,
     }
 
-    impl StateGraph for XAllSites {
+    impl StateTransitions for XAllSites {
         fn lhss(&self) -> usize {
             2
         }
@@ -400,7 +400,7 @@ mod tests {
             n_sites: usize,
         }
 
-        impl StateGraph for NNHop {
+        impl StateTransitions for NNHop {
             fn lhss(&self) -> usize {
                 2
             }
@@ -483,7 +483,7 @@ mod tests {
         // (XX + YY preserves particle number) — simulate with a ZZ-like op
         // that only connects states which differ by swapping adjacent 01↔10.
         struct NNSwap;
-        impl StateGraph for NNSwap {
+        impl StateTransitions for NNSwap {
             fn lhss(&self) -> usize {
                 2
             }

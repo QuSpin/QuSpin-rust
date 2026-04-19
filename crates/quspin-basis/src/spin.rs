@@ -1,7 +1,7 @@
 /// Spin basis type [`SpinBasis`].
 use super::dispatch::SpaceInner;
 use num_complex::Complex;
-use quspin_bitbasis::StateGraph;
+use quspin_bitbasis::StateTransitions;
 use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ impl SpinBasis {
     /// - Called on a [`SpaceKind::Full`] basis
     /// - Basis is already built
     /// - `graph.lhss() != self.lhss`
-    pub fn build<G: StateGraph>(
+    pub fn build<G: StateTransitions>(
         &mut self,
         graph: &G,
         seeds: &[Vec<u8>],

@@ -116,7 +116,7 @@ pub(crate) fn make_space_inner(
 /// Build a basis subspace from `seeds` under the connectivity described by
 /// `graph`. Shared by every `SpinBasis`/`BosonBasis`/`FermionBasis`/
 /// `GenericBasis` `build` call.
-pub(crate) fn build_inner<G: quspin_bitbasis::StateGraph>(
+pub(crate) fn build_inner<G: quspin_bitbasis::StateTransitions>(
     inner: &mut SpaceInner,
     graph: &G,
     seeds: &[Vec<u8>],

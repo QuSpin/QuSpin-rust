@@ -2,7 +2,7 @@
 //! [`SymBasis`](super::SymBasis).
 
 use num_complex::Complex;
-use quspin_bitbasis::{BitInt, StateGraph};
+use quspin_bitbasis::{BitInt, StateTransitions};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
@@ -32,7 +32,7 @@ fn discover_from_state<B, G>(
     discovered: &mut HashSet<B>,
 ) where
     B: BitInt,
-    G: StateGraph,
+    G: StateTransitions,
 {
     contributions.clear();
     graph.neighbors::<B, _>(state, |amp, next_state| {
@@ -54,7 +54,7 @@ fn discover_from_state<B, G>(
 pub(crate) fn bfs_wave_sequential<B, G>(frontier: &[B], graph: &G) -> HashSet<B>
 where
     B: BitInt,
-    G: StateGraph,
+    G: StateTransitions,
 {
     let mut discovered = HashSet::new();
     let mut contributions = HashMap::new();
@@ -69,7 +69,7 @@ where
 pub(crate) fn bfs_wave_parallel<B, G>(frontier: &[B], graph: &G) -> HashSet<B>
 where
     B: BitInt,
-    G: StateGraph,
+    G: StateTransitions,
 {
     frontier
         .par_iter()
@@ -94,7 +94,7 @@ where
 pub(crate) fn bfs_wave<B, G>(frontier: &[B], graph: &G) -> HashSet<B>
 where
     B: BitInt,
-    G: StateGraph,
+    G: StateTransitions,
 {
     if frontier.len() >= PARALLEL_FRONTIER_THRESHOLD {
         bfs_wave_parallel(frontier, graph)
@@ -121,7 +121,7 @@ mod tests {
         n_sites: u32,
     }
 
-    impl StateGraph for XOp {
+    impl StateTransitions for XOp {
         fn lhss(&self) -> usize {
             2
         }
@@ -139,7 +139,7 @@ mod tests {
         n_sites: u32,
     }
 
-    impl StateGraph for HopOp {
+    impl StateTransitions for HopOp {
         fn lhss(&self) -> usize {
             2
         }

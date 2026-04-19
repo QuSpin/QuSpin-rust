@@ -10,7 +10,7 @@ pub mod fermion;
 pub mod monomial;
 pub mod pauli;
 pub mod spin;
-mod state_graph;
+mod state_transitions;
 
 pub use bond::{BondOperator, BondOperatorInner, BondTerm};
 pub use boson::{BosonOp, BosonOpEntry, BosonOperator, BosonOperatorInner};

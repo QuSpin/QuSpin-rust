@@ -393,14 +393,14 @@ mod tests {
     use super::*;
     use crate::space::{FullSpace, Subspace};
     use ndarray::Array2;
-    use quspin_bitbasis::{BitInt, StateGraph};
+    use quspin_bitbasis::{BitInt, StateTransitions};
 
-    /// X on every site (1 ≤ n_sites ≤ 64), emitted as a `StateGraph`.
+    /// X on every site (1 ≤ n_sites ≤ 64), emitted as a `StateTransitions`.
     struct XAllSites {
         n_sites: u32,
     }
 
-    impl StateGraph for XAllSites {
+    impl StateTransitions for XAllSites {
         fn lhss(&self) -> usize {
             2
         }

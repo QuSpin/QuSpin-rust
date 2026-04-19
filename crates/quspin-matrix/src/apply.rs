@@ -859,7 +859,7 @@ mod tests {
         struct XAllSites {
             n_sites: u32,
         }
-        impl quspin_bitbasis::StateGraph for XAllSites {
+        impl quspin_bitbasis::StateTransitions for XAllSites {
             fn lhss(&self) -> usize {
                 2
             }
