@@ -4,6 +4,8 @@ pub mod benes;
 pub mod int;
 pub mod manip;
 pub mod state_transitions;
+#[cfg(feature = "test-graphs")]
+pub mod test_graphs;
 pub mod transform;
 
 pub use benes::{BenesNetwork, benes_fwd, gen_benes};

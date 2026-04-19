@@ -285,35 +285,20 @@ mod tests {
 
     // --- Subspace build via X-only hopping (connects all 2^N states) ---
 
-    /// X on every site, emitted as a `StateTransitions`.
-    struct XAllSites {
-        n_sites: u32,
-    }
-
-    impl StateTransitions for XAllSites {
-        fn lhss(&self) -> usize {
-            2
-        }
-        fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
-            for loc in 0..self.n_sites {
-                let mask = B::from_u64(1u64 << loc);
-                visit(Complex::new(1.0, 0.0), state ^ mask);
-            }
-        }
-    }
+    use quspin_bitbasis::test_graphs::{NearestNeighborSwap, XAllSites};
 
     #[test]
     fn subspace_build_full_connectivity() {
         // X on every site connects all 2^3 = 8 states from seed 0
         let mut sub = Subspace::<u32>::new(2, 3, false);
-        sub.build(0u32, &XAllSites { n_sites: 3 });
+        sub.build(0u32, &XAllSites::new(3));
         assert_eq!(sub.size(), 8);
     }
 
     #[test]
     fn subspace_build_sorted_ascending() {
         let mut sub = Subspace::<u32>::new(2, 3, false);
-        sub.build(0u32, &XAllSites { n_sites: 3 });
+        sub.build(0u32, &XAllSites::new(3));
         for i in 0..sub.size() {
             assert_eq!(sub.state_at(i), i as u32);
         }
@@ -322,7 +307,7 @@ mod tests {
     #[test]
     fn subspace_index_roundtrip() {
         let mut sub = Subspace::<u32>::new(2, 3, false);
-        sub.build(0u32, &XAllSites { n_sites: 3 });
+        sub.build(0u32, &XAllSites::new(3));
         for i in 0..sub.size() {
             let s = sub.state_at(i);
             assert_eq!(sub.index(s), Some(i));
@@ -394,33 +379,9 @@ mod tests {
         // Single-particle hopping: seed has 1 particle, should find exactly 65 states.
         let n_sites: usize = 65;
 
-        /// Single-particle NN hopping: `σ⁺_i σ⁻_{i+1} + h.c.` — only connects
-        /// states that differ in adjacent bits.
-        struct NNHop {
-            n_sites: usize,
-        }
-
-        impl StateTransitions for NNHop {
-            fn lhss(&self) -> usize {
-                2
-            }
-            fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
-                let one = B::from_u64(1);
-                for i in 0..(self.n_sites - 1) {
-                    let mi = one << i;
-                    let mj = one << (i + 1);
-                    let si = state & mi;
-                    let sj = state & mj;
-                    if si != sj {
-                        visit(Complex::new(1.0, 0.0), state ^ mi ^ mj);
-                    }
-                }
-            }
-        }
-
         let seed = U128::from(1); // single particle at site 0
         let mut sub = Subspace::<U128>::new(2, n_sites, false);
-        sub.build(seed, &NNHop { n_sites });
+        sub.build(seed, &NearestNeighborSwap::new(n_sites as u32));
         assert_eq!(sub.size(), n_sites);
     }
 
@@ -434,7 +395,7 @@ mod tests {
         // By wave 4+ the frontier exceeds the threshold.
         let n_sites = 12u32;
         let mut sub = Subspace::<u32>::new(2, n_sites as usize, false);
-        sub.build(0u32, &XAllSites { n_sites });
+        sub.build(0u32, &XAllSites::new(n_sites));
         assert_eq!(sub.size(), 1 << n_sites);
         // Verify sorted ascending
         for i in 1..sub.size() {
@@ -479,31 +440,10 @@ mod tests {
 
     #[test]
     fn subspace_build_constrained() {
-        // Hopping that only connects states with the same particle number
-        // (XX + YY preserves particle number) — simulate with a ZZ-like op
-        // that only connects states which differ by swapping adjacent 01↔10.
-        struct NNSwap;
-        impl StateTransitions for NNSwap {
-            fn lhss(&self) -> usize {
-                2
-            }
-            fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
-                let one = B::from_u64(1);
-                for i in 0usize..2 {
-                    let mi = one << i;
-                    let mj = one << (i + 1);
-                    let si = state & mi;
-                    let sj = state & mj;
-                    if si != sj {
-                        visit(Complex::new(1.0, 0.0), state ^ mi ^ mj);
-                    }
-                }
-            }
-        }
-
-        // Start from |01⟩ = 1 (1 particle): should reach |01⟩=1 and |10⟩=2 in 3 sites
+        // NN-swap on 3 sites from |01⟩ = 1 (1 particle): should reach
+        // {|01⟩=1, |10⟩=2, |100⟩=4} = 1-particle sector.
         let mut sub = Subspace::<u32>::new(2, 3, false);
-        sub.build(0b001u32, &NNSwap);
+        sub.build(0b001u32, &NearestNeighborSwap::new(3));
         // 3-site, 1-particle sector: {001, 010, 100} = {1, 2, 4}
         assert_eq!(sub.size(), 3);
         assert!(sub.index(0b001u32).is_some());

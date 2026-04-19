@@ -110,54 +110,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use num_complex::Complex;
-
-    fn one() -> Complex<f64> {
-        Complex::new(1.0, 0.0)
-    }
-
-    /// X on every site: flips each bit, connecting all 2^n states.
-    struct XOp {
-        n_sites: u32,
-    }
-
-    impl StateTransitions for XOp {
-        fn lhss(&self) -> usize {
-            2
-        }
-        fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
-            for loc in 0..self.n_sites {
-                let mask = B::from_u64(1u64 << loc);
-                visit(one(), state ^ mask);
-            }
-        }
-    }
-
-    /// Hopping operator (XX + YY style): swaps adjacent 01↔10.
-    /// The XX and YY contributions on |00⟩↔|11⟩ cancel exactly.
-    struct HopOp {
-        n_sites: u32,
-    }
-
-    impl StateTransitions for HopOp {
-        fn lhss(&self) -> usize {
-            2
-        }
-        fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
-            for i in 0..self.n_sites - 1 {
-                let mi = B::from_u64(1u64 << i);
-                let mj = B::from_u64(1u64 << (i + 1));
-                let si = ((state & mi) != B::from_u64(0)) as u8;
-                let sj = ((state & mj) != B::from_u64(0)) as u8;
-                let ns_xx = state ^ mi ^ mj;
-                // XX: always flips both bits
-                visit(one(), ns_xx);
-                // YY: same target, sign cancels XX on |00⟩↔|11⟩
-                let sign = if si == sj { -1.0 } else { 1.0 };
-                visit(Complex::new(sign, 0.0), ns_xx);
-            }
-        }
-    }
+    use quspin_bitbasis::test_graphs::{XAllSites, XXYYNearestNeighbor};
 
     fn binom(n: usize, k: usize) -> usize {
         if k > n {
@@ -170,7 +123,7 @@ mod tests {
     #[test]
     fn sequential_discovers_all_x_connected_states() {
         let frontier = vec![0u32];
-        let discovered = bfs_wave_sequential(&frontier, &XOp { n_sites: 3 });
+        let discovered = bfs_wave_sequential(&frontier, &XAllSites::new(3));
         // From |000⟩, X on 3 sites reaches |001⟩, |010⟩, |100⟩
         assert_eq!(discovered.len(), 3);
         assert!(discovered.contains(&0b001));
@@ -181,7 +134,7 @@ mod tests {
     #[test]
     fn parallel_discovers_all_x_connected_states() {
         let frontier: Vec<u32> = (0..8u32).collect(); // all 3-site states
-        let discovered = bfs_wave_parallel(&frontier, &XOp { n_sites: 3 });
+        let discovered = bfs_wave_parallel(&frontier, &XAllSites::new(3));
         // Every state reaches every other via X — discovered ⊆ {0..7}
         assert!(discovered.len() <= 8);
     }
@@ -192,7 +145,7 @@ mod tests {
         // single-particle states (no 0 or 2 particle states).
         let n = 6u32;
         let frontier: Vec<u32> = (0..n).map(|i| 1u32 << i).collect();
-        let discovered = bfs_wave_sequential(&frontier, &HopOp { n_sites: n });
+        let discovered = bfs_wave_sequential(&frontier, &XXYYNearestNeighbor::new(n));
         for &s in &discovered {
             assert_eq!(s.count_ones(), 1, "found non-1-particle state {s:#b}");
         }
@@ -202,12 +155,12 @@ mod tests {
     fn bfs_wave_dispatches_correctly() {
         // Small frontier → sequential path
         let small: Vec<u32> = vec![0];
-        let d1 = bfs_wave(&small, &XOp { n_sites: 3 });
+        let d1 = bfs_wave(&small, &XAllSites::new(3));
         assert_eq!(d1.len(), 3);
 
         // Large frontier → parallel path (same result)
         let large: Vec<u32> = (0..300u32).map(|i| i % 8).collect();
-        let d2 = bfs_wave(&large, &XOp { n_sites: 3 });
+        let d2 = bfs_wave(&large, &XAllSites::new(3));
         assert!(d2.len() <= 8);
     }
 
@@ -220,7 +173,8 @@ mod tests {
             known.insert(seed);
             let mut frontier = vec![seed];
             while !frontier.is_empty() {
-                let discovered = bfs_wave_sequential(&frontier, &HopOp { n_sites: n as u32 });
+                let discovered =
+                    bfs_wave_sequential(&frontier, &XXYYNearestNeighbor::new(n as u32));
                 frontier.clear();
                 for s in discovered {
                     if known.insert(s) {

@@ -465,26 +465,10 @@ mod tests {
     use super::*;
     use num_complex::Complex;
     use quspin_bitbasis::PermDitMask;
-
-    /// X on every site, exposed as a `StateTransitions` for BFS tests.
-    struct XAllSites {
-        n_sites: u32,
-    }
-
-    impl StateTransitions for XAllSites {
-        fn lhss(&self) -> usize {
-            2
-        }
-        fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
-            for loc in 0..self.n_sites {
-                let mask = B::from_u64(1u64 << loc);
-                visit(Complex::new(1.0, 0.0), state ^ mask);
-            }
-        }
-    }
+    use quspin_bitbasis::test_graphs::XAllSites;
 
     fn x_op(n_sites: u32) -> XAllSites {
-        XAllSites { n_sites }
+        XAllSites::new(n_sites)
     }
 
     #[test]

@@ -16,4 +16,5 @@ ruint = { workspace = true }
 smallvec = { workspace = true }
 
 [dev-dependencies]
+quspin-bitbasis = { path = "../quspin-bitbasis", features = ["test-graphs"] }
 quspin-operator = { path = "../quspin-operator" }

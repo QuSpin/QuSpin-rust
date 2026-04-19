@@ -23,3 +23,6 @@ ruint = { workspace = true }
 smallvec = { workspace = true }
 ode_solvers = { workspace = true }
 nalgebra = { workspace = true }
+
+[dev-dependencies]
+quspin-bitbasis = { path = "../quspin-bitbasis", features = ["test-graphs"] }

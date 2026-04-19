@@ -856,27 +856,7 @@ mod tests {
 
         let n_sites = 3;
         // Use same X operator as the SymBasis tests to connect all states
-        struct XAllSites {
-            n_sites: u32,
-        }
-        impl quspin_bitbasis::StateTransitions for XAllSites {
-            fn lhss(&self) -> usize {
-                2
-            }
-            fn neighbors<B: quspin_bitbasis::BitInt, F: FnMut(C64, B)>(
-                &self,
-                state: B,
-                mut visit: F,
-            ) {
-                for loc in 0..self.n_sites {
-                    let mask = B::from_u64(1u64 << loc);
-                    visit(C64::new(1.0, 0.0), state ^ mask);
-                }
-            }
-        }
-        let x_op = XAllSites {
-            n_sites: n_sites as u32,
-        };
+        let x_op = quspin_bitbasis::test_graphs::XAllSites::new(n_sites as u32);
 
         // XX + ZZ chain for the Hamiltonian
         let mut terms = Vec::new();
