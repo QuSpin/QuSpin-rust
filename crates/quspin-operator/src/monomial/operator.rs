@@ -179,6 +179,10 @@ impl<C: Copy + Ord> Operator<C> for MonomialOperator<C> {
         self.num_cindices
     }
 
+    fn lhss(&self) -> usize {
+        self.lhss
+    }
+
     #[inline]
     fn apply<B: BitInt, F>(&self, state: B, mut emit: F)
     where

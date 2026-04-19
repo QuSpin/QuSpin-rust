@@ -120,9 +120,7 @@ impl PyGenericBasis {
     ) -> PyResult<Self> {
         let byte_seeds = parse_seeds(&seeds, lhss)?;
         let mut basis = GenericBasis::new(n_sites, lhss, SpaceKind::Sub).map_err(Error::from)?;
-        basis
-            .build_monomial(&ham.inner, &byte_seeds)
-            .map_err(Error::from)?;
+        basis.build(&ham.inner, &byte_seeds).map_err(Error::from)?;
         Ok(PyGenericBasis { inner: basis })
     }
 
@@ -153,9 +151,7 @@ impl PyGenericBasis {
         let mut basis = GenericBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
         apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
         apply_local_symmetries(py, &mut basis, &local_symmetries)?;
-        basis
-            .build_monomial(&ham.inner, &byte_seeds)
-            .map_err(Error::from)?;
+        basis.build(&ham.inner, &byte_seeds).map_err(Error::from)?;
         Ok(PyGenericBasis { inner: basis })
     }
 

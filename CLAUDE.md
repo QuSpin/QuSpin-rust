@@ -30,24 +30,24 @@ quspin-types
      │
 quspin-bitbasis
      │
-     ├────────────────┬──────────────┐
-quspin-operator   quspin-expm   quspin-krylov
-     │
-quspin-basis
-     │
-quspin-matrix
-     │
-quspin-core  →  quspin-py
+     ├────────────────┬──────────────┬──────────────┐
+quspin-operator  quspin-basis   quspin-expm    quspin-krylov
+     └────────┬───────┘
+       quspin-matrix
+            │
+       quspin-core  →  quspin-py
 ```
 
-`quspin-expm` and `quspin-krylov` depend only on `quspin-types`, so edits to either don't trigger recompiles anywhere else. Editing `quspin-matrix` rebuilds only `quspin-matrix → quspin-core → quspin-py`. This keeps incremental dev loops fast.
+All four crates at the mid level (`quspin-operator`, `quspin-basis`, `quspin-expm`, `quspin-krylov`) compile in parallel off `quspin-bitbasis`. `quspin-expm` and `quspin-krylov` depend only on `quspin-types`; `quspin-basis` depends on `quspin-bitbasis` (for `BitInt` / `StateGraph`) but has **no** runtime edge to `quspin-operator` — basis BFS drives any `&impl StateGraph` regardless of operator type.
 
 ### Key design rules
 
-- **No runtime dispatch at crate boundaries.** `*OperatorInner` enums dispatch the cindex-width choice (`u8` vs `u16`) but that's it. `apply_and_project_to` is a generic free function in `quspin-matrix/src/apply.rs`. The only `dyn Trait` is `DynLinearOperator<V> = Box<dyn LinearOperator<V> + Send + Sync>`.
+- **No runtime dispatch at crate boundaries.** `*OperatorInner` enums dispatch the cindex-width choice (`u8` vs `u16`) but that's it. The only `dyn Trait` is `DynLinearOperator<V> = Box<dyn LinearOperator<V> + Send + Sync>`.
 - **Static dispatch across crate boundaries** via generics. Rust monomorphises at link time.
 - `quspin-core` is a pure facade — never add logic there. Add to the focused crate that owns the domain.
+- **`StateGraph` trait** (in `quspin-bitbasis`) is the connectivity abstraction `SpinBasis::build` / `BosonBasis::build` / `FermionBasis::build` / `GenericBasis::build` take. Every `*Operator<C>` and `*OperatorInner` impls it — callers do `basis.build(&op.inner, seeds)` or `basis.build(&op, seeds)`.
 - **`OperatorDispatch` trait** (in `quspin-matrix`) carries the basis-dependent methods (`apply_and_project_to`, `apply`) on `*OperatorInner`. Consumers (e.g. `quspin-py`) need `use quspin_core::OperatorDispatch;` for method-call syntax.
+- **`Operator<C>` trait** (in `quspin-operator`) defines `max_site`, `num_cindices`, `lhss`, `apply`. All concrete operator types implement it; `StateGraph` is derived from `apply` by dropping the cindex argument.
 
 ## Build & Dev Commands
 

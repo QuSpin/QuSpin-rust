@@ -224,6 +224,10 @@ impl<C: Copy + Ord> Operator<C> for HardcoreOperator<C> {
         self.num_cindices
     }
 
+    fn lhss(&self) -> usize {
+        2
+    }
+
     #[inline]
     fn apply<B: BitInt, F>(&self, state: B, mut emit: F)
     where

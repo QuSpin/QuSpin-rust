@@ -393,6 +393,24 @@ mod tests {
     use super::*;
     use crate::space::{FullSpace, Subspace};
     use ndarray::Array2;
+    use quspin_bitbasis::{BitInt, StateGraph};
+
+    /// X on every site (1 ≤ n_sites ≤ 64), emitted as a `StateGraph`.
+    struct XAllSites {
+        n_sites: u32,
+    }
+
+    impl StateGraph for XAllSites {
+        fn lhss(&self) -> usize {
+            2
+        }
+        fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
+            for loc in 0..self.n_sites {
+                let mask = B::from_u64(1u64 << loc);
+                visit(Complex::new(1.0, 0.0), state ^ mask);
+            }
+        }
+    }
 
     /// For a 2-site spin-1/2 system in the product state |↓↑⟩ (site 0 = 0,
     /// site 1 = 1), stored as state integer 0b10 = 2, tracing out site 1
@@ -403,9 +421,7 @@ mod tests {
     #[test]
     fn rdm_product_state_site0() {
         let mut sub = Subspace::<u32>::new(2, 2, false);
-        sub.build(0u32, |s: u32| {
-            (0..2).map(move |i| (Complex::new(1.0, 0.0), s ^ (1 << i), 0u8))
-        });
+        sub.build(0u32, &XAllSites { n_sites: 2 });
 
         // psi = |↓↑⟩ = state 2 = 0b10.
         let idx = sub.index(0b10u32).unwrap();
@@ -433,9 +449,7 @@ mod tests {
     #[test]
     fn rdm_bell_state_maximally_mixed() {
         let mut sub = Subspace::<u32>::new(2, 2, false);
-        sub.build(0u32, |s: u32| {
-            (0..2).map(move |i| (Complex::new(1.0, 0.0), s ^ (1 << i), 0u8))
-        });
+        sub.build(0u32, &XAllSites { n_sites: 2 });
 
         let inv_sqrt2 = Complex::new(1.0 / 2f64.sqrt(), 0.0);
         let idx_00 = sub.index(0b00u32).unwrap();
@@ -469,9 +483,7 @@ mod tests {
     fn rdm_trace_is_one() {
         // Random-ish state on 4 sites.
         let mut sub = Subspace::<u32>::new(2, 4, false);
-        sub.build(0u32, |s: u32| {
-            (0..4).map(move |i| (Complex::new(1.0, 0.0), s ^ (1 << i), 0u8))
-        });
+        sub.build(0u32, &XAllSites { n_sites: 4 });
 
         // Uniform superposition over all 16 states.
         let amp = Complex::new(1.0 / 4.0, 0.0);
@@ -489,9 +501,7 @@ mod tests {
     #[test]
     fn rdm_is_hermitian() {
         let mut sub = Subspace::<u32>::new(2, 4, false);
-        sub.build(0u32, |s: u32| {
-            (0..4).map(move |i| (Complex::new(1.0, 0.0), s ^ (1 << i), 0u8))
-        });
+        sub.build(0u32, &XAllSites { n_sites: 4 });
 
         // Non-uniform state with a complex coefficient.
         let mut vec = vec![Complex::new(0.0, 0.0); sub.size()];
@@ -518,9 +528,7 @@ mod tests {
     #[test]
     fn get_full_vector_roundtrip() {
         let mut sub = Subspace::<u32>::new(2, 3, false);
-        sub.build(0u32, |s: u32| {
-            (0..3).map(move |i| (Complex::new(1.0, 0.0), s ^ (1 << i), 0u8))
-        });
+        sub.build(0u32, &XAllSites { n_sites: 3 });
         let fs = FullSpace::<u32>::new(2, 3, false);
 
         let amp = Complex::new(1.0 / (8f64.sqrt()), 0.0);

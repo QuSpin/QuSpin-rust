@@ -29,11 +29,8 @@ pub use traits::{BasisSpace, SymGrp};
 // ---------------------------------------------------------------------------
 
 use self::dispatch::SpaceInner;
-use num_complex::Complex;
 use quspin_bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
-use quspin_operator::BondOperatorInner;
 use quspin_types::QuSpinError;
-use smallvec::SmallVec;
 
 /// Construct a [`SpaceInner`] for the given lattice parameters.
 ///
@@ -116,18 +113,16 @@ pub(crate) fn make_space_inner(
     Ok(inner)
 }
 
-/// Build a basis subspace from `seeds` using a [`BondOperatorInner`].
-///
-/// Shared by [`SpinBasis::build_bond`], [`BosonBasis::build_bond`], and
-/// [`FermionBasis::build_bond`].
-pub(crate) fn build_bond_inner(
+/// Build a basis subspace from `seeds` under the connectivity described by
+/// `graph`. Shared by every `SpinBasis`/`BosonBasis`/`FermionBasis`/
+/// `GenericBasis` `build` call.
+pub(crate) fn build_inner<G: quspin_bitbasis::StateGraph>(
     inner: &mut SpaceInner,
-    space_kind: SpaceKind,
-    lhss: usize,
-    ham: &BondOperatorInner,
+    graph: &G,
     seeds: &[Vec<u8>],
 ) -> Result<(), QuSpinError> {
-    use quspin_operator::Operator;
+    let space_kind = inner.space_kind();
+    let lhss = inner.lhss();
 
     if space_kind == SpaceKind::Full {
         return Err(QuSpinError::ValueError(
@@ -137,27 +132,12 @@ pub(crate) fn build_bond_inner(
     if inner.is_built() {
         return Err(QuSpinError::ValueError("basis is already built".into()));
     }
-    if ham.lhss() != lhss {
+    if graph.lhss() != lhss {
         return Err(QuSpinError::ValueError(format!(
-            "ham.lhss()={} does not match basis lhss={}",
-            ham.lhss(),
+            "graph.lhss()={} does not match basis lhss={}",
+            graph.lhss(),
             lhss
         )));
-    }
-
-    macro_rules! bond_apply_fn {
-        ($ham_inner:expr, $state:expr) => {{
-            let mut out: SmallVec<[(Complex<f64>, _, u8); 8]> = SmallVec::new();
-            match $ham_inner {
-                BondOperatorInner::Ham8(h) => {
-                    h.apply($state, |c, amp, ns| out.push((amp, ns, c)));
-                }
-                BondOperatorInner::Ham16(h) => {
-                    h.apply($state, |c, amp, ns| out.push((amp, ns, c as u8)));
-                }
-            }
-            out
-        }};
     }
 
     macro_rules! decode_seed {
@@ -176,7 +156,7 @@ pub(crate) fn build_bond_inner(
             with_sub_basis_mut!(inner, B, subspace, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    subspace.build(s, |state| bond_apply_fn!(ham, state).into_iter());
+                    subspace.build(s, graph);
                 }
             });
         }
@@ -184,7 +164,7 @@ pub(crate) fn build_bond_inner(
             with_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
+                    sym_basis.build(s, graph);
                 }
             });
         }
@@ -192,7 +172,7 @@ pub(crate) fn build_bond_inner(
             with_trit_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
+                    sym_basis.build(s, graph);
                 }
             });
         }
@@ -200,7 +180,7 @@ pub(crate) fn build_bond_inner(
             with_quat_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
+                    sym_basis.build(s, graph);
                 }
             });
         }
@@ -208,7 +188,7 @@ pub(crate) fn build_bond_inner(
             with_dit_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, |state| bond_apply_fn!(ham, state).into_iter());
+                    sym_basis.build(s, graph);
                 }
             });
         }

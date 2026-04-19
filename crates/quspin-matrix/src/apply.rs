@@ -701,7 +701,7 @@ mod tests {
         // Compare apply() with QMatrix::dot for XX on 2-site 1-particle subspace
         let ham = xx_ham();
         let mut sub = Subspace::<u32>::new(2, 2, false);
-        sub.build(0b01u32, |s| ham.apply_smallvec(s).into_iter());
+        sub.build(0b01u32, &ham);
         assert_eq!(sub.size(), 2);
 
         let mat = build_from_basis::<_, u32, C64, i64, u8, _>(&ham, &sub);
@@ -749,12 +749,12 @@ mod tests {
 
         // Build Sz=0 subspace (1-particle) — XX connects |01⟩↔|10⟩
         let mut sz0 = Subspace::<u32>::new(2, 2, false);
-        sz0.build(0b01u32, |s| xx.apply_smallvec(s).into_iter());
+        sz0.build(0b01u32, &xx);
         assert_eq!(sz0.size(), 2);
 
         // Build Sz=1 subspace (2-particle) — ZZ is diagonal, stays at |11⟩
         let mut sz1 = Subspace::<u32>::new(2, 2, false);
-        sz1.build(0b11u32, |s| zz.apply_smallvec(s).into_iter());
+        sz1.build(0b11u32, &zz);
         assert_eq!(sz1.size(), 1);
 
         // Input: |ψ⟩ = |01⟩ + |10⟩ (equal superposition in Sz=0)
@@ -779,7 +779,7 @@ mod tests {
         // Apply XX to 1-particle subspace vector, project into full space
         let ham = xx_ham();
         let mut sub = Subspace::<u32>::new(2, 2, false);
-        sub.build(0b01u32, |s| ham.apply_smallvec(s).into_iter());
+        sub.build(0b01u32, &ham);
         let full = FullSpace::<u32>::new(2, 2, false);
 
         // |ψ⟩ = |01⟩ in subspace
@@ -809,7 +809,7 @@ mod tests {
     fn overwrite_false_accumulates() {
         let ham = xx_ham();
         let mut sub = Subspace::<u32>::new(2, 2, false);
-        sub.build(0b01u32, |s| ham.apply_smallvec(s).into_iter());
+        sub.build(0b01u32, &ham);
 
         let psi = vec![C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
         let coeffs = vec![C64::new(1.0, 0.0)];
@@ -829,7 +829,7 @@ mod tests {
     fn coeffs_scale_result() {
         let ham = xx_ham();
         let mut sub = Subspace::<u32>::new(2, 2, false);
-        sub.build(0b01u32, |s| ham.apply_smallvec(s).into_iter());
+        sub.build(0b01u32, &ham);
 
         let psi = vec![C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
         let coeffs = vec![C64::new(3.0, 1.0)]; // scale by 3+i
@@ -856,10 +856,26 @@ mod tests {
 
         let n_sites = 3;
         // Use same X operator as the SymBasis tests to connect all states
-        let x_op = |state: u32| -> Vec<(C64, u32, u8)> {
-            (0..n_sites as u32)
-                .map(|loc| (C64::new(1.0, 0.0), state ^ (1 << loc), 0u8))
-                .collect()
+        struct XAllSites {
+            n_sites: u32,
+        }
+        impl quspin_bitbasis::StateGraph for XAllSites {
+            fn lhss(&self) -> usize {
+                2
+            }
+            fn neighbors<B: quspin_bitbasis::BitInt, F: FnMut(C64, B)>(
+                &self,
+                state: B,
+                mut visit: F,
+            ) {
+                for loc in 0..self.n_sites {
+                    let mask = B::from_u64(1u64 << loc);
+                    visit(C64::new(1.0, 0.0), state ^ mask);
+                }
+            }
+        }
+        let x_op = XAllSites {
+            n_sites: n_sites as u32,
         };
 
         // XX + ZZ chain for the Hamiltonian
@@ -879,7 +895,7 @@ mod tests {
         sym.add_lattice(C64::new(1.0, 0.0), &perm);
 
         // Seed with |000⟩ = 0 — X flips connect all states
-        sym.build(0u32, x_op);
+        sym.build(0u32, &x_op);
         let dim = sym.size();
         assert!(dim > 0, "symmetric basis is empty (dim=0)");
 

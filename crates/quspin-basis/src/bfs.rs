@@ -2,7 +2,7 @@
 //! [`SymBasis`](super::SymBasis).
 
 use num_complex::Complex;
-use quspin_bitbasis::BitInt;
+use quspin_bitbasis::{BitInt, StateGraph};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
@@ -19,30 +19,29 @@ pub(crate) const AMP_CANCEL_TOL: f64 = 4.0 * f64::EPSILON;
 /// Minimum frontier size before switching to parallel BFS.
 pub(crate) const PARALLEL_FRONTIER_THRESHOLD: usize = 256;
 
-/// Process a single source state: apply `op`, accumulate amplitudes per
+/// Process a single source state: apply `graph`, accumulate amplitudes per
 /// target, and insert survivors into `discovered`.
 ///
 /// `contributions` is passed in so callers can reuse the allocation across
 /// multiple source states (the map is cleared at the start of each call).
 #[inline]
-fn discover_from_state<B, Op, I, Iter>(
+fn discover_from_state<B, G>(
     state: B,
-    op: &Op,
+    graph: &G,
     contributions: &mut HashMap<B, (Complex<f64>, f64)>,
     discovered: &mut HashSet<B>,
 ) where
     B: BitInt,
-    Op: Fn(B) -> Iter,
-    Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
+    G: StateGraph,
 {
     contributions.clear();
-    for (amp, next_state, _cindex) in op(state) {
+    graph.neighbors::<B, _>(state, |amp, next_state| {
         if next_state != state {
             let e = contributions.entry(next_state).or_default();
             e.0 += amp;
             e.1 += amp.norm();
         }
-    }
+    });
     for (&next_state, &(net_amp, scale)) in contributions.iter() {
         if net_amp.norm() > scale * AMP_CANCEL_TOL {
             discovered.insert(next_state);
@@ -52,34 +51,32 @@ fn discover_from_state<B, Op, I, Iter>(
 
 /// Process one BFS wave sequentially, returning the set of candidate
 /// states that survived per-source amplitude cancellation.
-pub(crate) fn bfs_wave_sequential<B, Op, I, Iter>(frontier: &[B], op: &Op) -> HashSet<B>
+pub(crate) fn bfs_wave_sequential<B, G>(frontier: &[B], graph: &G) -> HashSet<B>
 where
     B: BitInt,
-    Op: Fn(B) -> Iter,
-    Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
+    G: StateGraph,
 {
     let mut discovered = HashSet::new();
     let mut contributions = HashMap::new();
     for &state in frontier {
-        discover_from_state(state, op, &mut contributions, &mut discovered);
+        discover_from_state(state, graph, &mut contributions, &mut discovered);
     }
     discovered
 }
 
 /// Process one BFS wave in parallel using rayon, returning the set of
 /// candidate states that survived per-source amplitude cancellation.
-pub(crate) fn bfs_wave_parallel<B, Op, I, Iter>(frontier: &[B], op: &Op) -> HashSet<B>
+pub(crate) fn bfs_wave_parallel<B, G>(frontier: &[B], graph: &G) -> HashSet<B>
 where
     B: BitInt,
-    Op: Fn(B) -> Iter + Sync,
-    Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
+    G: StateGraph,
 {
     frontier
         .par_iter()
         .fold(
             || (HashSet::<B>::new(), HashMap::new()),
             |(mut discovered, mut contributions), &state| {
-                discover_from_state(state, op, &mut contributions, &mut discovered);
+                discover_from_state(state, graph, &mut contributions, &mut discovered);
                 (discovered, contributions)
             },
         )
@@ -94,16 +91,15 @@ where
 }
 
 /// Dispatch to parallel or sequential BFS wave based on frontier size.
-pub(crate) fn bfs_wave<B, Op, I, Iter>(frontier: &[B], op: &Op) -> HashSet<B>
+pub(crate) fn bfs_wave<B, G>(frontier: &[B], graph: &G) -> HashSet<B>
 where
     B: BitInt,
-    Op: Fn(B) -> Iter + Sync,
-    Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
+    G: StateGraph,
 {
     if frontier.len() >= PARALLEL_FRONTIER_THRESHOLD {
-        bfs_wave_parallel(frontier, op)
+        bfs_wave_parallel(frontier, graph)
     } else {
-        bfs_wave_sequential(frontier, op)
+        bfs_wave_sequential(frontier, graph)
     }
 }
 
@@ -121,30 +117,45 @@ mod tests {
     }
 
     /// X on every site: flips each bit, connecting all 2^n states.
-    fn x_op(n_sites: u32) -> impl Fn(u32) -> Vec<(Complex<f64>, u32, u8)> {
-        move |state: u32| {
-            (0..n_sites)
-                .map(|loc| (one(), state ^ (1u32 << loc), 0u8))
-                .collect()
+    struct XOp {
+        n_sites: u32,
+    }
+
+    impl StateGraph for XOp {
+        fn lhss(&self) -> usize {
+            2
+        }
+        fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
+            for loc in 0..self.n_sites {
+                let mask = B::from_u64(1u64 << loc);
+                visit(one(), state ^ mask);
+            }
         }
     }
 
     /// Hopping operator (XX + YY style): swaps adjacent 01↔10.
     /// The XX and YY contributions on |00⟩↔|11⟩ cancel exactly.
-    fn hop_op(n_sites: u32) -> impl Fn(u32) -> Vec<(Complex<f64>, u32, u8)> {
-        move |state: u32| {
-            let mut out = vec![];
-            for i in 0..n_sites - 1 {
-                let si = (state >> i) & 1;
-                let sj = (state >> (i + 1)) & 1;
+    struct HopOp {
+        n_sites: u32,
+    }
+
+    impl StateGraph for HopOp {
+        fn lhss(&self) -> usize {
+            2
+        }
+        fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
+            for i in 0..self.n_sites - 1 {
+                let mi = B::from_u64(1u64 << i);
+                let mj = B::from_u64(1u64 << (i + 1));
+                let si = ((state & mi) != B::from_u64(0)) as u8;
+                let sj = ((state & mj) != B::from_u64(0)) as u8;
+                let ns_xx = state ^ mi ^ mj;
                 // XX: always flips both bits
-                let ns_xx = state ^ (1 << i) ^ (1 << (i + 1));
-                out.push((one(), ns_xx, 0u8));
-                // YY: same target but with sign that cancels XX on |00⟩↔|11⟩
+                visit(one(), ns_xx);
+                // YY: same target, sign cancels XX on |00⟩↔|11⟩
                 let sign = if si == sj { -1.0 } else { 1.0 };
-                out.push((Complex::new(sign, 0.0), ns_xx, 0u8));
+                visit(Complex::new(sign, 0.0), ns_xx);
             }
-            out
         }
     }
 
@@ -159,7 +170,7 @@ mod tests {
     #[test]
     fn sequential_discovers_all_x_connected_states() {
         let frontier = vec![0u32];
-        let discovered = bfs_wave_sequential(&frontier, &x_op(3));
+        let discovered = bfs_wave_sequential(&frontier, &XOp { n_sites: 3 });
         // From |000⟩, X on 3 sites reaches |001⟩, |010⟩, |100⟩
         assert_eq!(discovered.len(), 3);
         assert!(discovered.contains(&0b001));
@@ -170,7 +181,7 @@ mod tests {
     #[test]
     fn parallel_discovers_all_x_connected_states() {
         let frontier: Vec<u32> = (0..8u32).collect(); // all 3-site states
-        let discovered = bfs_wave_parallel(&frontier, &x_op(3));
+        let discovered = bfs_wave_parallel(&frontier, &XOp { n_sites: 3 });
         // Every state reaches every other via X — discovered ⊆ {0..7}
         assert!(discovered.len() <= 8);
     }
@@ -180,9 +191,8 @@ mod tests {
         // XX+YY hopping from single-particle states should only find
         // single-particle states (no 0 or 2 particle states).
         let n = 6u32;
-        // All 1-particle states as frontier
         let frontier: Vec<u32> = (0..n).map(|i| 1u32 << i).collect();
-        let discovered = bfs_wave_sequential(&frontier, &hop_op(n));
+        let discovered = bfs_wave_sequential(&frontier, &HopOp { n_sites: n });
         for &s in &discovered {
             assert_eq!(s.count_ones(), 1, "found non-1-particle state {s:#b}");
         }
@@ -192,12 +202,12 @@ mod tests {
     fn bfs_wave_dispatches_correctly() {
         // Small frontier → sequential path
         let small: Vec<u32> = vec![0];
-        let d1 = bfs_wave(&small, &x_op(3));
+        let d1 = bfs_wave(&small, &XOp { n_sites: 3 });
         assert_eq!(d1.len(), 3);
 
         // Large frontier → parallel path (same result)
         let large: Vec<u32> = (0..300u32).map(|i| i % 8).collect();
-        let d2 = bfs_wave(&large, &x_op(3));
+        let d2 = bfs_wave(&large, &XOp { n_sites: 3 });
         assert!(d2.len() <= 8);
     }
 
@@ -205,13 +215,12 @@ mod tests {
     fn hop_conserves_particle_number_all_sectors() {
         let n = 6usize;
         for k in 0..=n {
-            // Build full single-particle-number sector via repeated BFS waves
             let seed = if k == 0 { 0u32 } else { (1u32 << k) - 1 };
             let mut known: HashSet<u32> = HashSet::new();
             known.insert(seed);
             let mut frontier = vec![seed];
             while !frontier.is_empty() {
-                let discovered = bfs_wave_sequential(&frontier, &hop_op(n as u32));
+                let discovered = bfs_wave_sequential(&frontier, &HopOp { n_sites: n as u32 });
                 frontier.clear();
                 for s in discovered {
                     if known.insert(s) {

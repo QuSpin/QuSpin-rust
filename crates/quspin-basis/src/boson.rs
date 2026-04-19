@@ -1,13 +1,8 @@
 /// Bosonic basis type [`BosonBasis`].
 use super::dispatch::SpaceInner;
-use super::seed::{dit_seed_from_bytes, seed_from_bytes};
 use crate::spin::SpaceKind;
-use crate::{
-    with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
-    with_trit_sym_basis_mut,
-};
 use num_complex::Complex;
-use quspin_operator::{BondOperatorInner, BosonOperatorInner};
+use quspin_bitbasis::StateGraph;
 use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
@@ -56,9 +51,8 @@ impl BosonBasis {
         self.inner.add_lattice(grp_char, &perm)
     }
 
-    /// Build the subspace reachable from `seeds` using a [`BosonOperatorInner`].
-    ///
-    /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
+    /// Build the subspace reachable from `seeds` under the connectivity
+    /// described by `graph`.
     ///
     /// Seeds are per-site occupation byte slices. For lhss=2 they are
     /// bit-encoded; for lhss>2 they are dit-encoded.
@@ -66,137 +60,13 @@ impl BosonBasis {
     /// # Errors
     /// - Called on a [`SpaceKind::Full`] basis
     /// - Basis is already built
-    /// - `ham.lhss() != self.lhss`
-    pub fn build_boson(
+    /// - `graph.lhss() != self.lhss`
+    pub fn build<G: StateGraph>(
         &mut self,
-        ham: &BosonOperatorInner,
+        graph: &G,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        if self.inner.space_kind() == SpaceKind::Full {
-            return Err(QuSpinError::ValueError(
-                "Full basis requires no build step".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError("basis is already built".into()));
-        }
-        let lhss = self.inner.lhss();
-        if ham.lhss() != lhss {
-            return Err(QuSpinError::ValueError(format!(
-                "ham.lhss()={} does not match basis lhss={}",
-                ham.lhss(),
-                lhss
-            )));
-        }
-        macro_rules! decode_seed {
-            ($B:ty, $seed:expr) => {
-                if lhss == 2 {
-                    seed_from_bytes::<$B>($seed)
-                } else {
-                    use quspin_bitbasis::manip::DynamicDitManip;
-                    dit_seed_from_bytes::<$B>($seed, &DynamicDitManip::new(lhss))
-                }
-            };
-        }
-
-        match self.inner.space_kind() {
-            SpaceKind::Sub => {
-                with_sub_basis_mut!(&mut self.inner, B, subspace, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        match ham {
-                            BosonOperatorInner::Ham8(h) => {
-                                subspace.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            BosonOperatorInner::Ham16(h) => {
-                                subspace.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Symm if lhss == 2 => {
-                with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        match ham {
-                            BosonOperatorInner::Ham8(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            BosonOperatorInner::Ham16(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Symm if lhss == 3 => {
-                with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        match ham {
-                            BosonOperatorInner::Ham8(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            BosonOperatorInner::Ham16(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Symm if lhss == 4 => {
-                with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        match ham {
-                            BosonOperatorInner::Ham8(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            BosonOperatorInner::Ham16(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Symm => {
-                with_dit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        match ham {
-                            BosonOperatorInner::Ham8(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            BosonOperatorInner::Ham16(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Full => unreachable!(),
-        }
-
-        Ok(())
-    }
-
-    /// Build the subspace reachable from `seeds` using a [`BondOperatorInner`].
-    ///
-    /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
-    ///
-    /// # Errors
-    /// - Called on a [`SpaceKind::Full`] basis
-    /// - Basis is already built
-    /// - `ham.lhss() != self.lhss`
-    pub fn build_bond(
-        &mut self,
-        ham: &BondOperatorInner,
-        seeds: &[Vec<u8>],
-    ) -> Result<(), QuSpinError> {
-        let lhss = self.inner.lhss();
-        let space_kind = self.inner.space_kind();
-        super::build_bond_inner(&mut self.inner, space_kind, lhss, ham, seeds)
+        super::build_inner(&mut self.inner, graph, seeds)
     }
 }
 
@@ -256,7 +126,7 @@ mod tests {
 
     #[test]
     fn boson_basis_build_boson_lhss2() {
-        use quspin_operator::boson::{BosonOp, BosonOpEntry, BosonOperator};
+        use quspin_operator::boson::{BosonOp, BosonOpEntry, BosonOperator, BosonOperatorInner};
         use smallvec::smallvec;
 
         // H = a†_0 a_1 + a_0 a†_1  (hopping), lhss=2, 4 sites
@@ -280,7 +150,7 @@ mod tests {
         let mut basis = BosonBasis::new(n_sites, lhss, SpaceKind::Sub).unwrap();
         // Seed: 2 bosons, sites 0 and 1 occupied.
         let seed = vec![1u8, 1, 0, 0];
-        basis.build_boson(&ham, &[seed]).unwrap();
+        basis.build(&ham, &[seed]).unwrap();
 
         // 2-particle (lhss=2 → hard-core boson) sector of 4 sites: C(4,2) = 6
         assert_eq!(basis.inner.size(), 6);
@@ -289,7 +159,7 @@ mod tests {
     #[test]
     fn boson_basis_build_bond_lhss3() {
         use ndarray::Array2;
-        use quspin_operator::bond::{BondOperator, BondTerm};
+        use quspin_operator::bond::{BondOperator, BondOperatorInner, BondTerm};
 
         // Hopping matrix for lhss=3 (9x9): swaps |1,0> <-> |0,1> at two sites.
         // Two-site local Hilbert space dimension: 3^2 = 9.
@@ -324,7 +194,7 @@ mod tests {
             .map(|i| manip.get_dit(seed_state, i) as u8)
             .collect();
 
-        basis.build_bond(&ham, &[seed]).unwrap();
+        basis.build(&ham, &[seed]).unwrap();
 
         // Single-particle sector on 4 sites with lhss=3: 4 states (boson on each site).
         assert_eq!(basis.inner.size(), 4);

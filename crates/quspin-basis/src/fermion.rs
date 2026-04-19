@@ -1,10 +1,8 @@
 /// Fermionic basis type [`FermionBasis`].
 use super::dispatch::SpaceInner;
-use super::seed::seed_from_bytes;
 use crate::spin::SpaceKind;
-use crate::{with_sub_basis_mut, with_sym_basis_mut};
 use num_complex::Complex;
-use quspin_operator::{BondOperatorInner, FermionOperatorInner};
+use quspin_bitbasis::StateGraph;
 use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
@@ -56,79 +54,19 @@ impl FermionBasis {
         self.inner.add_lattice(grp_char, &perm)
     }
 
-    /// Build the subspace reachable from `seeds` using a [`FermionOperatorInner`].
-    ///
-    /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
-    ///
-    /// # Errors
-    /// - Called on a [`SpaceKind::Full`] basis
-    /// - Basis is already built
-    pub fn build_fermion(
-        &mut self,
-        ham: &FermionOperatorInner,
-        seeds: &[Vec<u8>],
-    ) -> Result<(), QuSpinError> {
-        if self.inner.space_kind() == SpaceKind::Full {
-            return Err(QuSpinError::ValueError(
-                "Full basis requires no build step".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError("basis is already built".into()));
-        }
-
-        match self.inner.space_kind() {
-            SpaceKind::Sub => {
-                with_sub_basis_mut!(&mut self.inner, B, subspace, {
-                    for seed in seeds {
-                        let s = seed_from_bytes::<B>(seed);
-                        match ham {
-                            FermionOperatorInner::Ham8(h) => {
-                                subspace.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            FermionOperatorInner::Ham16(h) => {
-                                subspace.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Symm => {
-                with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = seed_from_bytes::<B>(seed);
-                        match ham {
-                            FermionOperatorInner::Ham8(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            FermionOperatorInner::Ham16(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Full => unreachable!(),
-        }
-
-        Ok(())
-    }
-
-    /// Build the subspace reachable from `seeds` using a [`BondOperatorInner`].
-    ///
-    /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
+    /// Build the subspace reachable from `seeds` under the connectivity
+    /// described by `graph`. Requires `graph.lhss() == 2`.
     ///
     /// # Errors
     /// - Called on a [`SpaceKind::Full`] basis
     /// - Basis is already built
-    /// - `ham.lhss() != 2`
-    pub fn build_bond(
+    /// - `graph.lhss() != 2`
+    pub fn build<G: StateGraph>(
         &mut self,
-        ham: &BondOperatorInner,
+        graph: &G,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        let space_kind = self.inner.space_kind();
-        super::build_bond_inner(&mut self.inner, space_kind, 2, ham, seeds)
+        super::build_inner(&mut self.inner, graph, seeds)
     }
 }
 
@@ -177,7 +115,9 @@ mod tests {
 
     #[test]
     fn fermion_basis_build_fermion() {
-        use quspin_operator::fermion::{FermionOp, FermionOpEntry, FermionOperator};
+        use quspin_operator::fermion::{
+            FermionOp, FermionOpEntry, FermionOperator, FermionOperatorInner,
+        };
         use smallvec::smallvec;
 
         // Hopping Hamiltonian: H = sum_i (c†_i c_{i+1} + c†_{i+1} c_i), 4 sites.
@@ -202,7 +142,7 @@ mod tests {
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Sub).unwrap();
         // Seed: state 0b0011 = sites 0 and 1 occupied (2-particle sector).
         let seed = vec![1u8, 1, 0, 0];
-        basis.build_fermion(&ham, &[seed]).unwrap();
+        basis.build(&ham, &[seed]).unwrap();
 
         // 2-particle sector of 4 sites: C(4,2) = 6 states.
         assert_eq!(basis.inner.size(), 6);
@@ -211,7 +151,7 @@ mod tests {
     #[test]
     fn fermion_basis_build_bond() {
         use ndarray::array;
-        use quspin_operator::bond::{BondOperator, BondTerm};
+        use quspin_operator::bond::{BondOperator, BondOperatorInner, BondTerm};
 
         // Hopping matrix for LHSS=2: [[0,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,0]]
         // This swaps |01> <-> |10> (single-particle hopping).
@@ -253,7 +193,7 @@ mod tests {
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Sub).unwrap();
         // Seed: state 0b0011 (sites 0 and 1 occupied = 2-particle sector).
         let seed = vec![1u8, 1, 0, 0];
-        basis.build_bond(&ham, &[seed]).unwrap();
+        basis.build(&ham, &[seed]).unwrap();
 
         // 2-particle sector of 4 sites: C(4,2) = 6 states.
         assert_eq!(basis.inner.size(), 6);

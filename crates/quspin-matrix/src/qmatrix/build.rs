@@ -410,7 +410,7 @@ mod tests {
 
         let mut sub = Subspace::<u32>::new(2, 2, false);
         // seed with |01⟩=1
-        sub.build(0b01u32, |s| ham.apply_smallvec(s).into_iter());
+        sub.build(0b01u32, &ham);
         assert_eq!(sub.size(), 2);
 
         let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &sub);

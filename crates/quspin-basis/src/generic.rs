@@ -1,13 +1,8 @@
 /// Generic basis type [`GenericBasis`].
 use super::dispatch::SpaceInner;
-use super::seed::{dit_seed_from_bytes, seed_from_bytes};
 use crate::spin::SpaceKind;
-use crate::{
-    with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
-    with_trit_sym_basis_mut,
-};
 use num_complex::Complex;
-use quspin_operator::MonomialOperatorInner;
+use quspin_bitbasis::StateGraph;
 use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
@@ -79,111 +74,19 @@ impl GenericBasis {
         self.inner.add_local(grp_char, perm_vals, locs)
     }
 
-    /// Build the subspace reachable from `seeds` using a [`MonomialOperatorInner`].
-    ///
-    /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
-    ///
-    /// Seeds are per-site occupation byte slices.
+    /// Build the subspace reachable from `seeds` under the connectivity
+    /// described by `graph`.
     ///
     /// # Errors
     /// - Called on a [`SpaceKind::Full`] basis
     /// - Basis is already built
-    /// - `ham.lhss() != self.lhss`
-    pub fn build_monomial(
+    /// - `graph.lhss() != self.lhss`
+    pub fn build<G: StateGraph>(
         &mut self,
-        ham: &MonomialOperatorInner,
+        graph: &G,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        use quspin_operator::Operator;
-
-        if self.inner.space_kind() == SpaceKind::Full {
-            return Err(QuSpinError::ValueError(
-                "Full basis requires no build step".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError("basis is already built".into()));
-        }
-        let lhss = self.inner.lhss();
-        if ham.lhss() != lhss {
-            return Err(QuSpinError::ValueError(format!(
-                "ham.lhss()={} does not match basis lhss={}",
-                ham.lhss(),
-                lhss
-            )));
-        }
-        macro_rules! decode_seed {
-            ($B:ty, $seed:expr) => {
-                if lhss == 2 {
-                    seed_from_bytes::<$B>($seed)
-                } else {
-                    use quspin_bitbasis::manip::DynamicDitManip;
-                    dit_seed_from_bytes::<$B>($seed, &DynamicDitManip::new(lhss))
-                }
-            };
-        }
-
-        macro_rules! monomial_apply_fn {
-            ($ham_inner:expr, $state:expr) => {{
-                let mut out: smallvec::SmallVec<[(Complex<f64>, _, u8); 8]> =
-                    smallvec::SmallVec::new();
-                match $ham_inner {
-                    MonomialOperatorInner::Ham8(h) => {
-                        h.apply($state, |c, amp, ns| out.push((amp, ns, c)));
-                    }
-                    MonomialOperatorInner::Ham16(h) => {
-                        h.apply($state, |c, amp, ns| out.push((amp, ns, c as u8)));
-                    }
-                }
-                out
-            }};
-        }
-
-        match self.inner.space_kind() {
-            SpaceKind::Sub => {
-                with_sub_basis_mut!(&mut self.inner, B, subspace, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        subspace.build(s, |state| monomial_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Symm if lhss == 2 => {
-                with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        sym_basis.build(s, |state| monomial_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Symm if lhss == 3 => {
-                with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        sym_basis.build(s, |state| monomial_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Symm if lhss == 4 => {
-                with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        sym_basis.build(s, |state| monomial_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Symm => {
-                with_dit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        sym_basis.build(s, |state| monomial_apply_fn!(ham, state).into_iter());
-                    }
-                });
-            }
-            SpaceKind::Full => unreachable!(),
-        }
-
-        Ok(())
+        super::build_inner(&mut self.inner, graph, seeds)
     }
 }
 
@@ -195,7 +98,7 @@ impl GenericBasis {
 mod tests {
     use super::*;
     use num_complex::Complex;
-    use quspin_operator::monomial::{MonomialOperator, MonomialTerm};
+    use quspin_operator::monomial::{MonomialOperator, MonomialOperatorInner, MonomialTerm};
     use smallvec::smallvec;
 
     fn cyclic_term(lhss: usize, n_sites: usize) -> MonomialTerm<u8> {
@@ -241,7 +144,7 @@ mod tests {
         // Seed: |000>.  NN cyclic-shift bonds on 3 sites with lhss=3 reach
         // exactly the 9 states {(a, a+b mod 3, b) | a,b ∈ {0,1,2}}.
         let seed = vec![0u8, 0, 0];
-        basis.build_monomial(&ham, &[seed]).unwrap();
+        basis.build(&ham, &[seed]).unwrap();
         assert_eq!(basis.inner.size(), 9);
     }
 
@@ -259,7 +162,7 @@ mod tests {
             .unwrap();
         // Seed |0000> is its own canonical representative in any translation sector.
         let seed = vec![0u8, 0, 0, 0];
-        basis.build_monomial(&ham, &[seed]).unwrap();
+        basis.build(&ham, &[seed]).unwrap();
         assert!(basis.inner.size() > 0);
     }
 

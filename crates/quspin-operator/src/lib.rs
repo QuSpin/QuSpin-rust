@@ -10,6 +10,7 @@ pub mod fermion;
 pub mod monomial;
 pub mod pauli;
 pub mod spin;
+mod state_graph;
 
 pub use bond::{BondOperator, BondOperatorInner, BondTerm};
 pub use boson::{BosonOp, BosonOpEntry, BosonOperator, BosonOperatorInner};
@@ -30,6 +31,9 @@ pub trait Operator<C> {
     fn max_site(&self) -> usize;
     fn num_cindices(&self) -> usize;
 
+    /// Local Hilbert space size this operator acts on.
+    fn lhss(&self) -> usize;
+
     /// Apply `self` to `state`, calling `emit(cindex, amplitude, new_state)`
     /// for each non-zero contribution.
     fn apply<B: BitInt, F>(&self, state: B, emit: F)
@@ -43,6 +47,9 @@ impl<C, T: Operator<C> + ?Sized> Operator<C> for &T {
     }
     fn num_cindices(&self) -> usize {
         (**self).num_cindices()
+    }
+    fn lhss(&self) -> usize {
+        (**self).lhss()
     }
     fn apply<B: BitInt, F>(&self, state: B, emit: F)
     where
