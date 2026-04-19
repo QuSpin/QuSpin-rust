@@ -41,3 +41,13 @@ jobs:
 
       - name: cargo clippy
         run: cargo clippy --workspace -- -D warnings
+
+      # Enforces the basis/operator DAG invariant that the StateTransitions
+      # refactor was designed to achieve. A plain `cargo build` does NOT
+      # catch someone reintroducing `quspin-operator` to quspin-basis's
+      # `[dependencies]` — adding the edge compiles fine, it just defeats
+      # the parallel-compile goal. `--edges=normal` excludes dev-deps, so
+      # the `[dev-dependencies]` entry on quspin-basis doesn't trigger it.
+      - name: Verify basis/operator dependency isolation
+        run: |
+          ! cargo tree -p quspin-basis --edges=normal 2>/dev/null | grep -q quspin-operator
