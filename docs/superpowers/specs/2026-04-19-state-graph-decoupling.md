@@ -149,7 +149,7 @@ impl StateGraph for SpinOperatorInner {
 
 ### 3.4 Basis method collapse
 
-Each basis type gets one generic `build` method and keeps the existing names as inlined forwarders:
+Each basis type gets exactly one generic `build` method. The eight typed `build_*` methods are deleted outright.
 
 ```rust
 // quspin-basis/src/spin.rs
@@ -157,7 +157,6 @@ impl SpinBasis {
     /// Build the subspace reachable from `seeds` under the connectivity
     /// described by `graph`.
     pub fn build<G: StateGraph>(&mut self, graph: &G, seeds: &[Vec<u8>]) -> Result<(), QuSpinError> {
-        // (single impl replacing build_spin / build_hardcore / build_bond bodies)
         if self.inner.space_kind() == SpaceKind::Full {
             return Err(QuSpinError::ValueError("Full basis requires no build step".into()));
         }
@@ -170,17 +169,17 @@ impl SpinBasis {
                 "graph.lhss()={} does not match basis lhss={}", graph.lhss(), lhss
             )));
         }
-        // … same space_kind dispatch as today, but calling
-        //    subspace.build(s, |state, visit| graph.neighbors(state, visit))
+        // same space_kind dispatch as today, but calling
+        //     subspace.build(s, |state, visit| graph.neighbors(state, visit))
     }
-
-    #[inline] pub fn build_spin    (&mut self, h: &SpinOperatorInner,     s: &[Vec<u8>]) -> Result<(), QuSpinError> { self.build(h, s) }
-    #[inline] pub fn build_hardcore(&mut self, h: &HardcoreOperatorInner, s: &[Vec<u8>]) -> Result<(), QuSpinError> { self.build(h, s) }
-    #[inline] pub fn build_bond    (&mut self, h: &BondOperatorInner,     s: &[Vec<u8>]) -> Result<(), QuSpinError> { self.build(h, s) }
 }
 ```
 
-`BosonBasis`, `FermionBasis`, `GenericBasis` follow the same pattern. The aliases are `#[inline]` zero-cost forwarders — `quspin-py` compiles with zero source changes.
+`BosonBasis`, `FermionBasis`, `GenericBasis` follow the same pattern.
+
+`quspin-py`'s five basis files (`crates/quspin-py/src/basis/{spin,boson,fermion,generic}.rs`) each change one line per call site: `basis.build_spin(&op.inner, seeds)` → `basis.build(&op.inner, seeds)`. The Python-facing method names (`build_spin`, `build_bond`, …) are unchanged — they live as `#[pyo3(name = …)]` annotations inside `quspin-py`, not in the basis crate.
+
+**Why not keep typed aliases for backwards compatibility?** Forwarding aliases would be performance-equivalent at runtime (Rust inlines them), but they force `quspin-basis` to keep `*OperatorInner` in its public signatures, which in turn keeps the `quspin-basis → quspin-operator` edge in `cargo tree`. Dropping the aliases is strictly better for compile-time parallelism (the whole motivation of the refactor) at the cost of five trivial call-site edits in `quspin-py`.
 
 ### 3.5 BFS visitor refactor
 
@@ -232,7 +231,7 @@ quspin-operator quspin-basis  quspin-expm   quspin-krylov   ← four-way paralle
        quspin-matrix
 ```
 
-`quspin-basis/Cargo.toml` drops the `quspin-operator` entry from `[dependencies]` and adds it under `[dev-dependencies]` so tests that build with real operator types still compile.
+`quspin-basis/Cargo.toml` removes `quspin-operator` from `[dependencies]` entirely and moves it to `[dev-dependencies]` — tests still use real operator types to drive `build`, but the production crate no longer references any operator symbols. `cargo tree -p quspin-basis --edges=normal | grep quspin-operator` returns empty.
 
 ### 3.7 Correctness note: fermion flag
 
@@ -302,5 +301,4 @@ The trailing space in `"quspin-operator "` excludes matches against `quspin-oper
 ## 8. Out of scope
 
 - Collapsing the four basis types (`SpinBasis`, `BosonBasis`, `FermionBasis`, `GenericBasis`) into one. Requires restructuring the symmetry-group API, which the user wants to address as a separate subsequent refactor.
-- Removing the eight typed `build_*` aliases. They are free at runtime; removal is a deprecation-cycle decision, not a technical one.
 - Any change to `quspin-matrix`, `quspin-expm`, or `quspin-krylov`.

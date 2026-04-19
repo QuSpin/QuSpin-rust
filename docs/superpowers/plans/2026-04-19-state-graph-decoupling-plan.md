@@ -135,11 +135,11 @@ and change `build`'s parameter to `F: FnMut(B, &mut dyn StateEmitter<B>)` or gen
 
 ---
 
-## Step 5 — Collapse basis `build_*` methods
+## Step 5 — Replace basis `build_*` with a single generic `build`
 
 For each of the four basis modules (`spin.rs`, `boson.rs`, `fermion.rs`, `generic.rs`):
 
-1. Add a new generic `build` method that absorbs the body shared between the existing `build_*` methods. Pseudocode:
+1. Replace all existing `build_*` methods with one generic `build`:
 
    ```rust
    pub fn build<G: StateGraph>(&mut self, g: &G, seeds: &[Vec<u8>]) -> Result<(), QuSpinError> {
@@ -157,73 +157,100 @@ For each of the four basis modules (`spin.rs`, `boson.rs`, `fermion.rs`, `generi
    }
    ```
 
-2. Replace each `build_xxx` body with:
+2. Delete `build_spin`, `build_hardcore`, `build_bond`, `build_boson`, `build_fermion`, `build_monomial`.
 
-   ```rust
-   #[inline]
-   pub fn build_spin(&mut self, h: &SpinOperatorInner, seeds: &[Vec<u8>]) -> Result<(), QuSpinError> {
-       self.build(h, seeds)
-   }
-   ```
+3. Remove all `use quspin_operator::*` imports from `src/` — only test modules still need them.
 
-3. Remove the now-unused `use quspin_operator::{SpinOperatorInner, …}` lines where they only appeared in the bodies, keep those still needed by the alias signatures.
-
-Verification: `cargo test --workspace` — all existing basis tests pass through the aliases.
+Verification: `cargo check -p quspin-basis` with `quspin-operator` removed from `[dependencies]` (step 6). Tests will break until step 7.
 
 ---
 
 ## Step 6 — Drop `quspin-basis → quspin-operator` runtime dep
 
+Decision recorded: we drop the typed aliases in favour of the single `build` method. This gives full parallel compile (no signature-level dep on `*OperatorInner`) and is strictly equal on runtime performance (Rust would inline the aliases to the same machine code).
+
 File: `crates/quspin-basis/Cargo.toml`
 
 ```toml
 [dependencies]
-quspin-types = { path = "../quspin-types" }
+quspin-types    = { path = "../quspin-types" }
 quspin-bitbasis = { path = "../quspin-bitbasis" }
-# quspin-operator removed ↓
+# quspin-operator ← deleted from runtime deps
 num-complex = { workspace = true }
-rayon = { workspace = true }
-ruint = { workspace = true }
-smallvec = { workspace = true }
+rayon       = { workspace = true }
+ruint       = { workspace = true }
+smallvec    = { workspace = true }
 
 [dev-dependencies]
-quspin-operator = { path = "../quspin-operator" }   # ← kept for tests
+quspin-operator = { path = "../quspin-operator" }   # tests only
 ```
 
-Source file changes (`crates/quspin-basis/src/{spin,boson,fermion,generic}.rs`):
-
-- `use quspin_operator::*` imports for `*OperatorInner` types used in the `build_xxx` alias signatures **cannot** move to `#[cfg(test)]` because the aliases are public API. Instead, import those types via the `quspin-operator` dev-dep's "is always available at build time when testing, otherwise the aliases don't compile" rule — which fails.
-  - **Resolution:** keep `quspin-operator` as a **runtime** dep if we want the typed aliases. Dropping it to dev-only only works if we also drop the aliases.
-  - **Decision:** follow the spec — keep the aliases, accept that `quspin-basis → quspin-operator` stays as a runtime dep, but note: the **compile-time** coupling is now only at the type-signature level (no matches on `*OperatorInner` variants), so rebuilding `quspin-operator` does not cascade-invalidate `quspin-basis`'s real logic. Parallel-compile benefit still realized in practice because cargo caches the post-monomorphization artifacts.
-  - **Alternative:** drop the typed aliases entirely (accept a 5-line `quspin-py` change renaming `build_spin` → `build`). Revisit if the user prefers full DAG purity over the quspin-py invariant.
-
-Update verification step §5 of the spec accordingly before shipping CI.
+Verification:
+```sh
+cargo check -p quspin-basis                          # must pass
+cargo tree -p quspin-basis --edges=normal | grep quspin-operator   # must be empty
+```
 
 ---
 
-## Step 7 — Update docs
+## Step 7 — Update `quspin-basis` tests
 
-- `CLAUDE.md`: redraw the DAG. `quspin-operator` and `quspin-basis` remain connected, but add a sentence: "`quspin-basis` type-depends on `*OperatorInner` only for the forwarding aliases; all build logic is generic over `StateGraph` from `quspin-bitbasis`." Mention `StateGraph` alongside `OperatorDispatch` in the "Key design rules" list.
-- `docs/superpowers/specs/2026-04-18-crate-split-design.md`: add a "Completed" note to §9 linking to the new spec.
+Tests in `crates/quspin-basis/src/{spin,boson,fermion,generic}.rs` call the old `build_spin` / `build_bond` / etc. aliases. Each test must be updated to call `.build(&ham, &seeds)`.
+
+Grep to find them:
+```sh
+grep -rn "\.build_\(spin\|hardcore\|bond\|boson\|fermion\|monomial\)\b" crates/quspin-basis/src/
+```
+
+Replace each with `.build(...)`. No other test logic changes.
+
+Verification: `cargo test -p quspin-basis`.
 
 ---
 
-## Step 8 — CI isolation check
+## Step 8 — Update `quspin-py`
+
+Five PyO3 binding files currently call the typed build methods:
+
+| File | Line(s) | Old | New |
+|------|---------|-----|-----|
+| `crates/quspin-py/src/basis/spin.rs` | 26, 30 | `.build_hardcore(&op.borrow().inner, …)` | `.build(&op.borrow().inner, …)` |
+| `crates/quspin-py/src/basis/spin.rs` | 30 | `.build_bond(&op.borrow().inner, …)` | `.build(&op.borrow().inner, …)` |
+| `crates/quspin-py/src/basis/boson.rs` | 24, 28 | `.build_boson` / `.build_bond` | `.build` |
+| `crates/quspin-py/src/basis/fermion.rs` | 24, 28 | `.build_fermion` / `.build_bond` | `.build` |
+| `crates/quspin-py/src/basis/generic.rs` | 124, 157 | `.build_monomial` | `.build` |
+
+Python-facing method names (`build_spin`, `build_bond`, etc. on the PyO3 classes) stay the same — those are `#[pyo3(...)]` method names in `quspin-py`, not Rust method names in `quspin-basis`.
+
+Verification: `uv run maturin develop` builds; `uv run pytest python/tests/ -x -q -m "not slow"` green.
+
+---
+
+## Step 9 — Update docs
+
+- `CLAUDE.md`: redraw the DAG so `quspin-operator` and `quspin-basis` sit at the same level under `quspin-bitbasis`. Add one sentence noting `StateGraph` as the connectivity abstraction. Mention it in "Key design rules" alongside `OperatorDispatch`.
+- `docs/superpowers/specs/2026-04-18-crate-split-design.md`: add a "Completed 2026-04-19" note to §9 linking to the new spec.
+
+---
+
+## Step 10 — CI isolation check
 
 Add to `.github/workflows/ci.yaml` after the `cargo clippy` step:
 
 ```yaml
 - name: Verify StateGraph decoupling
   run: |
-    # quspin-basis contains no runtime match on *OperatorInner variants
-    ! grep -rn "match .*OperatorInner" crates/quspin-basis/src/
-    # StateGraph lives in quspin-bitbasis
+    # quspin-basis has no runtime dep on quspin-operator
+    ! cargo tree -p quspin-basis --edges=normal 2>/dev/null | grep -q quspin-operator
+    # StateGraph trait lives in quspin-bitbasis
     grep -q "pub trait StateGraph" crates/quspin-bitbasis/src/state_graph.rs
+    # quspin-basis does not match on *OperatorInner variants
+    ! grep -rn "match .*OperatorInner" crates/quspin-basis/src/
 ```
 
 ---
 
-## Step 9 — Final verification
+## Step 11 — Final verification
 
 ```sh
 cargo fmt --all
@@ -231,24 +258,19 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 uv run maturin develop
 uv run pytest python/tests/ -x -q -m "not slow"
-cargo tree -p quspin-basis | grep quspin-operator   # allowed (aliases), but no surprises
+
+# DAG sanity:
+cargo tree -p quspin-basis    --edges=normal | grep quspin-operator   # empty
+cargo tree -p quspin-operator --edges=normal | grep quspin-basis      # empty
 ```
 
 Open PR targeting `main`.
 
 ---
 
-## Open question surfaced in step 6
+## Decision log
 
-The spec (§3.6) promises `quspin-basis → quspin-operator` is dropped from runtime deps. In practice, the typed aliases (`build_spin`, `build_bond`, …) keep the signature-level dep in place. This is an honest coupling: `quspin-basis` still has to **name** `*OperatorInner` types in its public API.
-
-The real wins the refactor delivers even with the dep retained:
-1. **Allocation saved** — no more `SmallVec` per BFS frontier node.
-2. **Monomorphization locality** — `build<G: StateGraph>` generates code per `G`, but the generated code lives in `quspin-basis`'s compilation unit, not in `quspin-operator`. Recompiling only `quspin-operator` no longer invalidates basis logic.
-3. **Extensibility** — third-party operator types (or test mocks) that impl `StateGraph` can drive `SpinBasis::build` without being one of the six built-in enums.
-
-Decide before merging whether to:
-- **(A)** Keep aliases, keep runtime dep, document the nuance.
-- **(B)** Drop aliases, drop runtime dep, update `quspin-py`'s five basis files to call `basis.build(&op.inner, seeds)`.
-
-Recommendation: **(A)** initially (zero quspin-py churn, full logic decoupling). Revisit if a subsequent spec merges the four basis types.
+- **Aliases kept vs dropped:** dropped. Performance-equivalent at runtime (inlined forwarding), but aliases keep `*OperatorInner` in `quspin-basis`'s public signatures which defeats the compile-time-parallelism goal. Dropping aliases costs five one-line edits in `quspin-py` (step 8) and deletes the `quspin-basis → quspin-operator` runtime edge entirely.
+- **StateGraph location:** `quspin-bitbasis` (needs `BitInt`, §3.1 of spec).
+- **`lhss()` trait method:** added to both `Operator<C>` and `StateGraph`, not a free function.
+- **BFS signature:** visitor-style `FnMut(B, &mut dyn FnMut(B))`. If benchmarks show inlining loss, fall back to the `StateEmitter<B>` trait (step 4 fallback).
