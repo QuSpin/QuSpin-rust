@@ -298,7 +298,26 @@ The trailing space in `"quspin-operator "` excludes matches against `quspin-oper
 
 ---
 
-## 8. Out of scope
+## 8. Out of scope / known follow-ups
 
 - Collapsing the four basis types (`SpinBasis`, `BosonBasis`, `FermionBasis`, `GenericBasis`) into one. Requires restructuring the symmetry-group API, which the user wants to address as a separate subsequent refactor.
 - Any change to `quspin-matrix`, `quspin-expm`, or `quspin-krylov`.
+
+### Open tension: amplitude is a basis-layer concern (review #2)
+
+The `StateTransitions` trait lives in `quspin-bitbasis` but carries a `Complex<f64>` amplitude in its callback because the basis needs it for symbolic-cancellation detection (`XX + YY` on `|00⟩`). This is a layering concession: a hypothetical non-physics consumer of `StateTransitions` that only needs graph connectivity is forced to fabricate unit amplitudes.
+
+Two cleaner designs exist but are out of scope here:
+
+1. **Split the trait.** Expose a narrow `Connectivity` trait (no amplitude) for consumers that only care about reachable neighbours, and keep the wider `StateTransitions` for BFS-with-cancellation.
+2. **Push cancellation to the operator side.** Let each operator expose a `canceled_neighbors` method that internally deduplicates targets whose amplitudes sum to zero, so the basis only sees unique connected targets.
+
+Neither is needed for the current QuSpin use case; both are tracked for a future refactor once a second consumer appears.
+
+### Open tension: compile-time `lhss` enforcement (review #9)
+
+`graph.lhss() == self.inner.lhss()` is currently a runtime string-error check inside `build_inner`. Callers that pass a spin-½ operator to a spin-1 basis only find out at `build` time. A const-generic or type-level encoding of `lhss` would catch this at compile time but is a larger refactor — tracked as a follow-up after the symmetry-group API restructure lands.
+
+### Performance benchmark (review #7)
+
+The refactor eliminates the per-frontier `SmallVec<(amp, state, cindex)>` allocation by writing `StateTransitions::neighbors` output directly into the BFS contribution hashmap. The performance impact has **not been measured**. A follow-up task is to add a `criterion` bench for `Subspace::build` with representative Hamiltonians and land the before/after numbers in a separate PR. Until that lands, the PR descriptions and CHANGELOG describe the change as "allocation savings unmeasured" rather than asserting a speedup.
