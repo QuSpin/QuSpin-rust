@@ -50,4 +50,7 @@ jobs:
       # the `[dev-dependencies]` entry on quspin-basis doesn't trigger it.
       - name: Verify basis/operator dependency isolation
         run: |
-          ! cargo tree -p quspin-basis --edges=normal 2>/dev/null | grep -q quspin-operator
+          # Run cargo tree as its own command so a tool failure surfaces as
+          # a CI failure, rather than being silently swallowed by grep.
+          tree_output="$(cargo tree -p quspin-basis --edges=normal)"
+          ! printf '%s\n' "$tree_output" | grep -q quspin-operator

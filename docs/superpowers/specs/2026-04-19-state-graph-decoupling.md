@@ -1,8 +1,15 @@
-# StateGraph: Decouple `quspin-basis` from `quspin-operator`
+# StateTransitions: Decouple `quspin-basis` from `quspin-operator`
 
 **Date:** 2026-04-19
-**Status:** Approved
+**Status:** Approved (implemented in PR #57)
 **Relates to:** Issue #48 follow-up (spec §9 of `2026-04-18-crate-split-design.md`)
+
+> **Note on naming:** this spec was drafted under the working name
+> `StateGraph`. The trait was renamed to `StateTransitions` during
+> review (see §8 / review comment #1) because the final contract
+> requires amplitudes, not just connectivity. Every reference in the
+> rest of this doc uses `StateTransitions`; the old name survives here
+> in the title for stable linking from earlier PR discussion.
 
 ---
 
@@ -10,13 +17,13 @@
 
 After the 7-crate split (PR #52), `quspin-basis` still depends on `quspin-operator` because the basis types' `build_*` methods accept concrete `*OperatorInner` enums and match on their `Ham8` / `Ham16` variants to extract an apply-callback. This is the only coupling left between the two and prevents the parallel compilation that the spec's §3.1 DAG promised.
 
-The basis BFS only needs **connectivity** — it asks "given state `S`, which states can I reach by applying the operator once?" It does not use the amplitude or the cindex tag. The operator types already know how to enumerate neighbours; the basis types do not need to know which operator type they were handed.
+The basis BFS needs one-step successor enumeration — "given state `S`, which states can I reach by applying the operator once?" — plus the emitted amplitude for each successor, so that sector membership is decided correctly when multiple terms contribute to the same target (e.g. `XX + YY` applied to `|00⟩` produces two contributions whose amplitudes exactly cancel). The basis does not need to know the concrete operator type or the cindex tag; only the `(amplitude, new_state)` stream matters. The operator types already know how to enumerate neighbours with this signature; the basis types do not need to know which operator type they were handed.
 
-This spec introduces a minimal trait — `StateGraph` — that lets the basis BFS take `&impl StateGraph` instead of a concrete operator type. The result:
+This spec introduces a minimal trait — `StateTransitions` — that lets the basis BFS take `&impl StateTransitions` instead of a concrete operator type. The result:
 
-- `quspin-basis` drops its `quspin-operator` dep; they compile in parallel.
-- Eight typed `build_*` methods collapse into one generic `build<G: StateGraph>` per basis (four total).
-- Existing `build_*` names survive as thin forwarding aliases so `quspin-py` compiles unchanged.
+- `quspin-basis` drops its runtime `quspin-operator` dep; they compile in parallel.
+- Eight typed `build_*` methods collapse into one generic `build<G: StateTransitions>` per basis (four total).
+- `quspin-py` updates five one-line call sites to `.build(&op.inner, seeds)`; the Python-facing method names stay unchanged.
 
 **Primary goal:** complete the §3.1 parallel-compile DAG.
 **Secondary goal:** eliminate the `SmallVec<(amp, state, cindex)>` allocation BFS currently performs per frontier node.
@@ -66,35 +73,40 @@ The BFS callback returns an iterator of `(Complex<f64>, B, u8)` triples — ampl
 
 ## 3. Target Design
 
-### 3.1 `StateGraph` trait
+### 3.1 `StateTransitions` trait
 
 **Location:** `quspin-bitbasis` (the lowest crate that knows `BitInt`).
 
 ```rust
-// crates/quspin-bitbasis/src/state_graph.rs
+// crates/quspin-bitbasis/src/state_transitions.rs
+use num_complex::Complex;
+
 use crate::int::BitInt;
 
-/// Abstract connectivity oracle used by basis BFS.
+/// State-to-neighbour mapping used by basis BFS, with amplitudes.
 ///
-/// Operators that implement this trait describe how a state maps to its
-/// reachable neighbours under one application. BFS uses the set of
-/// neighbours only; amplitudes and cindex tags are irrelevant for basis
-/// enumeration.
-pub trait StateGraph: Send + Sync {
+/// The callback `visit(amplitude, new_state)` is invoked once for every
+/// non-zero term produced by applying `self` to `state`. Amplitudes are
+/// a required part of the contract: the basis accumulates per-target
+/// contributions and discards states whose summed amplitudes cancel
+/// below tolerance (e.g. `XX + YY` on `|00⟩` cancels exactly and must
+/// not enter the sector). Cindex tags are not part of the contract.
+pub trait StateTransitions: Send + Sync {
     /// Local Hilbert space size this operator acts on.
     ///
-    /// The basis checks `graph.lhss() == self.lhss()` before building.
+    /// The basis checks `transitions.lhss() == basis.lhss()` before building.
     fn lhss(&self) -> usize;
 
-    /// Call `visit(new_state)` once for each state reachable from `state`
-    /// under one application of `self`.
+    /// Call `visit(amplitude, new_state)` once for every non-zero term
+    /// produced by applying `self` to `state`.
     ///
-    /// Duplicates are permitted — BFS deduplicates via its own hash set.
-    fn neighbors<B: BitInt, F: FnMut(B)>(&self, state: B, visit: F);
+    /// Duplicate targets are permitted — BFS accumulates their amplitudes
+    /// and detects cancellation.
+    fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, visit: F);
 }
 ```
 
-The trait has no associated types and no type parameters — `B` is a method-level generic — so it is not `dyn`-compatible. That is fine; BFS uses static dispatch.
+The trait has no associated types and no trait-level type parameters — `B` is a method-level generic — so it is not `dyn`-compatible. That is fine; BFS uses static dispatch.
 
 ### 3.2 `Operator::lhss`
 
@@ -110,19 +122,19 @@ pub trait Operator<C> {
 }
 ```
 
-This makes the generic operator types (`SpinOperator<u8>`, `BondOperator<u16>`, etc.) self-sufficient — they can implement `StateGraph` directly without going through a dispatch enum. Callers that want to test `build` with a single-cindex-width operator (no `*Inner` wrapper) can do so.
+This makes the generic operator types (`SpinOperator<u8>`, `BondOperator<u16>`, etc.) self-sufficient — they can implement `StateTransitions` directly without going through a dispatch enum. Callers that want to test `build` with a single-cindex-width operator (no `*Inner` wrapper) can do so.
 
-### 3.3 `StateGraph` impls
+### 3.3 `StateTransitions` impls
 
 Two layers of impl:
 
 **Per-cindex generic types** (in the respective operator modules):
 
 ```rust
-impl<C: CIndex> StateGraph for SpinOperator<C> {
-    fn lhss(&self) -> usize { self.lhss }
-    fn neighbors<B: BitInt, F: FnMut(B)>(&self, state: B, mut visit: F) {
-        self.apply::<B, _>(state, |_c, _amp, ns| visit(ns));
+impl<C: Copy + Ord + Send + Sync> StateTransitions for SpinOperator<C> {
+    fn lhss(&self) -> usize { Operator::<C>::lhss(self) }
+    fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
+        self.apply::<B, _>(state, |_c, amp, ns| visit(amp, ns));
     }
 }
 ```
@@ -132,11 +144,14 @@ One each for `SpinOperator<C>`, `BondOperator<C>`, `BosonOperator<C>`, `FermionO
 **Dispatch enums** (delegate to the variant):
 
 ```rust
-impl StateGraph for SpinOperatorInner {
+impl StateTransitions for SpinOperatorInner {
     fn lhss(&self) -> usize {
-        match self { Self::Ham8(h) => h.lhss(), Self::Ham16(h) => h.lhss() }
+        match self {
+            Self::Ham8(h)  => StateTransitions::lhss(h),
+            Self::Ham16(h) => StateTransitions::lhss(h),
+        }
     }
-    fn neighbors<B: BitInt, F: FnMut(B)>(&self, state: B, visit: F) {
+    fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, visit: F) {
         match self {
             Self::Ham8(h)  => h.neighbors(state, visit),
             Self::Ham16(h) => h.neighbors(state, visit),
@@ -145,7 +160,7 @@ impl StateGraph for SpinOperatorInner {
 }
 ```
 
-`HardcoreOperatorInner::lhss` stays `const fn` on the enum but the trait method delegates.
+`HardcoreOperatorInner::lhss` stays `const fn` on the enum as a no-trait-bound inherent method; the trait impl delegates.
 
 ### 3.4 Basis method collapse
 
@@ -156,7 +171,7 @@ Each basis type gets exactly one generic `build` method. The eight typed `build_
 impl SpinBasis {
     /// Build the subspace reachable from `seeds` under the connectivity
     /// described by `graph`.
-    pub fn build<G: StateGraph>(&mut self, graph: &G, seeds: &[Vec<u8>]) -> Result<(), QuSpinError> {
+    pub fn build<G: StateTransitions>(&mut self, graph: &G, seeds: &[Vec<u8>]) -> Result<(), QuSpinError> {
         if self.inner.space_kind() == SpaceKind::Full {
             return Err(QuSpinError::ValueError("Full basis requires no build step".into()));
         }
@@ -169,8 +184,10 @@ impl SpinBasis {
                 "graph.lhss()={} does not match basis lhss={}", graph.lhss(), lhss
             )));
         }
-        // same space_kind dispatch as today, but calling
-        //     subspace.build(s, |state, visit| graph.neighbors(state, visit))
+        // same space_kind dispatch as today; each arm calls
+        //     subspace.build(seed, graph)
+        // where `Subspace::build` takes `&impl StateTransitions` directly
+        // (see §3.5).
     }
 }
 ```
@@ -181,31 +198,26 @@ impl SpinBasis {
 
 **Why not keep typed aliases for backwards compatibility?** Forwarding aliases would be performance-equivalent at runtime (Rust inlines them), but they force `quspin-basis` to keep `*OperatorInner` in its public signatures, which in turn keeps the `quspin-basis → quspin-operator` edge in `cargo tree`. Dropping the aliases is strictly better for compile-time parallelism (the whole motivation of the refactor) at the cost of five trivial call-site edits in `quspin-py`.
 
-### 3.5 BFS visitor refactor
+### 3.5 BFS signature change
 
-`Subspace::build` / `SymBasis::build` in `quspin-basis` currently take:
+`Subspace::build` / `SymBasis::build` in `quspin-basis` previously took:
 
 ```rust
 pub fn build<F, I>(&mut self, seed: B, apply: F)
 where F: Fn(B) -> I, I: IntoIterator<Item = (Complex<f64>, B, u8)>
 ```
 
-Replace with a visitor-style callback that receives an emitter:
+which forced `apply(state)` to materialise an iterator (in practice a `SmallVec<(Complex<f64>, B, u8); 8>`) per frontier state.
+
+The implemented replacement takes the trait directly:
 
 ```rust
-pub fn build<F>(&mut self, seed: B, mut expand: F)
-where F: FnMut(B, &mut dyn FnMut(B))
+pub fn build<G: StateTransitions>(&mut self, seed: B, graph: &G)
 ```
 
-Frontier loops call `expand(state, &mut |ns| { /* push to next frontier */ })`. Inside the basis `build<G>` method we pass `|state, visit| graph.neighbors(state, visit)`. No `SmallVec` allocation, no iterator adaptation.
+The BFS hot loop calls `graph.neighbors::<B, _>(state, |amp, next_state| { /* accumulate into contributions map */ })`. No intermediate collection, no iterator adaptation — the closure writes straight into the per-wave `HashMap<B, (Complex<f64>, f64)>` that was already used for amplitude cancellation.
 
-If the `&mut dyn FnMut(B)` indirection measures poorly, fall back to a custom trait:
-
-```rust
-pub trait StateEmitter<B> { fn emit(&mut self, state: B); }
-```
-
-and make `build` take `F: FnMut(B, &mut dyn StateEmitter<B>)` or an impl-trait equivalent. Measure first.
+> **Design note.** An earlier draft of this section proposed an intermediate visitor-style signature (`FnMut(B, &mut dyn FnMut(B))`) with an optional `StateEmitter<B>` fallback. That indirection turned out to be unnecessary once the amplitude argument was added to the `StateTransitions` callback — the trait directly is both simpler and monomorphises better. The visitor form was never implemented.
 
 ### 3.6 Dependency graph
 
@@ -235,7 +247,7 @@ quspin-operator quspin-basis  quspin-expm   quspin-krylov   ← four-way paralle
 
 ### 3.7 Correctness note: fermion flag
 
-Fermionic sign handling lives in `SymBasis` orbit/representative logic and uses the `fermionic: bool` on the space constructor. It is **not** applied during BFS connectivity expansion and does **not** depend on the operator type. `StateGraph` therefore correctly omits any fermion flag; pairing a `FermionOperator` with a `SpinBasis` is a user error by convention, not by type check, and the `lhss` check catches the common case (LHSS mismatch).
+Fermionic sign handling lives in `SymBasis` orbit/representative logic and uses the `fermionic: bool` on the space constructor. It is **not** applied during BFS connectivity expansion and does **not** depend on the operator type. `StateTransitions` therefore correctly omits any fermion flag; pairing a `FermionOperator` with a `SpinBasis` is a user error by convention, not by type check, and the `lhss` check catches the common case (LHSS mismatch).
 
 ---
 
@@ -243,7 +255,7 @@ Fermionic sign handling lives in `SymBasis` orbit/representative logic and uses 
 
 Single PR. The three mechanical steps are tightly coupled:
 
-1. Add `StateGraph` + `Operator::lhss`, impl across operator crate.
+1. Add `StateTransitions` + `Operator::lhss`, impl across operator crate.
 2. Refactor basis BFS (§3.5) and collapse `build_*` methods to aliases (§3.4).
 3. Drop `quspin-basis → quspin-operator` from runtime deps; move to dev-deps.
 
@@ -283,7 +295,7 @@ The trailing space in `"quspin-operator "` excludes matches against `quspin-oper
 
 ## 6. Documentation updates
 
-- `CLAUDE.md`: update the DAG diagram so `quspin-operator` and `quspin-basis` sit at the same level (both children of `quspin-bitbasis`). Add one sentence noting `StateGraph` is the abstraction layer.
+- `CLAUDE.md`: update the DAG diagram so `quspin-operator` and `quspin-basis` sit at the same level (both children of `quspin-bitbasis`). Add one sentence noting `StateTransitions` is the abstraction layer.
 - `docs/superpowers/specs/2026-04-18-crate-split-design.md`: mark §9 as completed, link to this spec.
 
 ---
@@ -292,9 +304,8 @@ The trailing space in `"quspin-operator "` excludes matches against `quspin-oper
 
 | Risk | Mitigation |
 |------|------------|
-| Visitor signature (`FnMut(B, &mut dyn FnMut(B))`) measures worse than the current iterator form | Fall back to a custom `StateEmitter<B>` trait for monomorphisable calls. Benchmark before committing. |
-| `cargo tree` check false-positives on dev-deps | Use the trailing-space pattern in §5 or switch to `cargo tree --edges=normal`. |
-| A future operator type wants to emit something richer than just `B` during BFS | That caller can fall back to `Operator::apply` directly; `StateGraph` is additive. |
+| `cargo tree` check false-positives on dev-deps | Use `cargo tree --edges=normal`, which excludes dev-deps. The CI step also runs `cargo tree` as a separate command (not piped into `grep 2>/dev/null`) so a tool failure surfaces as a CI failure. |
+| A future operator type wants to emit something richer than `(amp, state)` during BFS | That caller can fall back to `Operator::apply` directly; `StateTransitions` is additive. |
 
 ---
 

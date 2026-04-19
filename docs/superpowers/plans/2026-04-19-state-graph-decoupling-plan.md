@@ -1,8 +1,14 @@
-# Implementation Plan: `StateGraph` Decoupling
+# Implementation Plan: `StateTransitions` Decoupling
 
 **Spec:** `docs/superpowers/specs/2026-04-19-state-graph-decoupling.md`
 **Date:** 2026-04-19
 **Branch:** `phil/state-graph-refactor` (off `main`)
+
+> **Note on naming.** This plan was drafted under the working name
+> `StateGraph`. The trait was renamed to `StateTransitions` during
+> review because its final callback takes `(amplitude, new_state)`
+> rather than just connectivity. All code snippets below show the
+> final signatures; the earlier drafts in git history use the old name.
 
 ---
 
@@ -32,62 +38,74 @@ Verification: `cargo check -p quspin-operator`.
 
 ---
 
-## Step 2 — Add `StateGraph` trait in `quspin-bitbasis`
+## Step 2 — Add `StateTransitions` trait in `quspin-bitbasis`
 
-File: `crates/quspin-bitbasis/src/state_graph.rs` (new)
+File: `crates/quspin-bitbasis/src/state_transitions.rs` (new)
 
 ```rust
+use num_complex::Complex;
+
 use crate::int::BitInt;
 
-pub trait StateGraph: Send + Sync {
+pub trait StateTransitions: Send + Sync {
     fn lhss(&self) -> usize;
-    fn neighbors<B: BitInt, F: FnMut(B)>(&self, state: B, visit: F);
+    fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, visit: F);
 }
 ```
 
 File: `crates/quspin-bitbasis/src/lib.rs`
 
-- Add `pub mod state_graph;`
-- Add `pub use state_graph::StateGraph;`
+- Add `pub mod state_transitions;`
+- Add `pub use state_transitions::StateTransitions;`
 
 Verification: `cargo check -p quspin-bitbasis`.
 
 ---
 
-## Step 3 — Implement `StateGraph` for operator types
+## Step 3 — Implement `StateTransitions` for operator types
 
-For each of the six operator modules in `quspin-operator/src/<kind>/operator.rs`, add:
+All twelve impls (six per-cindex types + six dispatch enums) are
+placed in a single file `crates/quspin-operator/src/state_transitions.rs`
+to keep the per-operator files focused on domain logic.
 
 ```rust
-impl<C: /* existing bounds */> StateGraph for <Type><C> {
-    fn lhss(&self) -> usize { self.lhss() }
-    fn neighbors<B: BitInt, F: FnMut(B)>(&self, state: B, mut visit: F) {
-        <crate::Operator<C>>::apply::<B, _>(self, state, |_c, _amp, ns| visit(ns));
+use num_complex::Complex;
+use quspin_bitbasis::{BitInt, StateTransitions};
+use crate::Operator;
+
+// Per-cindex types. `Send + Sync` on C is inherited from the trait
+// supertrait; in practice C is always u8 or u16 so this is a no-op.
+impl<C: Copy + Ord + Send + Sync> StateTransitions for SpinOperator<C> {
+    fn lhss(&self) -> usize { Operator::<C>::lhss(self) }
+    fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, mut visit: F) {
+        self.apply::<B, _>(state, |_c, amp, ns| visit(amp, ns));
     }
 }
-```
+// … BondOperator, BosonOperator, FermionOperator, HardcoreOperator, MonomialOperator …
 
-Import: `use quspin_bitbasis::{BitInt, StateGraph};`.
-
-For the six dispatch enums in `quspin-operator/src/<kind>/dispatch.rs`:
-
-```rust
-impl StateGraph for <Kind>OperatorInner {
+// Dispatch enums.
+impl StateTransitions for SpinOperatorInner {
     fn lhss(&self) -> usize {
-        match self { Self::Ham8(h) => h.lhss(), Self::Ham16(h) => h.lhss() }
+        match self {
+            Self::Ham8(h)  => StateTransitions::lhss(h),
+            Self::Ham16(h) => StateTransitions::lhss(h),
+        }
     }
-    fn neighbors<B: BitInt, F: FnMut(B)>(&self, state: B, visit: F) {
+    fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, visit: F) {
         match self {
             Self::Ham8(h)  => h.neighbors(state, visit),
             Self::Ham16(h) => h.neighbors(state, visit),
         }
     }
 }
+// … BondOperatorInner, BosonOperatorInner, … (six total) …
 ```
 
-`HardcoreOperatorInner::lhss` keeps its `const fn` inherent form; the trait impl delegates.
+In practice both pattern families are generated from a pair of `macro_rules!` macros (`impl_state_transitions_for_operator!` and `impl_state_transitions_for_inner!`).
 
-Verification: `cargo check -p quspin-operator`; grep `impl StateGraph` in the operator crate should show 12 impls (6 generic + 6 enum).
+`HardcoreOperatorInner::lhss` keeps its `const fn` inherent form as a no-trait-bound method; the trait impl delegates via `StateTransitions::lhss(h)`.
+
+Verification: `cargo check -p quspin-operator`; grep `impl StateTransitions` in the operator crate should show 12 impls (6 generic + 6 enum).
 
 ---
 
@@ -95,7 +113,8 @@ Verification: `cargo check -p quspin-operator`; grep `impl StateGraph` in the op
 
 Files:
 - `crates/quspin-basis/src/space.rs` (`Subspace::build`)
-- `crates/quspin-basis/src/sym.rs` (`SymBasis::build`)
+- `crates/quspin-basis/src/sym.rs` (`SymBasis::build`, plus the private `bfs_wave_with_reps` helper)
+- `crates/quspin-basis/src/bfs.rs` (`bfs_wave`, `bfs_wave_sequential`, `bfs_wave_parallel`, `discover_from_state`)
 
 Current signature:
 ```rust
@@ -105,33 +124,37 @@ where F: Fn(B) -> I, I: IntoIterator<Item = (Complex<f64>, B, u8)>
 
 New signature:
 ```rust
-pub fn build<F>(&mut self, seed: B, mut expand: F)
-where F: FnMut(B, &mut dyn FnMut(B))
+pub fn build<G: StateTransitions>(&mut self, seed: B, graph: &G)
 ```
 
-Inside the BFS frontier loop, call sites change from:
+(`SymBasis::build` has the same shape plus its existing `L: Sync` bound.)
+
+Inside the BFS frontier loop, the call site changes from:
 ```rust
-for (_amp, ns, _c) in apply(state) { /* push ns */ }
+for (amp, ns, _c) in apply(state) {
+    let e = contributions.entry(ns).or_default();
+    e.0 += amp;
+    e.1 += amp.norm();
+}
 ```
 to:
 ```rust
-expand(state, &mut |ns| { /* push ns */ });
+graph.neighbors::<B, _>(state, |amp, ns| {
+    let e = contributions.entry(ns).or_default();
+    e.0 += amp;
+    e.1 += amp.norm();
+});
 ```
 
-Keep the internal dedup/hash-insert logic unchanged; only the "where do neighbours come from" hook changes.
+The per-target amplitude-cancellation bookkeeping (the `contributions` hashmap and the `AMP_CANCEL_TOL`-gated `discovered.insert(ns)`) is unchanged; only the "where do neighbours come from" hook moves from an iterator-returning closure to a direct `StateTransitions::neighbors` call.
 
-Verification: `cargo test -p quspin-basis`. Some tests still use the typed `build_*` aliases (step 5 wires them up), so full green only comes after step 5.
+The same transformation applies to the private `bfs_wave_with_reps` helper in `sym.rs`, which BFS-expands and then maps each survivor to its orbit representative.
 
-### Fallback (§7 of spec)
+> **Why not a visitor-style `FnMut(B, &mut dyn FnMut(B))`?**
+>
+> An earlier draft of this plan introduced a visitor indirection, with an optional `StateEmitter<B>` fallback trait if `dyn` inlining misbehaved. Once the amplitude was re-added to the callback (needed for cancellation detection), the trait-based form turned out to be both simpler and monomorphises better — the visitor draft was never implemented.
 
-If the `&mut dyn FnMut(B)` indirection breaks inlining in a measurable way, add a trait to `quspin-bitbasis`:
-
-```rust
-pub trait StateEmitter<B> { fn emit(&mut self, state: B); }
-impl<B, F: FnMut(B)> StateEmitter<B> for F { fn emit(&mut self, state: B) { self(state) } }
-```
-
-and change `build`'s parameter to `F: FnMut(B, &mut dyn StateEmitter<B>)` or generic `E: StateEmitter<B>`. Measure `criterion` benchmarks (if present) or `cargo test --release` timings on the `sym_basis_*` tests.
+Verification: `cargo test -p quspin-basis`. All 77 basis tests must pass. The tests use shared `StateTransitions` mocks from `quspin_bitbasis::test_graphs` (added in step 7a below).
 
 ---
 
@@ -142,7 +165,7 @@ For each of the four basis modules (`spin.rs`, `boson.rs`, `fermion.rs`, `generi
 1. Replace all existing `build_*` methods with one generic `build`:
 
    ```rust
-   pub fn build<G: StateGraph>(&mut self, g: &G, seeds: &[Vec<u8>]) -> Result<(), QuSpinError> {
+   pub fn build<G: StateTransitions>(&mut self, g: &G, seeds: &[Vec<u8>]) -> Result<(), QuSpinError> {
        if self.inner.space_kind() == SpaceKind::Full { return err("Full basis …"); }
        if self.inner.is_built()                       { return err("already built"); }
        let lhss = self.inner.lhss();
@@ -228,7 +251,7 @@ Verification: `uv run maturin develop` builds; `uv run pytest python/tests/ -x -
 
 ## Step 9 — Update docs
 
-- `CLAUDE.md`: redraw the DAG so `quspin-operator` and `quspin-basis` sit at the same level under `quspin-bitbasis`. Add one sentence noting `StateGraph` as the connectivity abstraction. Mention it in "Key design rules" alongside `OperatorDispatch`.
+- `CLAUDE.md`: redraw the DAG so `quspin-operator` and `quspin-basis` sit at the same level under `quspin-bitbasis`. Add one sentence noting `StateTransitions` as the connectivity abstraction. Mention it in "Key design rules" alongside `OperatorDispatch`.
 - `docs/superpowers/specs/2026-04-18-crate-split-design.md`: add a "Completed 2026-04-19" note to §9 linking to the new spec.
 
 ---
@@ -238,15 +261,15 @@ Verification: `uv run maturin develop` builds; `uv run pytest python/tests/ -x -
 Add to `.github/workflows/ci.yaml` after the `cargo clippy` step:
 
 ```yaml
-- name: Verify StateGraph decoupling
+- name: Verify basis/operator dependency isolation
   run: |
-    # quspin-basis has no runtime dep on quspin-operator
-    ! cargo tree -p quspin-basis --edges=normal 2>/dev/null | grep -q quspin-operator
-    # StateGraph trait lives in quspin-bitbasis
-    grep -q "pub trait StateGraph" crates/quspin-bitbasis/src/state_graph.rs
-    # quspin-basis does not match on *OperatorInner variants
-    ! grep -rn "match .*OperatorInner" crates/quspin-basis/src/
+    # Run cargo tree as its own command so a tool failure surfaces as a
+    # CI failure, rather than being silently swallowed by grep.
+    tree_output="$(cargo tree -p quspin-basis --edges=normal)"
+    ! printf '%s\n' "$tree_output" | grep -q quspin-operator
 ```
+
+The `--edges=normal` flag excludes dev-dependencies, so the legitimate `[dev-dependencies] quspin-operator = { … }` entry on `quspin-basis` does not false-positive the check. Running `cargo tree` as a separate command (not piped into `grep 2>/dev/null`) ensures a tool failure causes a CI failure — otherwise the leading `!` would silently invert `grep`'s non-zero exit and mark the step as green.
 
 ---
 
@@ -271,6 +294,8 @@ Open PR targeting `main`.
 ## Decision log
 
 - **Aliases kept vs dropped:** dropped. Performance-equivalent at runtime (inlined forwarding), but aliases keep `*OperatorInner` in `quspin-basis`'s public signatures which defeats the compile-time-parallelism goal. Dropping aliases costs five one-line edits in `quspin-py` (step 8) and deletes the `quspin-basis → quspin-operator` runtime edge entirely.
-- **StateGraph location:** `quspin-bitbasis` (needs `BitInt`, §3.1 of spec).
-- **`lhss()` trait method:** added to both `Operator<C>` and `StateGraph`, not a free function.
-- **BFS signature:** visitor-style `FnMut(B, &mut dyn FnMut(B))`. If benchmarks show inlining loss, fall back to the `StateEmitter<B>` trait (step 4 fallback).
+- **Trait naming:** finalised as `StateTransitions`. The working name in the original draft was `StateGraph`; renamed during review because the final callback carries amplitudes, not just connectivity.
+- **StateTransitions location:** `quspin-bitbasis` (needs `BitInt`, §3.1 of spec).
+- **Amplitude in callback:** `FnMut(Complex<f64>, B)`. A connectivity-only `FnMut(B)` was drafted first but proved incorrect — the basis needs amplitudes to detect symbolic cancellation (e.g. `XX + YY` on `|00⟩`).
+- **`lhss()` trait method:** added to both `Operator<C>` and `StateTransitions`, not a free function.
+- **BFS signature:** `pub fn build<G: StateTransitions>(&mut self, seed: B, graph: &G)`. An intermediate visitor-style `FnMut(B, &mut dyn FnMut(B))` was in an earlier draft of this plan but never implemented — passing `&impl StateTransitions` directly turned out both simpler and better-inlined.
