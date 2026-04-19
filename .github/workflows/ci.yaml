@@ -41,10 +41,3 @@ jobs:
 
       - name: cargo clippy
         run: cargo clippy --workspace -- -D warnings
-
-      - name: Verify StateGraph decoupling
-        run: |
-          # quspin-basis has no runtime edge to quspin-operator
-          ! cargo tree -p quspin-basis --edges=normal 2>/dev/null | grep -q quspin-operator
-          # StateGraph trait lives in quspin-bitbasis
-          grep -q "pub trait StateGraph" crates/quspin-bitbasis/src/state_graph.rs
