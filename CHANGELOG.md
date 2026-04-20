@@ -40,9 +40,16 @@ Versions track the workspace-level `version` field in the root `Cargo.toml`.
 
 ### Added
 
-- New `StateTransitions` trait in `quspin-bitbasis` (renamed from an earlier
+- New `StateTransitions` trait in `quspin-types` (renamed from an earlier
   internal draft called `StateGraph`). Describes the operator-side input to
-  basis BFS as `(amplitude, new_state)` pairs.
+  basis BFS as `(amplitude, new_state)` pairs. Re-exported from
+  `quspin-bitbasis` for existing import paths.
+- `BitInt` trait and all three concrete impls (`u32`, `u64`,
+  `ruint::Uint<BITS, LIMBS>`) move from `quspin-bitbasis` to `quspin-types`.
+  Re-exported from `quspin-bitbasis` so `use quspin_bitbasis::BitInt` keeps
+  working. The orphan rule forces the impls to live alongside the trait
+  definition, and `BitInt` is a workspace-level abstraction with no
+  bitbasis-specific behaviour, so this is a better home.
 - New `Operator::lhss()` method on the `Operator<C>` trait in `quspin-operator`.
 - `quspin-bitbasis` gains a `test-graphs` feature exposing reusable
   `StateTransitions` mocks (`XAllSites`, `XXYYNearestNeighbor`,

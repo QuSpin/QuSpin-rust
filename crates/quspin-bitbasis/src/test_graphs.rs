@@ -6,9 +6,7 @@
 //! their test modules.
 
 use num_complex::Complex;
-
-use crate::int::BitInt;
-use crate::state_transitions::StateTransitions;
+use quspin_types::{BitInt, StateTransitions};
 
 fn one() -> Complex<f64> {
     Complex::new(1.0, 0.0)

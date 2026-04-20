@@ -1,6 +1,6 @@
 use super::benes::{BenesNetwork, benes_fwd, gen_benes};
-use super::int::BitInt;
 use super::manip::{DitManip, DynamicDitManip};
+use quspin_types::BitInt;
 use smallvec::SmallVec;
 
 // ---------------------------------------------------------------------------

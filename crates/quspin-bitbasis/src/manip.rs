@@ -1,4 +1,4 @@
-use super::int::BitInt;
+use quspin_types::BitInt;
 
 // ---------------------------------------------------------------------------
 // Lookup tables (mirrors constants::bits / constants::mask from dit_manip.hpp)

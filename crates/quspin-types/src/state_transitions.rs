@@ -8,12 +8,14 @@
 //! two terms that cancel exactly, and the target must not enter the sector.
 //!
 //! This is a superset of pure graph connectivity and a subset of
-//! [`quspin_operator::Operator`]: the cindex tag is dropped because basis
-//! enumeration doesn't need it.
+//! `quspin_operator::Operator`: the cindex tag is dropped because basis
+//! enumeration doesn't need it. The trait lives here in `quspin-types`
+//! rather than in `quspin-bitbasis` because it is a workspace-level
+//! abstraction; it has no bit-manipulation implementation.
 
 use num_complex::Complex;
 
-use crate::int::BitInt;
+use crate::bit_int::BitInt;
 
 /// State-to-neighbour mapping used by basis BFS, with amplitudes.
 ///

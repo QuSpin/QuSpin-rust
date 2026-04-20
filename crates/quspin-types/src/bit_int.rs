@@ -1,18 +1,28 @@
-mod private {
-    pub trait Sealed {}
-}
+//! [`BitInt`]: abstraction over the basis-state integer widths used
+//! throughout QuSpin (`u32`, `u64`, and `ruint::Uint<BITS, LIMBS>`).
+//!
+//! Both the trait and its concrete impls live here because the Rust orphan
+//! rule forbids `impl BitInt for Uint<N, LIMBS>` in any downstream crate
+//! (both trait and type would be foreign). Keeping the impls alongside the
+//! trait definition is also cleaner architecturally — `quspin-types`
+//! already holds all the fundamental trait abstractions for the workspace.
+//!
+//! `quspin-bitbasis` re-exports `BitInt` so existing
+//! `quspin_bitbasis::BitInt` imports keep resolving.
 
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr};
 
-/// Sealed trait abstracting over all supported basis-state integer widths:
+use ruint::Uint;
+
+/// Trait abstracting over all supported basis-state integer widths:
 /// `u32`, `u64`, and `ruint::Uint<BITS, LIMBS>`.
 ///
-/// Associated constants mirror `bit_info<I>` from the C++ implementation.
+/// Associated constants mirror `bit_info<I>` from the original C++
+/// implementation.
 pub trait BitInt:
-    private::Sealed
-    + Copy
+    Copy
     + Send
     + Sync
     + Default
@@ -32,11 +42,12 @@ pub trait BitInt:
     const BYTES: u32;
 
     /// Widen a `u64` into `Self`. Truncates for narrower types (u32),
-    /// zero-extends for wider types (ruint::Uint).
+    /// zero-extends for wider types (`ruint::Uint`).
     fn from_u64(v: u64) -> Self;
 
     /// Narrow `self` to `usize`. Only valid when `self` is known to be small
-    /// (e.g. after masking to a dit value); no bounds checking in release mode.
+    /// (e.g. after masking to a dit value); no bounds checking in release
+    /// mode.
     fn to_usize(self) -> usize;
 
     /// Count the number of set bits (Hamming weight / popcount).
@@ -44,8 +55,6 @@ pub trait BitInt:
 }
 
 // --- u32 ---
-
-impl private::Sealed for u32 {}
 
 impl BitInt for u32 {
     const BITS: u32 = 32;
@@ -70,8 +79,6 @@ impl BitInt for u32 {
 
 // --- u64 ---
 
-impl private::Sealed for u64 {}
-
 impl BitInt for u64 {
     const BITS: u32 = 64;
     const LD_BITS: u32 = 6;
@@ -94,10 +101,6 @@ impl BitInt for u64 {
 }
 
 // --- ruint::Uint<N, LIMBS> ---
-
-use ruint::Uint;
-
-impl<const N: usize, const LIMBS: usize> private::Sealed for Uint<N, LIMBS> {}
 
 impl<const N: usize, const LIMBS: usize> BitInt for Uint<N, LIMBS> {
     const BITS: u32 = N as u32;

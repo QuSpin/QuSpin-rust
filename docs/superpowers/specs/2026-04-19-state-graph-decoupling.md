@@ -75,7 +75,7 @@ The BFS callback returns an iterator of `(Complex<f64>, B, u8)` triples — ampl
 
 ### 3.1 `StateTransitions` trait
 
-**Location:** `quspin-bitbasis` (the lowest crate that knows `BitInt`).
+**Location:** `quspin-types`. Reachable as either `quspin_types::StateTransitions` (canonical) or `quspin_bitbasis::StateTransitions` (re-export, kept for import-path stability). The `BitInt` trait and its three `impl` blocks also live in `quspin-types`; the orphan rule forces the `impl BitInt for Uint<N, LIMBS>` block to be in the same crate as the trait definition, and `BitInt` has no bit-manipulation behaviour of its own — `quspin-bitbasis` owns the Benes network, dit manipulation, and permutation helpers that are genuinely bit-level.
 
 ```rust
 // crates/quspin-bitbasis/src/state_transitions.rs
