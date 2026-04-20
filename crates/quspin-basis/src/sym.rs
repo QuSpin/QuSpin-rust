@@ -7,7 +7,7 @@ use super::bfs::{AMP_CANCEL_TOL, PARALLEL_FRONTIER_THRESHOLD};
 use super::lattice::{BenesLatticeElement, LatEl, LocalOpItem};
 use super::traits::BasisSpace;
 use num_complex::Complex;
-use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
+use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, StateTransitions};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
@@ -223,11 +223,10 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
     ///    retaining the SIMD-friendly batch orbit traversal for this step.
     /// 3. **Sequential registration** — dedup and index-map update on the main
     ///    thread; frontier for the next wave assembled here.
-    pub fn build<Op, I, Iter>(&mut self, seed: B, op: Op)
+    pub fn build<G>(&mut self, seed: B, graph: &G)
     where
-        Op: Fn(B) -> Iter + Sync,
+        G: StateTransitions,
         L: Sync,
-        Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
     {
         self.built = true;
         let (ref_seed, _coeff) = self.get_refstate(seed);
@@ -249,7 +248,7 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
             // Phase 1+2a (fused): BFS discovery + orbit-representative mapping
             // in a single parallel fold — one fork/join instead of two.
             // Uses get_refstate (no norm computation) per surviving candidate.
-            let candidate_reps: HashSet<B> = bfs_wave_with_reps(&frontier, &op, lattice, local);
+            let candidate_reps: HashSet<B> = bfs_wave_with_reps(&frontier, graph, lattice, local);
 
             if candidate_reps.is_empty() {
                 frontier.clear();
@@ -322,9 +321,9 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
 /// - Above threshold: rayon `par_iter().fold().reduce()` — each thread owns a
 ///   disjoint slice of `frontier`, builds a thread-local `HashSet<B>` of
 ///   representatives, and the sets are unioned in the reduce step.
-fn bfs_wave_with_reps<B, E, L, Op, I, Iter>(
+fn bfs_wave_with_reps<B, E, L, G>(
     frontier: &[B],
-    op: &Op,
+    graph: &G,
     lattice: &[E],
     local: &[L],
 ) -> HashSet<B>
@@ -332,21 +331,20 @@ where
     B: BitInt,
     E: LatEl<B> + Sync,
     L: LocalOpItem<B> + Sync,
-    Op: Fn(B) -> Iter + Sync,
-    Iter: IntoIterator<Item = (Complex<f64>, B, I)>,
+    G: StateTransitions,
 {
     if frontier.len() < PARALLEL_FRONTIER_THRESHOLD {
         let mut reps = HashSet::new();
         let mut contributions: HashMap<B, (Complex<f64>, f64)> = HashMap::new();
         for &state in frontier {
             contributions.clear();
-            for (amp, next_state, _) in op(state) {
+            graph.neighbors::<B, _>(state, |amp, next_state| {
                 if next_state != state {
                     let e = contributions.entry(next_state).or_default();
                     e.0 += amp;
                     e.1 += amp.norm();
                 }
-            }
+            });
             for (&candidate, &(net_amp, scale)) in &contributions {
                 if net_amp.norm() > scale * AMP_CANCEL_TOL {
                     let (rep, _) = super::orbit::get_refstate(lattice, local, candidate);
@@ -367,13 +365,13 @@ where
                 },
                 |(mut reps, mut contributions), &state| {
                     contributions.clear();
-                    for (amp, next_state, _) in op(state) {
+                    graph.neighbors::<B, _>(state, |amp, next_state| {
                         if next_state != state {
                             let e = contributions.entry(next_state).or_default();
                             e.0 += amp;
                             e.1 += amp.norm();
                         }
-                    }
+                    });
                     for (&candidate, &(net_amp, scale)) in &contributions {
                         if net_amp.norm() > scale * AMP_CANCEL_TOL {
                             let (rep, _) = super::orbit::get_refstate(lattice, local, candidate);
@@ -467,13 +465,10 @@ mod tests {
     use super::*;
     use num_complex::Complex;
     use quspin_bitbasis::PermDitMask;
+    use quspin_bitbasis::test_graphs::XAllSites;
 
-    fn x_op(n_sites: u32) -> impl Fn(u32) -> Vec<(Complex<f64>, u32, u8)> {
-        move |state: u32| {
-            (0..n_sites)
-                .map(|loc| (Complex::new(1.0, 0.0), state ^ (1 << loc), 0u8))
-                .collect()
-        }
+    fn x_op(n_sites: u32) -> XAllSites {
+        XAllSites::new(n_sites)
     }
 
     #[test]
@@ -483,7 +478,7 @@ mod tests {
         // spin inversion: XOR mask at all sites
         let mask = PermDitMask::<u32>::new(0b11u32);
         basis.add_local(Complex::new(1.0, 0.0), mask);
-        basis.build(0u32, x_op(2));
+        basis.build(0u32, &x_op(2));
 
         assert_eq!(basis.size(), 2);
         assert!(basis.index(3u32).is_some());
@@ -494,7 +489,7 @@ mod tests {
     fn sym_basis_no_symmetry_matches_subspace() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
         basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1, 2]);
-        basis.build(0u32, x_op(3));
+        basis.build(0u32, &x_op(3));
         assert_eq!(basis.size(), 8);
     }
 
@@ -502,7 +497,7 @@ mod tests {
     fn sym_basis_sorted_ascending() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
         basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1, 2]);
-        basis.build(0u32, x_op(3));
+        basis.build(0u32, &x_op(3));
         for i in 1..basis.size() {
             assert!(basis.state_at(i) > basis.state_at(i - 1));
         }
@@ -514,7 +509,7 @@ mod tests {
         basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1]);
         let mask = PermDitMask::<u32>::new(0b11u32);
         basis.add_local(Complex::new(1.0, 0.0), mask);
-        basis.build(0u32, x_op(2));
+        basis.build(0u32, &x_op(2));
         assert_eq!(basis.size(), 2);
         for i in 0..basis.size() {
             let (_, norm) = basis.entry(i);
@@ -528,7 +523,7 @@ mod tests {
         basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1]);
         let mask = PermDitMask::<u32>::new(0b11u32);
         basis.add_local(Complex::new(1.0, 0.0), mask);
-        basis.build(0u32, x_op(2));
+        basis.build(0u32, &x_op(2));
         for i in 0..basis.size() {
             let (_, norm) = basis.entry(i);
             assert_eq!(norm, 1.0);
@@ -547,7 +542,7 @@ mod tests {
             SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites as usize, false);
         let identity: Vec<usize> = (0..n_sites as usize).collect();
         basis.add_lattice(Complex::new(1.0, 0.0), &identity);
-        basis.build(0u32, x_op(n_sites));
+        basis.build(0u32, &x_op(n_sites));
         assert_eq!(basis.size(), 1 << n_sites);
         // Verify sorted ascending
         for i in 1..basis.size() {
@@ -570,7 +565,7 @@ mod tests {
         basis.add_lattice(Complex::new(1.0, 0.0), &identity);
         let mask = PermDitMask::<u32>::new((1u32 << n_sites) - 1);
         basis.add_local(Complex::new(1.0, 0.0), mask);
-        basis.build(0u32, x_op(n_sites));
+        basis.build(0u32, &x_op(n_sites));
 
         // With Z2 spin inversion (XOR all bits) on 12 sites:
         // No state equals its own complement, so every orbit has exactly 2

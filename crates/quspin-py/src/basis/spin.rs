@@ -23,11 +23,11 @@ fn build_spin_basis(
 ) -> PyResult<()> {
     if let Ok(op) = ham.downcast::<PyPauliOperator>() {
         basis
-            .build_hardcore(&op.borrow().inner, byte_seeds)
+            .build(&op.borrow().inner, byte_seeds)
             .map_err(Error::from)?;
     } else if let Ok(op) = ham.downcast::<PyBondOperator>() {
         basis
-            .build_bond(&op.borrow().inner, byte_seeds)
+            .build(&op.borrow().inner, byte_seeds)
             .map_err(Error::from)?;
     } else {
         return Err(pyo3::exceptions::PyTypeError::new_err(

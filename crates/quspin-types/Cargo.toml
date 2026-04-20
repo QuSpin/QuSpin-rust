@@ -6,4 +6,5 @@ edition.workspace = true
 [dependencies]
 num-complex = { workspace = true }
 ndarray = { workspace = true }
+ruint = { workspace = true }
 thiserror = { workspace = true }

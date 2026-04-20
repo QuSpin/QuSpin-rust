@@ -215,6 +215,10 @@ impl<C: Copy + Ord> Operator<C> for BosonOperator<C> {
         self.num_cindices
     }
 
+    fn lhss(&self) -> usize {
+        self.manip.lhss
+    }
+
     #[inline]
     fn apply<B: BitInt, F>(&self, state: B, mut emit: F)
     where

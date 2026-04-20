@@ -1,13 +1,7 @@
 /// Spin basis type [`SpinBasis`].
 use super::dispatch::SpaceInner;
-use super::seed::{dit_seed_from_bytes, seed_from_bytes};
-use crate::{
-    with_dit_sym_basis_mut, with_quat_sym_basis_mut, with_sub_basis_mut, with_sym_basis_mut,
-    with_trit_sym_basis_mut,
-};
 use num_complex::Complex;
-use quspin_operator::pauli::HardcoreOperatorInner;
-use quspin_operator::{BondOperatorInner, SpinOperatorInner};
+use quspin_bitbasis::StateTransitions;
 use quspin_types::QuSpinError;
 
 // ---------------------------------------------------------------------------
@@ -90,210 +84,19 @@ impl SpinBasis {
         }
     }
 
-    /// Build the subspace reachable from `seeds` using a [`SpinOperatorInner`].
-    ///
-    /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
-    ///
-    /// # Errors
-    /// - Called on a [`SpaceKind::Full`] basis
-    /// - Basis is already built
-    /// - `ham.lhss() != self.lhss`
-    pub fn build_spin(
-        &mut self,
-        ham: &SpinOperatorInner,
-        seeds: &[Vec<u8>],
-    ) -> Result<(), QuSpinError> {
-        if self.inner.space_kind() == SpaceKind::Full {
-            return Err(QuSpinError::ValueError(
-                "Full basis requires no build step".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError("basis is already built".into()));
-        }
-        let lhss = self.inner.lhss();
-        if ham.lhss() != lhss {
-            return Err(QuSpinError::ValueError(format!(
-                "ham.lhss()={} does not match basis lhss={}",
-                ham.lhss(),
-                lhss
-            )));
-        }
-
-        // For lhss=2, seeds are bit-encoded; for lhss>2 they are dit-encoded.
-        macro_rules! decode_seed {
-            ($B:ty, $seed:expr) => {
-                if lhss == 2 {
-                    seed_from_bytes::<$B>($seed)
-                } else {
-                    use quspin_bitbasis::manip::DynamicDitManip;
-                    dit_seed_from_bytes::<$B>($seed, &DynamicDitManip::new(lhss))
-                }
-            };
-        }
-
-        match self.inner.space_kind() {
-            SpaceKind::Sub => {
-                with_sub_basis_mut!(&mut self.inner, B, subspace, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        match ham {
-                            SpinOperatorInner::Ham8(h) => {
-                                subspace.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            SpinOperatorInner::Ham16(h) => {
-                                subspace.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Symm if lhss == 2 => {
-                with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        match ham {
-                            SpinOperatorInner::Ham8(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            SpinOperatorInner::Ham16(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Symm if lhss == 3 => {
-                with_trit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        match ham {
-                            SpinOperatorInner::Ham8(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            SpinOperatorInner::Ham16(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Symm if lhss == 4 => {
-                with_quat_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        match ham {
-                            SpinOperatorInner::Ham8(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            SpinOperatorInner::Ham16(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Symm => {
-                with_dit_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = decode_seed!(B, seed);
-                        match ham {
-                            SpinOperatorInner::Ham8(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            SpinOperatorInner::Ham16(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Full => unreachable!(),
-        }
-
-        Ok(())
-    }
-
-    /// Build the subspace reachable from `seeds` using a [`HardcoreOperatorInner`].
-    ///
-    /// Valid only for LHSS=2 bases; errors otherwise.
+    /// Build the subspace reachable from `seeds` under the connectivity
+    /// described by `graph`.
     ///
     /// # Errors
     /// - Called on a [`SpaceKind::Full`] basis
     /// - Basis is already built
-    /// - `self.lhss != 2`
-    pub fn build_hardcore(
+    /// - `graph.lhss() != self.lhss`
+    pub fn build<G: StateTransitions>(
         &mut self,
-        ham: &HardcoreOperatorInner,
+        graph: &G,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        if self.inner.lhss() != 2 {
-            return Err(QuSpinError::ValueError(
-                "build_hardcore requires lhss=2".into(),
-            ));
-        }
-        if self.inner.space_kind() == SpaceKind::Full {
-            return Err(QuSpinError::ValueError(
-                "Full basis requires no build step".into(),
-            ));
-        }
-        if self.inner.is_built() {
-            return Err(QuSpinError::ValueError("basis is already built".into()));
-        }
-
-        match self.inner.space_kind() {
-            SpaceKind::Sub => {
-                with_sub_basis_mut!(&mut self.inner, B, subspace, {
-                    for seed in seeds {
-                        let s = seed_from_bytes::<B>(seed);
-                        match ham {
-                            HardcoreOperatorInner::Ham8(h) => {
-                                subspace.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            HardcoreOperatorInner::Ham16(h) => {
-                                subspace.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Symm => {
-                with_sym_basis_mut!(&mut self.inner, B, sym_basis, {
-                    for seed in seeds {
-                        let s = seed_from_bytes::<B>(seed);
-                        match ham {
-                            HardcoreOperatorInner::Ham8(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                            HardcoreOperatorInner::Ham16(h) => {
-                                sym_basis.build(s, |state| h.apply_smallvec(state).into_iter());
-                            }
-                        }
-                    }
-                });
-            }
-            SpaceKind::Full => unreachable!(),
-        }
-
-        Ok(())
-    }
-
-    /// Build the subspace reachable from `seeds` using a [`BondOperatorInner`].
-    ///
-    /// Not valid for [`SpaceKind::Full`] (full spaces require no build step).
-    ///
-    /// # Errors
-    /// - Called on a [`SpaceKind::Full`] basis
-    /// - Basis is already built
-    /// - `ham.lhss() != self.lhss`
-    pub fn build_bond(
-        &mut self,
-        ham: &BondOperatorInner,
-        seeds: &[Vec<u8>],
-    ) -> Result<(), QuSpinError> {
-        let lhss = self.inner.lhss();
-        let space_kind = self.inner.space_kind();
-        super::build_bond_inner(&mut self.inner, space_kind, lhss, ham, seeds)
+        super::build_inner(&mut self.inner, graph, seeds)
     }
 }
 
@@ -381,7 +184,7 @@ mod tests {
         let mut basis = SpinBasis::new(n_sites, 2, SpaceKind::Sub).unwrap();
         // seed: lowest 2 bits set = 2-particle sector, state 0b0011
         let seed = vec![1u8, 1, 0, 0];
-        basis.build_spin(&ham, &[seed]).unwrap();
+        basis.build(&ham, &[seed]).unwrap();
 
         // 2-particle sector of 4 sites: C(4,2) = 6
         assert_eq!(basis.inner.size(), 6);
@@ -412,7 +215,7 @@ mod tests {
         let mut basis = SpinBasis::new(n_sites, 3, SpaceKind::Sub).unwrap();
         // seed: all sites in m=0 state (dit value 1)
         let seed = vec![1u8, 1, 1];
-        basis.build_spin(&ham, &[seed]).unwrap();
+        basis.build(&ham, &[seed]).unwrap();
 
         // The sector with total Sz=0 for 3 spin-1 sites.
         // States where sum of (1 - dit_value) = 0 in the spin-projection convention.

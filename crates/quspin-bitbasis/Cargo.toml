@@ -5,6 +5,11 @@ edition.workspace = true
 
 [features]
 large-int = []
+# Enables the `test_graphs` module with reusable StateTransitions
+# implementations for tests (XAllSites, XXYYNearestNeighbor, …).
+# Enable via `[dev-dependencies] quspin-bitbasis = { ..., features =
+# ["test-graphs"] }` in downstream crates; zero cost when disabled.
+test-graphs = []
 
 [dependencies]
 quspin-types = { path = "../quspin-types" }

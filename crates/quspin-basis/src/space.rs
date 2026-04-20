@@ -1,7 +1,7 @@
 use super::BasisSpace;
 use super::bfs::bfs_wave;
 use quspin_bitbasis::{
-    BitInt,
+    BitInt, StateTransitions,
     manip::{DitManip, DynamicDitManip},
 };
 use std::collections::HashMap;
@@ -161,20 +161,14 @@ impl<B: BitInt> Subspace<B> {
         self.built
     }
 
-    /// Build the subspace reachable from `seed` under the action of `op`.
-    ///
-    /// `op(state)` must return an iterator of `(amplitude, new_state, cindex)`
-    /// triples — matching the signature of `PauliHamiltonian::apply`.
+    /// Build the subspace reachable from `seed` under the connectivity
+    /// described by `graph`.
     ///
     /// Uses level-synchronous BFS: each wave processes the current frontier
     /// in parallel (when large enough), discovers new states, and forms the
     /// next frontier.  After the walk, states are sorted ascending and the
     /// index map is rebuilt.
-    pub fn build<Op, I, Iter>(&mut self, seed: B, op: Op)
-    where
-        Op: Fn(B) -> Iter + Sync,
-        Iter: IntoIterator<Item = (num_complex::Complex<f64>, B, I)>,
-    {
+    pub fn build<G: StateTransitions>(&mut self, seed: B, graph: &G) {
         self.built = true;
 
         let is_new =
@@ -194,7 +188,7 @@ impl<B: BitInt> Subspace<B> {
         let mut frontier: Vec<B> = vec![seed];
 
         while !frontier.is_empty() && self.states.len() < max_size {
-            let discovered = bfs_wave(&frontier, &op);
+            let discovered = bfs_wave(&frontier, graph);
 
             // Register new states and form the next frontier.
             frontier.clear();
@@ -291,29 +285,20 @@ mod tests {
 
     // --- Subspace build via X-only hopping (connects all 2^N states) ---
 
-    fn x_op_all_sites(n_sites: u32) -> impl Fn(u32) -> Vec<(Complex<f64>, u32, u8)> {
-        move |state: u32| {
-            (0..n_sites)
-                .map(|loc| {
-                    let ns = state ^ (1u32 << loc);
-                    (Complex::new(1.0, 0.0), ns, 0u8)
-                })
-                .collect()
-        }
-    }
+    use quspin_bitbasis::test_graphs::{NearestNeighborSwap, XAllSites};
 
     #[test]
     fn subspace_build_full_connectivity() {
         // X on every site connects all 2^3 = 8 states from seed 0
         let mut sub = Subspace::<u32>::new(2, 3, false);
-        sub.build(0u32, x_op_all_sites(3));
+        sub.build(0u32, &XAllSites::new(3));
         assert_eq!(sub.size(), 8);
     }
 
     #[test]
     fn subspace_build_sorted_ascending() {
         let mut sub = Subspace::<u32>::new(2, 3, false);
-        sub.build(0u32, x_op_all_sites(3));
+        sub.build(0u32, &XAllSites::new(3));
         for i in 0..sub.size() {
             assert_eq!(sub.state_at(i), i as u32);
         }
@@ -322,7 +307,7 @@ mod tests {
     #[test]
     fn subspace_index_roundtrip() {
         let mut sub = Subspace::<u32>::new(2, 3, false);
-        sub.build(0u32, x_op_all_sites(3));
+        sub.build(0u32, &XAllSites::new(3));
         for i in 0..sub.size() {
             let s = sub.state_at(i);
             assert_eq!(sub.index(s), Some(i));
@@ -371,7 +356,7 @@ mod tests {
             // Seed: lowest k bits set (e.g. k=2, n=6 → 0b000011)
             let seed = if k == 0 { 0u32 } else { (1u32 << k) - 1 };
             let mut sub = Subspace::<u32>::new(2, n_sites, false);
-            sub.build(seed, |s| ham.apply_smallvec(s).into_iter());
+            sub.build(seed, &ham);
 
             let expected = binom(n_sites, k);
             assert_eq!(
@@ -393,21 +378,10 @@ mod tests {
         // 65 sites with lhss=2 requires 65 bits → B = U128.
         // Single-particle hopping: seed has 1 particle, should find exactly 65 states.
         let n_sites: usize = 65;
-        let hop_op = |state: U128| {
-            let mut results = vec![];
-            for i in 0..(n_sites - 1) {
-                let si = (state >> i) & U128::from(1);
-                let sj = (state >> (i + 1)) & U128::from(1);
-                if si != sj {
-                    let ns = state ^ (U128::from(1) << i) ^ (U128::from(1) << (i + 1));
-                    results.push((Complex::new(1.0, 0.0), ns, 0u8));
-                }
-            }
-            results
-        };
+
         let seed = U128::from(1); // single particle at site 0
         let mut sub = Subspace::<U128>::new(2, n_sites, false);
-        sub.build(seed, hop_op);
+        sub.build(seed, &NearestNeighborSwap::new(n_sites as u32));
         assert_eq!(sub.size(), n_sites);
     }
 
@@ -421,7 +395,7 @@ mod tests {
         // By wave 4+ the frontier exceeds the threshold.
         let n_sites = 12u32;
         let mut sub = Subspace::<u32>::new(2, n_sites as usize, false);
-        sub.build(0u32, x_op_all_sites(n_sites));
+        sub.build(0u32, &XAllSites::new(n_sites));
         assert_eq!(sub.size(), 1 << n_sites);
         // Verify sorted ascending
         for i in 1..sub.size() {
@@ -460,31 +434,16 @@ mod tests {
         let k = n_sites / 2;
         let seed = (1u32 << k) - 1;
         let mut sub = Subspace::<u32>::new(2, n_sites, false);
-        sub.build(seed, |s| ham.apply_smallvec(s).into_iter());
+        sub.build(seed, &ham);
         assert_eq!(sub.size(), binom(n_sites, k));
     }
 
     #[test]
     fn subspace_build_constrained() {
-        // Hopping that only connects states with the same particle number
-        // (XX + YY preserves particle number) — simulate with a ZZ-like op
-        // that only connects states which differ by swapping adjacent 01↔10.
-        let hop_op = |state: u32| {
-            let mut results = vec![];
-            // swap site i and i+1 if they differ
-            for i in 0..2u32 {
-                let si = (state >> i) & 1;
-                let sj = (state >> (i + 1)) & 1;
-                if si != sj {
-                    let ns = state ^ (1 << i) ^ (1 << (i + 1));
-                    results.push((Complex::new(1.0, 0.0), ns, 0u8));
-                }
-            }
-            results
-        };
-        // Start from |01⟩ = 1 (1 particle): should reach |01⟩=1 and |10⟩=2 in 3 sites
+        // NN-swap on 3 sites from |01⟩ = 1 (1 particle): should reach
+        // {|01⟩=1, |10⟩=2, |100⟩=4} = 1-particle sector.
         let mut sub = Subspace::<u32>::new(2, 3, false);
-        sub.build(0b001u32, hop_op);
+        sub.build(0b001u32, &NearestNeighborSwap::new(3));
         // 3-site, 1-particle sector: {001, 010, 100} = {1, 2, 4}
         assert_eq!(sub.size(), 3);
         assert!(sub.index(0b001u32).is_some());
