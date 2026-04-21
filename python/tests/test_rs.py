@@ -546,13 +546,14 @@ def _make_pbc_hopping_op(L: int) -> PauliOperator:
 def _translation_group(
     L: int, k: int = 0
 ) -> list[tuple[list[int], tuple[float, float]]]:
-    """All L elements of the cyclic translation group on L sites.
+    """Non-identity elements of the cyclic translation group on L sites.
 
     Each element is (perm, (re, im)) where perm = T^n and the character is
-    exp(2*pi*i*k*n/L) for momentum sector k.
+    exp(2*pi*i*k*n/L) for momentum sector k. The identity (T^0) is implicit
+    in `SymBasis` and is not included.
     """
     elements = []
-    for power in range(L):
+    for power in range(1, L):
         perm = [(i + power) % L for i in range(L)]
         angle = 2 * math.pi * k * power / L
         elements.append((perm, (math.cos(angle), math.sin(angle))))

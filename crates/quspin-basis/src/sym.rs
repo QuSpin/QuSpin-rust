@@ -8,7 +8,8 @@ use super::lattice::BenesLatticeElement;
 use super::traits::BasisSpace;
 use num_complex::Complex;
 use quspin_bitbasis::{
-    BenesPermDitLocations, BitInt, Compose, FermionicBitStateOp, StateTransitions,
+    BenesPermDitLocations, BitInt, BitStateOp, Compose, FermionicBitStateOp, StateTransitions,
+    manip::DynamicDitManip,
 };
 use quspin_types::QuSpinError;
 use rayon::prelude::*;
@@ -16,6 +17,21 @@ use std::collections::{HashMap, HashSet};
 
 /// Minimum batch size before switching to parallel orbit computation.
 const PARALLEL_BATCH_THRESHOLD: usize = 256;
+
+/// Maximum allowed error on the 1D character condition `χ(g·h) = χ(g)·χ(h)`
+/// during `validate_group`. Characters are complex unit-modulus scalars, so
+/// `1e-10` absorbs floating-point rounding from repeated multiplications but
+/// still catches a genuinely-wrong user-supplied character.
+const CHAR_VALIDATION_TOL: f64 = 1e-10;
+
+/// Uniform borrow of a group element for `validate_group`: `(char, perm, local)`
+/// where the last two are `None` for the implicit identity / pure-lattice /
+/// pure-local cases.
+type ElementRef<'a, B, L> = (
+    Complex<f64>,
+    Option<&'a BenesPermDitLocations<B>>,
+    Option<&'a L>,
+);
 
 // ---------------------------------------------------------------------------
 // NormInt
@@ -318,6 +334,106 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         );
     }
 
+    /// Check that the supplied group elements are closed under composition
+    /// and that the supplied characters form a consistent 1D representation
+    /// (`χ(g·h) = χ(g)·χ(h)`).
+    ///
+    /// The walker assumes every element of the group is present in one of
+    /// the three storage vectors (plus the implicit identity) — users who
+    /// supply only generators, or who forget a product like `g · h`, will
+    /// produce an incorrect basis. This probe-state check catches those
+    /// mistakes at [`build`](Self::build) time with a clear error message.
+    ///
+    /// Runtime: `O(|G|² · probes)` with small constants. `|G|` is bounded
+    /// by any physical symmetry group so this is inexpensive compared to
+    /// the basis-construction BFS that follows.
+    pub fn validate_group(&self) -> Result<(), QuSpinError> {
+        // Nothing to validate: only the implicit identity is in play.
+        if self.group_order() == 1 {
+            return Ok(());
+        }
+
+        // Unified element list, implicit identity at index 0.
+        let mut elements: Vec<ElementRef<'_, B, L>> = Vec::with_capacity(self.group_order());
+        elements.push((Complex::new(1.0, 0.0), None, None));
+        for lat in &self.lattice_only {
+            elements.push((lat.grp_char, Some(&lat.op), None));
+        }
+        for (chi, loc) in &self.local_only {
+            elements.push((*chi, None, Some(loc)));
+        }
+        for (lat, loc) in &self.composite {
+            elements.push((lat.grp_char, Some(&lat.op), Some(loc)));
+        }
+
+        let probes = probe_states::<B>(self.n_sites, self.lhss);
+
+        // Precompute each element's action on every probe state. Keyed by
+        // element index; used both to find the `k` matching a composed
+        // action and to avoid re-applying elements inside the O(|G|²) loop.
+        let actions: Vec<Vec<B>> = elements
+            .iter()
+            .map(|elem| probes.iter().map(|&s| apply_action(elem, s)).collect())
+            .collect();
+
+        // Uniqueness: two elements with the same action on every probe would
+        // inflate `|G|` and double-count orbit images in the walker. The
+        // implicit identity is `actions[0]`, so this also catches users who
+        // add the identity permutation explicitly.
+        for i in 0..actions.len() {
+            for j in (i + 1)..actions.len() {
+                if actions[i] == actions[j] {
+                    let hint = if i == 0 {
+                        " (element 0 is the implicit identity — do not add \
+                         an identity permutation or identity-action local op)"
+                    } else {
+                        ""
+                    };
+                    return Err(QuSpinError::ValueError(format!(
+                        "symmetry elements g_{i} and g_{j} have the same action{hint}"
+                    )));
+                }
+            }
+        }
+
+        for i in 0..elements.len() {
+            for j in 0..elements.len() {
+                // Composed action (g_i · g_j)(s) = g_i(g_j(s)).
+                let composed: Vec<B> = probes
+                    .iter()
+                    .map(|&s| {
+                        let after_j = apply_action(&elements[j], s);
+                        apply_action(&elements[i], after_j)
+                    })
+                    .collect();
+
+                let k = actions.iter().position(|a| *a == composed);
+
+                match k {
+                    None => {
+                        return Err(QuSpinError::ValueError(format!(
+                            "symmetry group is not closed: composition g_{i} · g_{j} \
+                             is not in the supplied element list \
+                             (index 0 = implicit identity, indices 1.. are user-added)"
+                        )));
+                    }
+                    Some(k) => {
+                        let expected = elements[i].0 * elements[j].0;
+                        let actual = elements[k].0;
+                        if (expected - actual).norm() > CHAR_VALIDATION_TOL {
+                            return Err(QuSpinError::ValueError(format!(
+                                "character table inconsistent for 1D representation: \
+                                 χ(g_{i}) · χ(g_{j}) = {expected}, \
+                                 but the matching element χ(g_{k}) = {actual}"
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Build the symmetric subspace reachable from `seed` under `op`.
     ///
     /// Uses level-synchronous BFS with two parallel phases per wave:
@@ -330,11 +446,20 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
     ///    retaining the SIMD-friendly batch orbit traversal for this step.
     /// 3. **Sequential registration** — dedup and index-map update on the main
     ///    thread; frontier for the next wave assembled here.
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`validate_group`](Self::validate_group) fails — the
+    /// supplied group is not closed under composition or the characters
+    /// are inconsistent. Call `validate_group` yourself beforehand if you
+    /// need a `Result`-returning variant.
     pub fn build<G>(&mut self, seed: B, graph: &G)
     where
         G: StateTransitions,
         L: Sync,
     {
+        self.validate_group()
+            .expect("SymBasis::build: group validation failed");
         self.built = true;
         let (ref_seed, _coeff) = self.get_refstate(seed);
         let (_ref2, norm_seed) = self.check_refstate(ref_seed);
@@ -417,6 +542,82 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
             self.index_map.insert(s, i);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// validate_group helpers
+// ---------------------------------------------------------------------------
+
+/// Apply a unified `(char, Option<perm>, Option<local>)` element to a state.
+///
+/// The character is ignored — this helper exists for action comparison
+/// inside [`SymBasis::validate_group`]. Perm is applied first, then local.
+#[inline]
+fn apply_action<B, L>(elem: &ElementRef<'_, B, L>, state: B) -> B
+where
+    B: BitInt,
+    L: FermionicBitStateOp<B>,
+{
+    let mut s = state;
+    if let Some(perm) = elem.1 {
+        s = perm.apply(s);
+    }
+    if let Some(local) = elem.2 {
+        s = local.apply(s);
+    }
+    s
+}
+
+/// Generate a probe-state set used by [`SymBasis::validate_group`].
+///
+/// Two element actions are considered equal iff they map every probe state
+/// to the same output. All probes must be **valid** (every dit in
+/// `0..lhss`) because a `PermDitValues`-family local op indexes into a
+/// length-`lhss` permutation with the extracted dit — invalid dit values
+/// would panic with out-of-bounds.
+///
+/// The returned set consists of valid states that:
+/// - cover every full dit-value / site combination for small systems
+///   (`lhss^n_sites ≤ 32`), enabling exhaustive discrimination;
+/// - cover every single-non-zero-dit configuration (`dit=v` at exactly
+///   one site, `0` elsewhere) — sufficient to distinguish any site
+///   permutation or any per-site local op even on large systems.
+fn probe_states<B: BitInt>(n_sites: usize, lhss: usize) -> Vec<B> {
+    let manip = DynamicDitManip::new(lhss);
+    let mut probes: Vec<B> = Vec::new();
+
+    // All-zero state: distinguishes local ops that act non-trivially on
+    // the vacuum.
+    probes.push(B::from_u64(0));
+
+    // Exhaustive small coverage: every valid state of the full Hilbert
+    // space, as long as it's bounded. Catches multi-dit local-op
+    // differences that single-dit probes might miss.
+    const EXHAUSTIVE_CAP: usize = 32;
+    if let Some(total) = lhss.checked_pow(n_sites as u32)
+        && total <= EXHAUSTIVE_CAP
+    {
+        for dense in 1..total {
+            let s = manip.state_from_dense::<B>(dense, n_sites);
+            if !probes.contains(&s) {
+                probes.push(s);
+            }
+        }
+        return probes;
+    }
+
+    // Single-non-zero-dit states: `dit=v` at site `i`, zero elsewhere.
+    // Distinguishes any permutation (compare for each `(i, v)`) and any
+    // local op that acts differently on any single-site state.
+    for i in 0..n_sites {
+        for v in 1..lhss {
+            let s = manip.set_dit::<B>(B::from_u64(0), v, i);
+            if !probes.contains(&s) {
+                probes.push(s);
+            }
+        }
+    }
+    probes
 }
 
 // ---------------------------------------------------------------------------
@@ -627,10 +828,7 @@ mod tests {
     #[test]
     fn sym_basis_bitflip_2site() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 2, false);
-        basis
-            .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::lattice(&[0, 1]))
-            .unwrap();
-        // spin inversion: XOR mask at all sites
+        // Spin inversion Z2: XOR mask at all sites. Identity is implicit.
         let mask = PermDitMask::<u32>::new(0b11u32);
         basis
             .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::local(mask))
@@ -644,13 +842,9 @@ mod tests {
 
     #[test]
     fn sym_basis_no_symmetry_matches_subspace() {
+        // Trivial group (only implicit identity) — should match the full
+        // non-symmetric basis for 3 sites LHSS=2.
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
-        basis
-            .add_symmetry(
-                Complex::new(1.0, 0.0),
-                crate::SymElement::lattice(&[0, 1, 2]),
-            )
-            .unwrap();
         basis.build(0u32, &x_op(3));
         assert_eq!(basis.size(), 8);
     }
@@ -658,12 +852,6 @@ mod tests {
     #[test]
     fn sym_basis_sorted_ascending() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
-        basis
-            .add_symmetry(
-                Complex::new(1.0, 0.0),
-                crate::SymElement::lattice(&[0, 1, 2]),
-            )
-            .unwrap();
         basis.build(0u32, &x_op(3));
         for i in 1..basis.size() {
             assert!(basis.state_at(i) > basis.state_at(i - 1));
@@ -703,19 +891,12 @@ mod tests {
 
     #[test]
     fn sym_basis_parallel_no_symmetry_matches_full() {
-        // 12 sites, identity-only lattice, no local ops.
+        // 12 sites, trivial group (only implicit identity).
         // No symmetry reduction → should find all 2^12 = 4096 representatives.
         // Frontier grows large enough to trigger parallel BFS.
         let n_sites = 12u32;
         let mut basis =
             SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites as usize, false);
-        let identity: Vec<usize> = (0..n_sites as usize).collect();
-        basis
-            .add_symmetry(
-                Complex::new(1.0, 0.0),
-                crate::SymElement::lattice(&identity),
-            )
-            .unwrap();
         basis.build(0u32, &x_op(n_sites));
         assert_eq!(basis.size(), 1 << n_sites);
         // Verify sorted ascending
@@ -735,13 +916,6 @@ mod tests {
         let n_sites = 12u32;
         let mut basis =
             SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites as usize, false);
-        let identity: Vec<usize> = (0..n_sites as usize).collect();
-        basis
-            .add_symmetry(
-                Complex::new(1.0, 0.0),
-                crate::SymElement::lattice(&identity),
-            )
-            .unwrap();
         let mask = PermDitMask::<u32>::new((1u32 << n_sites) - 1);
         basis
             .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::local(mask))
@@ -755,5 +929,73 @@ mod tests {
         for i in 1..basis.size() {
             assert!(basis.state_at(i) > basis.state_at(i - 1));
         }
+    }
+
+    // --- validate_group tests ---
+
+    #[test]
+    fn validate_group_rejects_missing_closure() {
+        // Add a 3-cycle translation T on 3 sites but forget T² — the group
+        // isn't closed because T · T = T² is not in the list.
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
+        basis
+            .add_symmetry(
+                Complex::new(1.0, 0.0),
+                crate::SymElement::lattice(&[1, 2, 0]),
+            )
+            .unwrap();
+        let err = basis.validate_group().unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("not closed"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn validate_group_rejects_wrong_characters() {
+        // Full translation group {T, T²} with inconsistent characters:
+        // χ(T) = -1 would require χ(T²) = (-1)² = 1, but we supply 2.
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
+        basis
+            .add_symmetry(
+                Complex::new(-1.0, 0.0),
+                crate::SymElement::lattice(&[1, 2, 0]),
+            )
+            .unwrap();
+        basis
+            .add_symmetry(
+                Complex::new(2.0, 0.0),
+                crate::SymElement::lattice(&[2, 0, 1]),
+            )
+            .unwrap();
+        let err = basis.validate_group().unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("character"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn validate_group_rejects_identity_permutation() {
+        // Explicit identity permutation duplicates the implicit identity.
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
+        basis
+            .add_symmetry(
+                Complex::new(1.0, 0.0),
+                crate::SymElement::lattice(&[0, 1, 2]),
+            )
+            .unwrap();
+        let err = basis.validate_group().unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("same action"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn validate_group_accepts_add_cyclic() {
+        // `add_cyclic` generates the full cyclic group from a single
+        // generator, so validation must pass.
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 4, false);
+        basis
+            .add_cyclic(crate::SymElement::lattice(&[1, 2, 3, 0]), 4, |_| {
+                Complex::new(1.0, 0.0)
+            })
+            .unwrap();
+        basis.validate_group().expect("cyclic group must validate");
     }
 }
