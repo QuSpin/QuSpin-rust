@@ -10,6 +10,7 @@ pub mod seed;
 pub mod space;
 pub mod spin;
 pub mod sym;
+pub mod sym_element;
 pub mod traits;
 
 pub use boson::BosonBasis;
@@ -22,6 +23,7 @@ pub use seed::{
 pub use space::{FullSpace, Subspace};
 pub use spin::{SpaceKind, SpinBasis};
 pub use sym::{NormInt, SymBasis};
+pub use sym_element::SymElement;
 pub use traits::{BasisSpace, SymGrp};
 
 // ---------------------------------------------------------------------------

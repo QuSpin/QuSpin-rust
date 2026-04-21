@@ -14,9 +14,8 @@ from quspin_rs._rs import (
 
 def _make_operator(L: int) -> PauliOperator:
     """Nearest-neighbor XX interaction with transverse Z field on L sites (PBC)."""
-    xx_bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
-    z_bonds = [[1.0, i] for i in range(L)]
-    return PauliOperator([("xx", xx_bonds)], [("z", z_bonds)])
+    bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
+    return PauliOperator([("xx", bonds)], [("yy", bonds)])
 
 
 def _translation_group(
@@ -38,15 +37,17 @@ def _translation_group(
 
 # TODO build example onf PZ symmetry group, particle-hole symmetry, etc. need to extend symmetry groups
 
-L = 4
+L = 28
+M = L // 2
 op = _make_operator(L)
-seeds = ["0" * L]
+seeds = [M * "1" + (L - M) * "0"]
 # seeds.append("1" + "0" * (L - 1))
 
 # TODO: where is spin-inversion???
 symmetries = _translation_group(L)
 basis = SpinBasis.symmetric(L, op, seeds, symmetries)
 print(basis)
+
 # TODO:
 # * create and expose nbytes calculation to python
 # * create some way of visualizing the matrix in, something like Julia's sparse
