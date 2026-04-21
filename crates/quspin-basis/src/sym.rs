@@ -4,10 +4,13 @@
 /// with a single flat struct. `N` is an explicit type parameter — the B→N
 /// pairing is encoded in `SpaceInner` variant definitions, not a runtime enum.
 use super::bfs::{AMP_CANCEL_TOL, PARALLEL_FRONTIER_THRESHOLD};
-use super::lattice::{BenesLatticeElement, LatEl, LocalOpItem};
+use super::lattice::BenesLatticeElement;
 use super::traits::BasisSpace;
 use num_complex::Complex;
-use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, StateTransitions};
+use quspin_bitbasis::{
+    BenesPermDitLocations, BitInt, Compose, FermionicBitStateOp, StateTransitions,
+};
+use quspin_types::QuSpinError;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
@@ -94,8 +97,14 @@ pub struct SymBasis<B: BitInt, L, N: NormInt> {
     pub(crate) lhss: usize,
     pub(crate) fermionic: bool,
     pub(crate) n_sites: usize,
-    pub(crate) lattice: Vec<BenesLatticeElement<B>>,
-    pub(crate) local: Vec<(Complex<f64>, L)>,
+    /// Pure-lattice group elements: site permutation only, no local op.
+    pub(crate) lattice_only: Vec<BenesLatticeElement<B>>,
+    /// Pure-local group elements: local op only, no site permutation.
+    pub(crate) local_only: Vec<(Complex<f64>, L)>,
+    /// Composite group elements: site permutation + local op applied
+    /// atomically as one element with a single character. The character
+    /// lives on the `BenesLatticeElement`.
+    pub(crate) composite: Vec<(BenesLatticeElement<B>, L)>,
     // Basis data (was SymmetricSubspace<G, N>)
     /// `(representative_state, orbit_norm)` pairs, sorted ascending by state.
     states: Vec<(B, N)>,
@@ -114,33 +123,62 @@ pub struct SymBasis<B: BitInt, L, N: NormInt> {
 impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
     /// Construct an empty basis with no group elements and no states.
     ///
-    /// Call [`add_lattice`](Self::add_lattice) / [`add_local`](Self::add_local)
-    /// to add symmetry elements, then [`build`](Self::build) to populate states.
+    /// Call [`add_symmetry`](Self::add_symmetry) (or
+    /// [`add_cyclic`](Self::add_cyclic) as sugar for a cyclic subgroup) to
+    /// add explicit group elements, then [`build`](Self::build) to populate
+    /// states. The identity element is always implicit and should not be
+    /// added.
     pub fn new_empty(lhss: usize, n_sites: usize, fermionic: bool) -> Self {
         SymBasis {
             lhss,
             fermionic,
             n_sites,
-            lattice: Vec::new(),
-            local: Vec::new(),
+            lattice_only: Vec::new(),
+            local_only: Vec::new(),
+            composite: Vec::new(),
             states: Vec::new(),
             index_map: HashMap::new(),
             built: false,
         }
     }
 
-    /// Add a lattice (site-permutation) symmetry element. Valid before [`build`](Self::build).
+    /// Add an explicit group element with its representation character.
     ///
-    /// `perm[src] = dst` maps source site `src` to destination `dst`.
-    pub fn add_lattice(&mut self, grp_char: Complex<f64>, perm: &[usize]) {
-        let op = BenesPermDitLocations::<B>::new(self.lhss, perm, self.fermionic);
-        self.lattice
-            .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
-    }
-
-    /// Add a local symmetry element. Valid before [`build`](Self::build).
-    pub fn add_local(&mut self, grp_char: Complex<f64>, local_op: L) {
-        self.local.push((grp_char, local_op));
+    /// The user enumerates every non-identity element of the group; the
+    /// identity is implicit with `χ(I) = 1`. Empty `SymElement`s
+    /// (both `perm` and `local` absent) are rejected — the identity
+    /// must not be added explicitly.
+    ///
+    /// The walker dispatches each element into one of three typed
+    /// storage vectors at insert time based on which components are
+    /// present, so the orbit hot loop has zero variant-branching.
+    pub fn add_symmetry(
+        &mut self,
+        grp_char: Complex<f64>,
+        element: crate::SymElement<L>,
+    ) -> Result<(), QuSpinError> {
+        let (perm, local) = element.into_parts();
+        match (perm, local) {
+            (Some(p), None) => {
+                let op = BenesPermDitLocations::<B>::new(self.lhss, &p, self.fermionic);
+                self.lattice_only
+                    .push(BenesLatticeElement::new(grp_char, op, self.n_sites));
+                Ok(())
+            }
+            (None, Some(l)) => {
+                self.local_only.push((grp_char, l));
+                Ok(())
+            }
+            (Some(p), Some(l)) => {
+                let op = BenesPermDitLocations::<B>::new(self.lhss, &p, self.fermionic);
+                self.composite
+                    .push((BenesLatticeElement::new(grp_char, op, self.n_sites), l));
+                Ok(())
+            }
+            (None, None) => Err(QuSpinError::ValueError(
+                "empty symmetry element: identity is implicit, do not add it".into(),
+            )),
+        }
     }
 
     /// Returns `true` once [`build`](Self::build) has been called.
@@ -149,6 +187,45 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
     /// (which produces no states) still marks the basis as built.
     pub fn is_built(&self) -> bool {
         self.built
+    }
+
+    /// Add the non-identity powers of a cyclic subgroup: `g^1, g^2, …, g^{order-1}`.
+    ///
+    /// `char_fn(k)` supplies the character for `g^k`. For the k-th
+    /// 1D representation of a cyclic group of order `n`, this is
+    /// typically `exp(-2πi · k · m / n)` for some integer momentum `m`.
+    ///
+    /// Pure sugar over [`add_symmetry`](Self::add_symmetry): the helper
+    /// populates the same three storage vectors. Requires `L: Compose`
+    /// because it computes each power via
+    /// [`SymElement::compose`](crate::SymElement::compose); local-op
+    /// types without a `Compose` impl (e.g. [`SignedPermDitMask`]) must
+    /// enumerate their group elements via direct
+    /// [`add_symmetry`](Self::add_symmetry) calls.
+    ///
+    /// [`SignedPermDitMask`]: quspin_bitbasis::SignedPermDitMask
+    pub fn add_cyclic(
+        &mut self,
+        generator: crate::SymElement<L>,
+        order: usize,
+        char_fn: impl Fn(usize) -> Complex<f64>,
+    ) -> Result<(), QuSpinError>
+    where
+        L: Compose,
+    {
+        if order < 2 {
+            return Err(QuSpinError::ValueError(format!(
+                "add_cyclic requires order >= 2, got {order}"
+            )));
+        }
+        let mut gk = generator.clone(); // g^1
+        for k in 1..order {
+            self.add_symmetry(char_fn(k), gk.clone())?;
+            if k + 1 < order {
+                gk = gk.compose(&generator);
+            }
+        }
+        Ok(())
     }
 
     /// Local Hilbert-space size.
@@ -170,33 +247,59 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
         let (s, n) = self.states[i];
         (s, n.to_f64())
     }
+
+    /// Total group order: `1 + lattice_only + local_only + composite` (the
+    /// `1` is the implicit identity). Used by expand/project paths to
+    /// compute the reduced-basis normalisation factor
+    /// `√(|G|·norm)` that ties expansion and projection together.
+    #[inline]
+    pub fn group_order(&self) -> usize {
+        1 + self.lattice_only.len() + self.local_only.len() + self.composite.len()
+    }
 }
 
 // ---------------------------------------------------------------------------
 // SymBasis: orbit methods and basis construction (require L: BitStateOp<B>)
 // ---------------------------------------------------------------------------
 
-impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
+impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
     /// Return the representative state (largest orbit element) and the
     /// accumulated group character for `state`.
     pub fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
-        super::orbit::get_refstate(&self.lattice, &self.local, state)
+        super::orbit::get_refstate(
+            &self.lattice_only,
+            &self.local_only,
+            &self.composite,
+            self.fermionic,
+            state,
+        )
     }
 
     /// Return the representative state and the orbit norm.
     pub fn check_refstate(&self, state: B) -> (B, f64) {
-        super::orbit::check_refstate(&self.lattice, &self.local, state)
+        super::orbit::check_refstate(
+            &self.lattice_only,
+            &self.local_only,
+            &self.composite,
+            self.fermionic,
+            state,
+        )
     }
 
     /// Batch variant of [`get_refstate`](Self::get_refstate).
-    ///
-    /// Calls `orbit::get_refstate_batch` directly — zero N dispatch.
     ///
     /// # Panics
     ///
     /// Panics if `states.len() != out.len()`.
     pub fn get_refstate_batch(&self, states: &[B], out: &mut [(B, Complex<f64>)]) {
-        super::orbit::get_refstate_batch(&self.lattice, &self.local, states, out);
+        super::orbit::get_refstate_batch(
+            &self.lattice_only,
+            &self.local_only,
+            &self.composite,
+            self.fermionic,
+            states,
+            out,
+        );
     }
 
     /// Batch variant of [`check_refstate`](Self::check_refstate).
@@ -205,7 +308,14 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
     ///
     /// Panics if `states.len() != out.len()`.
     pub fn check_refstate_batch(&self, states: &[B], out: &mut [(B, f64)]) {
-        super::orbit::check_refstate_batch(&self.lattice, &self.local, states, out);
+        super::orbit::check_refstate_batch(
+            &self.lattice_only,
+            &self.local_only,
+            &self.composite,
+            self.fermionic,
+            states,
+            out,
+        );
     }
 
     /// Build the symmetric subspace reachable from `seed` under `op`.
@@ -215,9 +325,6 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
     /// 1. **Fused BFS + orbit mapping** — amplitude-cancellation BFS and
     ///    `get_refstate` per surviving candidate run in one parallel fold/reduce,
     ///    yielding a `HashSet<B>` of orbit representatives directly.
-    ///    This replaces the former separate BFS pass and the subsequent
-    ///    `check_refstate_batch` on every candidate (which computed norms that
-    ///    were immediately discarded).
     /// 2. **Parallel norm computation** — `par_check_refstate_batch` on the
     ///    unique new representatives only (the smallest possible batch),
     ///    retaining the SIMD-friendly batch orbit traversal for this step.
@@ -242,13 +349,22 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         let mut frontier: Vec<B> = vec![ref_seed];
 
         while !frontier.is_empty() {
-            let lattice = &self.lattice;
-            let local = &self.local;
+            let lattice_only = &self.lattice_only;
+            let local_only = &self.local_only;
+            let composite = &self.composite;
+            let fermionic = self.fermionic;
 
             // Phase 1+2a (fused): BFS discovery + orbit-representative mapping
             // in a single parallel fold — one fork/join instead of two.
             // Uses get_refstate (no norm computation) per surviving candidate.
-            let candidate_reps: HashSet<B> = bfs_wave_with_reps(&frontier, graph, lattice, local);
+            let candidate_reps: HashSet<B> = bfs_wave_with_reps(
+                &frontier,
+                graph,
+                lattice_only,
+                local_only,
+                composite,
+                fermionic,
+            );
 
             if candidate_reps.is_empty() {
                 frontier.clear();
@@ -269,7 +385,14 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
             // Phase 2b: compute orbit norms for unique new representatives.
             // Batch call retains SIMD-friendly inner-loop structure.
             let mut norm_out: Vec<(B, f64)> = vec![(B::from_u64(0), 0.0); unique_reps.len()];
-            par_check_refstate_batch(lattice, local, &unique_reps, &mut norm_out);
+            par_check_refstate_batch(
+                lattice_only,
+                local_only,
+                composite,
+                fermionic,
+                &unique_reps,
+                &mut norm_out,
+            );
 
             // Phase 3: register valid representatives, build next frontier.
             frontier.clear();
@@ -321,16 +444,18 @@ impl<B: BitInt, L: BitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
 /// - Above threshold: rayon `par_iter().fold().reduce()` — each thread owns a
 ///   disjoint slice of `frontier`, builds a thread-local `HashSet<B>` of
 ///   representatives, and the sets are unioned in the reduce step.
-fn bfs_wave_with_reps<B, E, L, G>(
+#[allow(clippy::too_many_arguments)]
+fn bfs_wave_with_reps<B, L, G>(
     frontier: &[B],
     graph: &G,
-    lattice: &[E],
-    local: &[L],
+    lattice_only: &[BenesLatticeElement<B>],
+    local_only: &[(Complex<f64>, L)],
+    composite: &[(BenesLatticeElement<B>, L)],
+    fermionic: bool,
 ) -> HashSet<B>
 where
     B: BitInt,
-    E: LatEl<B> + Sync,
-    L: LocalOpItem<B> + Sync,
+    L: FermionicBitStateOp<B> + Sync,
     G: StateTransitions,
 {
     if frontier.len() < PARALLEL_FRONTIER_THRESHOLD {
@@ -347,7 +472,13 @@ where
             });
             for (&candidate, &(net_amp, scale)) in &contributions {
                 if net_amp.norm() > scale * AMP_CANCEL_TOL {
-                    let (rep, _) = super::orbit::get_refstate(lattice, local, candidate);
+                    let (rep, _) = super::orbit::get_refstate(
+                        lattice_only,
+                        local_only,
+                        composite,
+                        fermionic,
+                        candidate,
+                    );
                     reps.insert(rep);
                 }
             }
@@ -374,7 +505,13 @@ where
                     });
                     for (&candidate, &(net_amp, scale)) in &contributions {
                         if net_amp.norm() > scale * AMP_CANCEL_TOL {
-                            let (rep, _) = super::orbit::get_refstate(lattice, local, candidate);
+                            let (rep, _) = super::orbit::get_refstate(
+                                lattice_only,
+                                local_only,
+                                composite,
+                                fermionic,
+                                candidate,
+                            );
                             reps.insert(rep);
                         }
                     }
@@ -382,13 +519,10 @@ where
                 },
             )
             .map(|(reps, _)| reps)
-            .reduce(
-                || HashSet::new(),
-                |mut a, b| {
-                    a.extend(b);
-                    a
-                },
-            )
+            .reduce(HashSet::new, |mut a, b| {
+                a.extend(b);
+                a
+            })
     }
 }
 
@@ -401,11 +535,16 @@ where
 /// Above [`PARALLEL_BATCH_THRESHOLD`], splits the work into chunks distributed
 /// across rayon threads. Each chunk calls the existing batch function, which
 /// retains its inner auto-vectorisation.
-fn par_check_refstate_batch<B, E, L>(lattice: &[E], local: &[L], states: &[B], out: &mut [(B, f64)])
-where
+fn par_check_refstate_batch<B, L>(
+    lattice_only: &[BenesLatticeElement<B>],
+    local_only: &[(Complex<f64>, L)],
+    composite: &[(BenesLatticeElement<B>, L)],
+    fermionic: bool,
+    states: &[B],
+    out: &mut [(B, f64)],
+) where
     B: BitInt,
-    E: LatEl<B> + Sync,
-    L: LocalOpItem<B> + Sync,
+    L: FermionicBitStateOp<B> + Sync,
 {
     if states.len() >= PARALLEL_BATCH_THRESHOLD {
         let chunk_size = (states.len() / rayon::current_num_threads()).max(64);
@@ -413,10 +552,24 @@ where
             .par_chunks(chunk_size)
             .zip(out.par_chunks_mut(chunk_size))
             .for_each(|(s, o)| {
-                super::orbit::check_refstate_batch(lattice, local, s, o);
+                super::orbit::check_refstate_batch(
+                    lattice_only,
+                    local_only,
+                    composite,
+                    fermionic,
+                    s,
+                    o,
+                );
             });
     } else {
-        super::orbit::check_refstate_batch(lattice, local, states, out);
+        super::orbit::check_refstate_batch(
+            lattice_only,
+            local_only,
+            composite,
+            fermionic,
+            states,
+            out,
+        );
     }
 }
 
@@ -474,10 +627,14 @@ mod tests {
     #[test]
     fn sym_basis_bitflip_2site() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 2, false);
-        basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1]);
+        basis
+            .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::lattice(&[0, 1]))
+            .unwrap();
         // spin inversion: XOR mask at all sites
         let mask = PermDitMask::<u32>::new(0b11u32);
-        basis.add_local(Complex::new(1.0, 0.0), mask);
+        basis
+            .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::local(mask))
+            .unwrap();
         basis.build(0u32, &x_op(2));
 
         assert_eq!(basis.size(), 2);
@@ -488,7 +645,12 @@ mod tests {
     #[test]
     fn sym_basis_no_symmetry_matches_subspace() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
-        basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1, 2]);
+        basis
+            .add_symmetry(
+                Complex::new(1.0, 0.0),
+                crate::SymElement::lattice(&[0, 1, 2]),
+            )
+            .unwrap();
         basis.build(0u32, &x_op(3));
         assert_eq!(basis.size(), 8);
     }
@@ -496,7 +658,12 @@ mod tests {
     #[test]
     fn sym_basis_sorted_ascending() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
-        basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1, 2]);
+        basis
+            .add_symmetry(
+                Complex::new(1.0, 0.0),
+                crate::SymElement::lattice(&[0, 1, 2]),
+            )
+            .unwrap();
         basis.build(0u32, &x_op(3));
         for i in 1..basis.size() {
             assert!(basis.state_at(i) > basis.state_at(i - 1));
@@ -506,9 +673,10 @@ mod tests {
     #[test]
     fn sym_basis_u8_norm() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(2, 2, false);
-        basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1]);
         let mask = PermDitMask::<u32>::new(0b11u32);
-        basis.add_local(Complex::new(1.0, 0.0), mask);
+        basis
+            .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::local(mask))
+            .unwrap();
         basis.build(0u32, &x_op(2));
         assert_eq!(basis.size(), 2);
         for i in 0..basis.size() {
@@ -520,9 +688,10 @@ mod tests {
     #[test]
     fn sym_basis_entry_roundtrip() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(2, 2, false);
-        basis.add_lattice(Complex::new(1.0, 0.0), &[0, 1]);
         let mask = PermDitMask::<u32>::new(0b11u32);
-        basis.add_local(Complex::new(1.0, 0.0), mask);
+        basis
+            .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::local(mask))
+            .unwrap();
         basis.build(0u32, &x_op(2));
         for i in 0..basis.size() {
             let (_, norm) = basis.entry(i);
@@ -541,7 +710,12 @@ mod tests {
         let mut basis =
             SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites as usize, false);
         let identity: Vec<usize> = (0..n_sites as usize).collect();
-        basis.add_lattice(Complex::new(1.0, 0.0), &identity);
+        basis
+            .add_symmetry(
+                Complex::new(1.0, 0.0),
+                crate::SymElement::lattice(&identity),
+            )
+            .unwrap();
         basis.build(0u32, &x_op(n_sites));
         assert_eq!(basis.size(), 1 << n_sites);
         // Verify sorted ascending
@@ -562,9 +736,16 @@ mod tests {
         let mut basis =
             SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites as usize, false);
         let identity: Vec<usize> = (0..n_sites as usize).collect();
-        basis.add_lattice(Complex::new(1.0, 0.0), &identity);
+        basis
+            .add_symmetry(
+                Complex::new(1.0, 0.0),
+                crate::SymElement::lattice(&identity),
+            )
+            .unwrap();
         let mask = PermDitMask::<u32>::new((1u32 << n_sites) - 1);
-        basis.add_local(Complex::new(1.0, 0.0), mask);
+        basis
+            .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::local(mask))
+            .unwrap();
         basis.build(0u32, &x_op(n_sites));
 
         // With Z2 spin inversion (XOR all bits) on 12 sites:

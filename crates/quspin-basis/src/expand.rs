@@ -23,7 +23,9 @@ use super::{
 };
 use ndarray::{Array2, ArrayBase, ArrayView1, Data, Ix1, aview1};
 use num_complex::Complex;
-use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, manip::DynamicDitManip};
+use quspin_bitbasis::{
+    BenesPermDitLocations, BitInt, BitStateOp, FermionicBitStateOp, manip::DynamicDitManip,
+};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::ops::AddAssign;
@@ -360,13 +362,20 @@ where
 
 /// For a symmetric basis, yields one `(state, value)` pair per orbit image.
 ///
-/// For the `i`-th representative state `r` with orbit norm `n`, each image
-/// `s = g(r)` with group character `χ_g` contributes:
-/// `(s,  (coeff / n) * χ_g)`
+/// The reduced-basis convention is
+/// `|i⟩_red = (1/√(|G|·norm_i)) Σ_g χ_g |g·rep_i⟩`
+/// where `|G|` is the full group order (implicit identity + explicit
+/// elements) and `norm_i` is the size of the stabiliser of `rep_i`.
+/// Summing `norm_i` walker images at a given orbit member gives the
+/// full-space amplitude `χ_{g_s}·√(norm_i/|G|)`, which makes
+/// `⟨ψ_red|ψ_red⟩ = ⟨ψ_full|ψ_full⟩` exactly.
+///
+/// Per walker image we therefore emit
+/// `(s, coeff · χ_g / √(|G|·norm_i))`.
 impl<B, L, N, T> ExpandRefState<B, T, Complex<f64>> for SymBasis<B, L, N>
 where
     B: BitInt,
-    L: BitStateOp<B>,
+    L: FermionicBitStateOp<B>,
     N: NormInt,
     T: Copy,
     Complex<f64>: From<T>,
@@ -377,10 +386,17 @@ where
         coeff: &T,
     ) -> impl Iterator<Item = (B, Complex<f64>)> {
         let (ref_state, norm) = self.entry(i);
-        let val = Complex::<f64>::from(*coeff) / norm;
-        iter_images(&self.lattice, &self.local, ref_state)
-            .into_iter()
-            .map(move |(s, char_g)| (s, val * char_g))
+        let group_order = self.group_order() as f64;
+        let val = Complex::<f64>::from(*coeff) / (group_order * norm).sqrt();
+        iter_images(
+            &self.lattice_only,
+            &self.local_only,
+            &self.composite,
+            self.fermionic,
+            ref_state,
+        )
+        .into_iter()
+        .map(move |(s, char_g)| (s, val * char_g))
     }
 }
 

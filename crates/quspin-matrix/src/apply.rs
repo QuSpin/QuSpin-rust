@@ -4,7 +4,7 @@ use quspin_basis::expand::ExpandRefState;
 use quspin_basis::space::{FullSpace, Subspace};
 use quspin_basis::sym::{NormInt, SymBasis};
 use quspin_basis::traits::BasisSpace;
-use quspin_bitbasis::{BitInt, BitStateOp};
+use quspin_bitbasis::{BitInt, FermionicBitStateOp};
 use quspin_operator::Operator;
 use quspin_types::QuSpinError;
 use rayon::prelude::*;
@@ -23,7 +23,8 @@ const PARALLEL_APPLY_THRESHOLD: usize = 256;
 ///
 /// For non-symmetric bases the scale is always `1.0`.  For `SymBasis` the
 /// state is mapped to its orbit representative and scaled by
-/// `conj(χ_g) / norm`.  Fully monomorphized — zero runtime dispatch.
+/// `conj(χ_g) · √(norm_j / |G|)`.  Fully monomorphized — zero runtime
+/// dispatch.
 pub trait ProjectState<B: BitInt>: BasisSpace<B> {
     fn project(&self, state: B) -> Option<(usize, C64)>;
 }
@@ -40,12 +41,20 @@ impl<B: BitInt> ProjectState<B> for Subspace<B> {
     }
 }
 
-impl<B: BitInt, L: BitStateOp<B>, N: NormInt> ProjectState<B> for SymBasis<B, L, N> {
+impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> ProjectState<B> for SymBasis<B, L, N> {
     fn project(&self, state: B) -> Option<(usize, C64)> {
         let (rep, grp_char) = self.get_refstate(state);
         self.index(rep).map(|j| {
             let (_, norm) = self.entry(j);
-            (j, grp_char.conj() / C64::new(norm, 0.0))
+            let group_order = self.group_order() as f64;
+            // Projection scale: `conj(χ) · √(norm_j / |G|)`. Paired with
+            // the `1/√(|G|·norm_i)` factor in expansion, a round-trip
+            // through expand→apply→project reproduces the matrix element
+            // computed by `build_from_symmetric` (`χ · √(norm_j/norm_i)`).
+            (
+                j,
+                grp_char.conj() * C64::new((norm / group_order).sqrt(), 0.0),
+            )
         })
     }
 }
@@ -869,10 +878,14 @@ mod tests {
         }
         let ham = HardcoreOperator::new(terms);
 
-        // Build symmetric basis: cyclic shift [1,2,0], character = 1 (k=0)
+        // Build symmetric basis: cyclic translation group of order n_sites,
+        // k=0 representation (character = 1 for every power).
         let perm: Vec<usize> = (0..n_sites).map(|i| (i + 1) % n_sites).collect();
         let mut sym = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites, false);
-        sym.add_lattice(C64::new(1.0, 0.0), &perm);
+        sym.add_cyclic(quspin_basis::SymElement::lattice(&perm), n_sites, |_| {
+            C64::new(1.0, 0.0)
+        })
+        .unwrap();
 
         // Seed with |000⟩ = 0 — X flips connect all states
         sym.build(0u32, &x_op);

@@ -1,31 +1,6 @@
 use num_complex::Complex;
-/// Lattice element types and local-op traits used by the orbit computation.
-use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, PermDitLocations};
-
-// ---------------------------------------------------------------------------
-// LocalOpItem
-// ---------------------------------------------------------------------------
-
-/// A single local symmetry operation that maps a basis state to a new state
-/// and returns the associated group character.
-///
-/// Implemented for:
-/// - [`HardcoreGrpElement<B>`](super::spin::HardcoreGrpElement) — XOR
-///   bit-flip, stores `grp_char` inside the element.
-/// - `(Complex<f64>, Op)` where `Op: BitStateOp<B>` — all dit op types
-///   (`HigherSpinInv`, `DynamicHigherSpinInv`, `PermDitValues`, …).
-pub(crate) trait LocalOpItem<B: BitInt> {
-    /// Apply the local operation to `state`, returning `(new_state, grp_char)`.
-    fn apply_local(&self, state: B) -> (B, Complex<f64>);
-}
-
-/// Blanket impl: a `(grp_char, op)` pair where `op` implements [`BitStateOp<B>`].
-impl<B: BitInt, Op: BitStateOp<B>> LocalOpItem<B> for (Complex<f64>, Op) {
-    #[inline]
-    fn apply_local(&self, state: B) -> (B, Complex<f64>) {
-        (self.1.apply(state), self.0)
-    }
-}
+/// Lattice element types used by the orbit computation.
+use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp};
 
 // ---------------------------------------------------------------------------
 // LatEl
@@ -48,67 +23,6 @@ pub(crate) trait LatEl<B: BitInt> {
 }
 
 // ---------------------------------------------------------------------------
-// LatticeElement — shared by both SpinSymGrp and DitSymGrp
-// ---------------------------------------------------------------------------
-
-/// A site-permutation symmetry element with an associated group character.
-///
-/// Used by both [`SpinSymGrp`] and [`DitSymGrp`].
-#[derive(Clone)]
-#[allow(dead_code)]
-pub struct LatticeElement {
-    pub grp_char: Complex<f64>,
-    pub n_sites: usize,
-    pub op: PermDitLocations,
-}
-
-#[allow(dead_code)]
-impl LatticeElement {
-    pub fn new(grp_char: Complex<f64>, op: PermDitLocations, n_sites: usize) -> Self {
-        LatticeElement {
-            grp_char,
-            n_sites,
-            op,
-        }
-    }
-
-    pub fn n_sites(&self) -> usize {
-        self.n_sites
-    }
-
-    /// Apply the permutation and accumulate the group character into `coeff`.
-    #[inline]
-    pub fn apply<B: BitInt>(&self, state: B, coeff: Complex<f64>) -> (B, Complex<f64>) {
-        (self.op.apply(state), coeff * self.grp_char)
-    }
-
-    /// Apply only the site permutation, discarding the group character.
-    ///
-    /// Used by the batch orbit helpers where the character is not needed
-    /// (e.g. [`check_refstate_batch`](super::orbit::check_refstate_batch)).
-    #[inline]
-    pub fn apply_state<B: BitInt>(&self, state: B) -> B {
-        self.op.apply(state)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// LatEl impls for LatticeElement
-// ---------------------------------------------------------------------------
-
-impl<B: BitInt> LatEl<B> for LatticeElement {
-    #[inline]
-    fn apply_state(&self, state: B) -> B {
-        self.op.apply(state)
-    }
-
-    #[inline]
-    fn grp_char_for(&self, _state: B) -> Complex<f64> {
-        self.grp_char
-    }
-}
-
-// ---------------------------------------------------------------------------
 // BenesLatticeElement — Benes-backed lattice element (bosonic or fermionic)
 // ---------------------------------------------------------------------------
 
@@ -118,7 +32,6 @@ impl<B: BitInt> LatEl<B> for LatticeElement {
 /// symmetry. When fermionic, [`grp_char_for`](LatEl::grp_char_for) multiplies
 /// in the Jordan-Wigner permutation sign computed from the pre-image state.
 #[derive(Clone)]
-#[allow(dead_code)]
 pub struct BenesLatticeElement<B: BitInt> {
     pub grp_char: Complex<f64>,
     pub n_sites: usize,

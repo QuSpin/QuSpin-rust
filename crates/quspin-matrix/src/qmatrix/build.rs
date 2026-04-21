@@ -6,7 +6,7 @@ use quspin_basis::{
     BasisSpace,
     sym::{NormInt, SymBasis},
 };
-use quspin_bitbasis::{BitInt, BitStateOp, PermDitValues};
+use quspin_bitbasis::{BitInt, FermionicBitStateOp, PermDitValues};
 use quspin_operator::Operator;
 use quspin_types::Primitive;
 use rayon::prelude::*;
@@ -106,7 +106,7 @@ pub fn build_from_symmetric<H, B, L, N, M, I, C>(
 where
     H: Operator<C> + Sync,
     B: BitInt,
-    L: BitStateOp<B> + Sync,
+    L: FermionicBitStateOp<B> + Sync,
     N: NormInt,
     M: Primitive,
     I: Index,
