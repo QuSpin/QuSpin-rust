@@ -998,4 +998,29 @@ mod tests {
             .unwrap();
         basis.validate_group().expect("cyclic group must validate");
     }
+
+    #[test]
+    fn composite_pz_group_has_order_2() {
+        // The motivating case for the refactor: neither P (reflection)
+        // nor Z (spin-flip) alone is a symmetry, but PZ is. Supplied as
+        // a single composite element the group is `{I, PZ}` of order 2 —
+        // not the cartesian product `⟨P⟩ × ⟨Z⟩` of order 4 that a
+        // naïve two-vector walker would produce.
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 2, false);
+        basis
+            .add_symmetry(
+                Complex::new(1.0, 0.0),
+                crate::SymElement::composite(&[1, 0], PermDitMask::<u32>::new(0b11u32)),
+            )
+            .unwrap();
+        basis.validate_group().expect("{I, PZ} must validate");
+        assert_eq!(
+            basis.group_order(),
+            2,
+            "composite-only PZ group must have |G| = 2"
+        );
+        assert_eq!(basis.composite.len(), 1);
+        assert!(basis.lattice_only.is_empty());
+        assert!(basis.local_only.is_empty());
+    }
 }

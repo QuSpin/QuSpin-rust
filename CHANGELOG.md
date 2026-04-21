@@ -9,6 +9,38 @@ Versions track the workspace-level `version` field in the root `Cargo.toml`.
 
 ### Changed — BREAKING
 
+- **Unified symmetry-element API on `SymBasis`.** `add_lattice`, `add_local`,
+  and `add_inv` (on `SymBasis` itself) are removed. Every user-supplied
+  element goes through the single method
+
+  ```rust
+  basis.add_symmetry(chi, SymElement::lattice(&perm))?;   // pure permutation
+  basis.add_symmetry(chi, SymElement::local(op))?;        // pure local op
+  basis.add_symmetry(chi, SymElement::composite(&perm, op))?; // atomic P·L
+  ```
+
+  plus the convenience `add_cyclic(generator, order, char_fn)` which
+  populates `g¹…g^{order-1}` via `SymElement::compose`.
+
+  The identity element is always implicit — adding an `SymElement` with
+  identity action (e.g. the identity permutation, or an empty element)
+  is rejected.
+
+  `SymBasis::build` now runs `validate_group` internally: an
+  `O(|G|²·probes)` closure + 1D-character check
+  (`χ(g·h) = χ(g)·χ(h)`). Missing group closure (e.g. supplying only a
+  translation generator), inconsistent characters, or duplicate actions
+  now error at build time instead of silently producing a wrong basis.
+
+  The shim methods on `SpaceInner` (`add_lattice` / `add_local` /
+  `add_inv`) and the user-facing `SpinBasis` / `BosonBasis` /
+  `FermionBasis` / `GenericBasis` wrappers with the same names are
+  preserved — they build a `SymElement` internally and call
+  `add_symmetry`. Python API names in `quspin-py` are unchanged; the
+  only user-visible change is that all elements of any non-trivial
+  cyclic group must now be supplied (previously only generators were
+  needed).
+
 - **Basis types expose one generic `build` method instead of typed aliases.**
   The eight typed methods `SpinBasis::{build_spin, build_hardcore, build_bond}`,
   `BosonBasis::{build_boson, build_bond}`, `FermionBasis::{build_fermion,
@@ -40,6 +72,21 @@ Versions track the workspace-level `version` field in the root `Cargo.toml`.
 
 ### Added
 
+- `SymElement<L>` type in `quspin-basis` — typed group-element constructor
+  consumed by `SymBasis::add_symmetry` / `add_cyclic`.
+- `Compose` trait in `quspin-bitbasis` — group-composition primitive
+  implemented for `PermDitMask`, `PermDitValues<N>`, and
+  `DynamicPermDitValues`. Used by `SymElement::compose` and therefore by
+  `SymBasis::add_cyclic`.
+- `FermionicBitStateOp: BitStateOp` trait in `quspin-bitbasis` with
+  a default `fermion_sign = 1.0`. `SymBasis` now bounds its local-op
+  type `L: FermionicBitStateOp<B>` so the walker can thread
+  Jordan-Wigner signs through orbit images without paying anything on
+  bosonic bases (LLVM eliminates the constant branch).
+- `SignedPermDitMask<B>` in `quspin-bitbasis` — a `PermDitMask` with a
+  per-site sign array (product over occupied sites). Separate type so
+  particle-hole and spin-inversion signs do not cost anything on plain
+  spin-1/2 bases. Not yet exposed to Python; tracked as a follow-up.
 - New `StateTransitions` trait in `quspin-types` (renamed from an earlier
   internal draft called `StateGraph`). Describes the operator-side input to
   basis BFS as `(amplitude, new_state)` pairs. Re-exported from
