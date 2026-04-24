@@ -13,7 +13,7 @@ from quspin_rs._rs import (
 
 
 def _make_operator(L: int) -> PauliOperator:
-    """Nearest-neighbor XX interaction with transverse Z field on L sites (PBC)."""
+    """Nearest-neighbor XX and YY interactions on L sites (PBC)."""
     bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
     return PauliOperator([("xx", bonds)], [("yy", bonds)])
 
@@ -21,13 +21,14 @@ def _make_operator(L: int) -> PauliOperator:
 def _translation_group(
     L: int, k: int = 0
 ) -> list[tuple[list[int], tuple[float, float]]]:
-    """All L elements of the cyclic translation group on L sites.
+    """Non-identity elements of the cyclic translation group on L sites.
 
     Each element is (perm, (re, im)) where perm = T^n and the character is
-    exp(2*pi*i*k*n/L) for momentum sector k.
+    exp(2*pi*i*k*n/L) for momentum sector k. The identity (T^0) is implicit
+    in `SymBasis` and is not included.
     """
     elements = []
-    for power in range(L):
+    for power in range(1, L):
         perm = [(i + power) % L for i in range(L)]
         angle = 2 * math.pi * k * power / L
         # TODO: change input to complex number instead of tuple

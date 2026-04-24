@@ -344,9 +344,11 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
     /// produce an incorrect basis. This probe-state check catches those
     /// mistakes at [`build`](Self::build) time with a clear error message.
     ///
-    /// Runtime: `O(|G|² · probes)` with small constants. `|G|` is bounded
-    /// by any physical symmetry group so this is inexpensive compared to
-    /// the basis-construction BFS that follows.
+    /// Runtime: `O(|G|² · probes)` with small constants — each composed
+    /// action is matched against the element list in `O(1)` via a
+    /// precomputed `HashMap` keyed on the action vector. `|G|` is
+    /// bounded by any physical symmetry group so this is inexpensive
+    /// compared to the basis-construction BFS that follows.
     pub fn validate_group(&self) -> Result<(), QuSpinError> {
         // Nothing to validate: only the implicit identity is in play.
         if self.group_order() == 1 {
@@ -368,66 +370,61 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
 
         let probes = probe_states::<B>(self.n_sites, self.lhss);
 
-        // Precompute each element's action on every probe state. Keyed by
-        // element index; used both to find the `k` matching a composed
-        // action and to avoid re-applying elements inside the O(|G|²) loop.
+        // Precompute each element's action on every probe state.
         let actions: Vec<Vec<B>> = elements
             .iter()
             .map(|elem| probes.iter().map(|&s| apply_action(elem, s)).collect())
             .collect();
 
-        // Uniqueness: two elements with the same action on every probe would
-        // inflate `|G|` and double-count orbit images in the walker. The
-        // implicit identity is `actions[0]`, so this also catches users who
-        // add the identity permutation explicitly.
-        for i in 0..actions.len() {
-            for j in (i + 1)..actions.len() {
-                if actions[i] == actions[j] {
-                    let hint = if i == 0 {
-                        " (element 0 is the implicit identity — do not add \
-                         an identity permutation or identity-action local op)"
-                    } else {
-                        ""
-                    };
-                    return Err(QuSpinError::ValueError(format!(
-                        "symmetry elements g_{i} and g_{j} have the same action{hint}"
-                    )));
-                }
+        // Index by action so composed-action lookups are O(1) average
+        // time instead of O(|G|). Detect duplicates while building the
+        // map: two elements with the same action would inflate `|G|`
+        // and double-count orbit images. The implicit identity is
+        // `actions[0]`, so this also catches users who add an identity
+        // permutation explicitly.
+        let mut action_to_index: HashMap<Vec<B>, usize> = HashMap::with_capacity(actions.len());
+        for (i, action) in actions.iter().enumerate() {
+            if let Some(&prev) = action_to_index.get(action) {
+                let hint = if prev == 0 {
+                    " (element 0 is the implicit identity — do not add \
+                     an identity permutation or identity-action local op)"
+                } else {
+                    ""
+                };
+                return Err(QuSpinError::ValueError(format!(
+                    "symmetry elements g_{prev} and g_{i} have the same action{hint}"
+                )));
             }
+            action_to_index.insert(action.clone(), i);
         }
 
+        // Scratch buffer reused across the O(|G|²) loop so we don't
+        // allocate a fresh Vec per (i, j) pair.
+        let mut composed: Vec<B> = vec![B::from_u64(0); probes.len()];
         for i in 0..elements.len() {
             for j in 0..elements.len() {
-                // Composed action (g_i · g_j)(s) = g_i(g_j(s)).
-                let composed: Vec<B> = probes
-                    .iter()
-                    .map(|&s| {
-                        let after_j = apply_action(&elements[j], s);
-                        apply_action(&elements[i], after_j)
-                    })
-                    .collect();
+                // (g_i · g_j)(s) = g_i(g_j(s)).
+                for (slot, &s) in composed.iter_mut().zip(probes.iter()) {
+                    let after_j = apply_action(&elements[j], s);
+                    *slot = apply_action(&elements[i], after_j);
+                }
 
-                let k = actions.iter().position(|a| *a == composed);
+                let Some(&k) = action_to_index.get(&composed) else {
+                    return Err(QuSpinError::ValueError(format!(
+                        "symmetry group is not closed: composition g_{i} · g_{j} \
+                         is not in the supplied element list \
+                         (index 0 = implicit identity, indices 1.. are user-added)"
+                    )));
+                };
 
-                match k {
-                    None => {
-                        return Err(QuSpinError::ValueError(format!(
-                            "symmetry group is not closed: composition g_{i} · g_{j} \
-                             is not in the supplied element list \
-                             (index 0 = implicit identity, indices 1.. are user-added)"
-                        )));
-                    }
-                    Some(k) => {
-                        let expected = elements[i].0 * elements[j].0;
-                        let actual = elements[k].0;
-                        if (expected - actual).norm() > CHAR_VALIDATION_TOL {
-                            return Err(QuSpinError::ValueError(format!(
-                                "character table inconsistent for 1D representation: \
-                                 χ(g_{i}) · χ(g_{j}) = {expected}, \
-                                 but the matching element χ(g_{k}) = {actual}"
-                            )));
-                        }
-                    }
+                let expected = elements[i].0 * elements[j].0;
+                let actual = elements[k].0;
+                if (expected - actual).norm() > CHAR_VALIDATION_TOL {
+                    return Err(QuSpinError::ValueError(format!(
+                        "character table inconsistent for 1D representation: \
+                         χ(g_{i}) · χ(g_{j}) = {expected}, \
+                         but the matching element χ(g_{k}) = {actual}"
+                    )));
                 }
             }
         }
@@ -447,19 +444,21 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
     /// 3. **Sequential registration** — dedup and index-map update on the main
     ///    thread; frontier for the next wave assembled here.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if [`validate_group`](Self::validate_group) fails — the
-    /// supplied group is not closed under composition or the characters
-    /// are inconsistent. Call `validate_group` yourself beforehand if you
-    /// need a `Result`-returning variant.
-    pub fn build<G>(&mut self, seed: B, graph: &G)
+    /// On the first call per basis, runs [`validate_group`](Self::validate_group)
+    /// and returns its error if the supplied group is not closed, the
+    /// characters are inconsistent, or two elements have the same action.
+    /// Subsequent calls (e.g. additional seeds on an already-built basis)
+    /// reuse the validated group.
+    pub fn build<G>(&mut self, seed: B, graph: &G) -> Result<(), QuSpinError>
     where
         G: StateTransitions,
         L: Sync,
     {
-        self.validate_group()
-            .expect("SymBasis::build: group validation failed");
+        if !self.built {
+            self.validate_group()?;
+        }
         self.built = true;
         let (ref_seed, _coeff) = self.get_refstate(seed);
         let (_ref2, norm_seed) = self.check_refstate(ref_seed);
@@ -533,6 +532,7 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         }
 
         self.sort();
+        Ok(())
     }
 
     fn sort(&mut self) {
@@ -833,7 +833,7 @@ mod tests {
         basis
             .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::local(mask))
             .unwrap();
-        basis.build(0u32, &x_op(2));
+        basis.build(0u32, &x_op(2)).unwrap();
 
         assert_eq!(basis.size(), 2);
         assert!(basis.index(3u32).is_some());
@@ -845,14 +845,14 @@ mod tests {
         // Trivial group (only implicit identity) — should match the full
         // non-symmetric basis for 3 sites LHSS=2.
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
-        basis.build(0u32, &x_op(3));
+        basis.build(0u32, &x_op(3)).unwrap();
         assert_eq!(basis.size(), 8);
     }
 
     #[test]
     fn sym_basis_sorted_ascending() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, 3, false);
-        basis.build(0u32, &x_op(3));
+        basis.build(0u32, &x_op(3)).unwrap();
         for i in 1..basis.size() {
             assert!(basis.state_at(i) > basis.state_at(i - 1));
         }
@@ -865,7 +865,7 @@ mod tests {
         basis
             .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::local(mask))
             .unwrap();
-        basis.build(0u32, &x_op(2));
+        basis.build(0u32, &x_op(2)).unwrap();
         assert_eq!(basis.size(), 2);
         for i in 0..basis.size() {
             let (_, norm) = basis.entry(i);
@@ -880,7 +880,7 @@ mod tests {
         basis
             .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::local(mask))
             .unwrap();
-        basis.build(0u32, &x_op(2));
+        basis.build(0u32, &x_op(2)).unwrap();
         for i in 0..basis.size() {
             let (_, norm) = basis.entry(i);
             assert_eq!(norm, 1.0);
@@ -897,7 +897,7 @@ mod tests {
         let n_sites = 12u32;
         let mut basis =
             SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites as usize, false);
-        basis.build(0u32, &x_op(n_sites));
+        basis.build(0u32, &x_op(n_sites)).unwrap();
         assert_eq!(basis.size(), 1 << n_sites);
         // Verify sorted ascending
         for i in 1..basis.size() {
@@ -920,7 +920,7 @@ mod tests {
         basis
             .add_symmetry(Complex::new(1.0, 0.0), crate::SymElement::local(mask))
             .unwrap();
-        basis.build(0u32, &x_op(n_sites));
+        basis.build(0u32, &x_op(n_sites)).unwrap();
 
         // With Z2 spin inversion (XOR all bits) on 12 sites:
         // No state equals its own complement, so every orbit has exactly 2

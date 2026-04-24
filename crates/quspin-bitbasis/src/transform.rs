@@ -285,15 +285,28 @@ impl<I: BitInt> SignedPermDitMask<I> {
     /// Construct with an explicit per-site sign array.
     ///
     /// # Panics
-    /// Panics if `sign` is empty (the caller must provide at least one
-    /// site's sign for the type to be meaningful).
+    /// - `sign` is empty: the type is meaningless without at least one
+    ///   site's sign.
+    /// - `sign.len() > I::BITS as usize`: `fermion_sign` iterates `0..sign.len()`
+    ///   and shifts `1 << i` into an `I`-typed mask, which would overflow
+    ///   the bit-width of `I` once `i == I::BITS`.
     pub fn new(mask: I, sign: Vec<f64>) -> Self {
         assert!(!sign.is_empty(), "sign must be non-empty");
+        assert!(
+            sign.len() <= I::BITS as usize,
+            "sign.len()={} exceeds bit-width of I (I::BITS={})",
+            sign.len(),
+            I::BITS,
+        );
         SignedPermDitMask { mask, sign }
     }
 
     /// Convenience: `(-1)^i` per-site sign for a 1D fermionic chain of
     /// length `n_sites`.
+    ///
+    /// # Panics
+    /// - `n_sites == 0` (inherited from [`new`](Self::new)).
+    /// - `n_sites > I::BITS as usize` (inherited from [`new`](Self::new)).
     pub fn default_1d(mask: I, n_sites: usize) -> Self {
         let sign = (0..n_sites)
             .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })

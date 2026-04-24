@@ -99,6 +99,15 @@ impl<L: Compose> SymElement<L> {
     /// Lattice and local components compose independently because they
     /// commute (site permutation acts on positions, local op acts on
     /// values at each site).
+    ///
+    /// # Precondition (panics on violation)
+    ///
+    /// Both operands must describe elements of the same symmetry group,
+    /// so when both carry a permutation they must have identical
+    /// `n_sites`. Likewise, if `L`'s [`Compose`] impl has its own
+    /// preconditions (e.g. `PermDitValues`' identical-`locs` requirement)
+    /// those apply here too. Composing elements from different bases is
+    /// a programmer error, so we panic rather than returning a `Result`.
     pub fn compose(&self, other: &Self) -> Self {
         let perm = match (&self.perm, &other.perm) {
             (None, None) => None,

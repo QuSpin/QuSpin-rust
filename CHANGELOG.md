@@ -22,7 +22,7 @@ Versions track the workspace-level `version` field in the root `Cargo.toml`.
   plus the convenience `add_cyclic(generator, order, char_fn)` which
   populates `g¹…g^{order-1}` via `SymElement::compose`.
 
-  The identity element is always implicit — adding an `SymElement` with
+  The identity element is always implicit — adding a `SymElement` with
   identity action (e.g. the identity permutation, or an empty element)
   is rejected.
 

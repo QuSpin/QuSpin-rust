@@ -166,7 +166,7 @@ pub(crate) fn build_inner<G: quspin_bitbasis::StateTransitions>(
             with_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, graph);
+                    sym_basis.build(s, graph)?;
                 }
             });
         }
@@ -174,7 +174,7 @@ pub(crate) fn build_inner<G: quspin_bitbasis::StateTransitions>(
             with_trit_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, graph);
+                    sym_basis.build(s, graph)?;
                 }
             });
         }
@@ -182,7 +182,7 @@ pub(crate) fn build_inner<G: quspin_bitbasis::StateTransitions>(
             with_quat_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, graph);
+                    sym_basis.build(s, graph)?;
                 }
             });
         }
@@ -190,7 +190,7 @@ pub(crate) fn build_inner<G: quspin_bitbasis::StateTransitions>(
             with_dit_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, graph);
+                    sym_basis.build(s, graph)?;
                 }
             });
         }

@@ -888,7 +888,7 @@ mod tests {
         .unwrap();
 
         // Seed with |000⟩ = 0 — X flips connect all states
-        sym.build(0u32, &x_op);
+        sym.build(0u32, &x_op).unwrap();
         let dim = sym.size();
         assert!(dim > 0, "symmetric basis is empty (dim=0)");
 
