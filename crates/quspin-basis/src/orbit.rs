@@ -7,20 +7,17 @@
 //! - `local_only`: pure local operators.
 //! - `composite`: atomic site-permutation + local-op elements.
 //!
+//! Every storage shape implements [`OrbitImage::apply`](super::lattice::OrbitImage::apply)
+//! returning `(new_state, char)`, so each loop is identical:
+//! `images.push(el.apply(state))`. Fermion signs are folded into `char`
+//! by `apply`; the walker has no `fermionic` flag.
+//!
 //! The implicit identity element is injected by every function's
 //! initialisation (self-image with character 1.0); the user never adds
 //! it explicitly to any of the three vectors.
-//!
-//! When the enclosing basis's `fermionic` flag is true, the walker
-//! multiplies [`FermionicBitStateOp::fermion_sign`] of the local-op
-//! part into the running character; on non-fermionic bases the branch
-//! is constant-`false` and LLVM eliminates the sign multiplication.
 
-use super::lattice::{BenesLatticeElement, LatEl};
+use super::lattice::{BenesLatticeElement, CompositeElement, LocalElement, OrbitImage};
 use num_complex::Complex;
-// `LatEl` brings `apply_state` / `grp_char_for` on `BenesLatticeElement`.
-// `FermionicBitStateOp: BitStateOp` so `apply` and `fermion_sign` are both
-// reachable via a single trait import.
 use quspin_bitbasis::{BitInt, FermionicBitStateOp};
 use smallvec::SmallVec;
 
@@ -44,9 +41,8 @@ const ORBIT_INLINE_CAP: usize = 512;
 /// for orbits up to [`ORBIT_INLINE_CAP`] elements.
 pub(crate) fn iter_images<B, L>(
     lattice_only: &[BenesLatticeElement<B>],
-    local_only: &[(Complex<f64>, L)],
-    composite: &[(BenesLatticeElement<B>, L)],
-    fermionic: bool,
+    local_only: &[LocalElement<L>],
+    composite: &[CompositeElement<B, L>],
     state: B,
 ) -> SmallVec<[(B, Complex<f64>); ORBIT_INLINE_CAP]>
 where
@@ -58,34 +54,14 @@ where
     // Implicit identity.
     images.push((state, Complex::new(1.0, 0.0)));
 
-    // Pure lattice.
-    for lat in lattice_only {
-        let s = lat.apply_state(state);
-        let c = lat.grp_char_for(state);
-        images.push((s, c));
+    for el in lattice_only {
+        images.push(el.apply(state));
     }
-
-    // Pure local.
-    for (chi, loc) in local_only {
-        let s = loc.apply(state);
-        let mut c = *chi;
-        if fermionic {
-            c *= Complex::new(loc.fermion_sign(state), 0.0);
-        }
-        images.push((s, c));
+    for el in local_only {
+        images.push(el.apply(state));
     }
-
-    // Composite: perm first, then local. Character lives on the
-    // BenesLatticeElement and is evaluated against the pre-permutation
-    // state (so its Jordan-Wigner sign matches the permutation's action).
-    for (lat, loc) in composite {
-        let perm_state = lat.apply_state(state);
-        let s = loc.apply(perm_state);
-        let mut c = lat.grp_char_for(state);
-        if fermionic {
-            c *= Complex::new(loc.fermion_sign(perm_state), 0.0);
-        }
-        images.push((s, c));
+    for el in composite {
+        images.push(el.apply(state));
     }
 
     images
@@ -95,9 +71,8 @@ where
 /// group-character coefficient accumulated to reach it.
 pub(crate) fn get_refstate<B, L>(
     lattice_only: &[BenesLatticeElement<B>],
-    local_only: &[(Complex<f64>, L)],
-    composite: &[(BenesLatticeElement<B>, L)],
-    fermionic: bool,
+    local_only: &[LocalElement<L>],
+    composite: &[CompositeElement<B, L>],
     state: B,
 ) -> (B, Complex<f64>)
 where
@@ -106,7 +81,7 @@ where
 {
     let mut best = state;
     let mut best_coeff = Complex::new(1.0, 0.0);
-    for (s, c) in iter_images(lattice_only, local_only, composite, fermionic, state) {
+    for (s, c) in iter_images(lattice_only, local_only, composite, state) {
         let cond = s > best;
         best = best.max(s);
         best_coeff = if cond { c } else { best_coeff };
@@ -119,9 +94,8 @@ where
 /// The norm is the number of orbit images that equal `state`.
 pub(crate) fn check_refstate<B, L>(
     lattice_only: &[BenesLatticeElement<B>],
-    local_only: &[(Complex<f64>, L)],
-    composite: &[(BenesLatticeElement<B>, L)],
-    fermionic: bool,
+    local_only: &[LocalElement<L>],
+    composite: &[CompositeElement<B, L>],
     state: B,
 ) -> (B, f64)
 where
@@ -130,7 +104,7 @@ where
 {
     let mut ref_state = state;
     let mut norm = 0u32;
-    for (s, _) in iter_images(lattice_only, local_only, composite, fermionic, state) {
+    for (s, _) in iter_images(lattice_only, local_only, composite, state) {
         ref_state = ref_state.max(s);
         norm += (s == state) as u32;
     }
@@ -138,9 +112,40 @@ where
 }
 
 // ---------------------------------------------------------------------------
-// Batch helpers — rearranged so outer loops are group elements, inner
-// loops are the batch (amortises orbit traversal, enables SIMD).
+// Batch helpers — outer loop over group elements, inner loop over the
+// batch (amortises orbit traversal, enables auto-vectorisation).
 // ---------------------------------------------------------------------------
+
+/// Apply one element to the whole batch, updating `(best_state, best_coeff)`
+/// in place via the `s > best` / max bookkeeping.
+#[inline]
+fn batch_update_best<B, E>(states: &[B], out: &mut [(B, Complex<f64>)], el: &E)
+where
+    B: BitInt,
+    E: OrbitImage<B>,
+{
+    for (state, o) in states.iter().zip(out.iter_mut()) {
+        let (s, c) = el.apply(*state);
+        let cond = s > o.0;
+        o.0 = o.0.max(s);
+        o.1 = if cond { c } else { o.1 };
+    }
+}
+
+/// Apply one element to the whole batch, accumulating self-image counts
+/// into `norms` and tracking the running max representative.
+#[inline]
+fn batch_update_count<B, E>(states: &[B], out: &mut [(B, f64)], norms: &mut [u32], el: &E)
+where
+    B: BitInt,
+    E: OrbitImage<B>,
+{
+    for ((state, o), norm) in states.iter().zip(out.iter_mut()).zip(norms.iter_mut()) {
+        let (s, _) = el.apply(*state);
+        o.0 = o.0.max(s);
+        *norm += (s == *state) as u32;
+    }
+}
 
 /// Batch variant of [`get_refstate`].
 ///
@@ -149,62 +154,30 @@ where
 /// Panics if `states.len() != out.len()`.
 pub(crate) fn get_refstate_batch<B, L>(
     lattice_only: &[BenesLatticeElement<B>],
-    local_only: &[(Complex<f64>, L)],
-    composite: &[(BenesLatticeElement<B>, L)],
-    fermionic: bool,
+    local_only: &[LocalElement<L>],
+    composite: &[CompositeElement<B, L>],
     states: &[B],
     out: &mut [(B, Complex<f64>)],
 ) where
     B: BitInt,
     L: FermionicBitStateOp<B>,
 {
-    let n = states.len();
-    assert_eq!(n, out.len());
+    assert_eq!(states.len(), out.len());
 
-    // Init: each state is its own representative with identity character.
+    // Init: implicit identity image (state itself, character 1).
     for (state, o) in states.iter().zip(out.iter_mut()) {
         o.0 = *state;
         o.1 = Complex::new(1.0, 0.0);
     }
 
-    // Pure lattice.
-    for lat in lattice_only {
-        for (state, o) in states.iter().zip(out.iter_mut()) {
-            let s = lat.apply_state(*state);
-            let c = lat.grp_char_for(*state);
-            let cond = s > o.0;
-            o.0 = o.0.max(s);
-            o.1 = if cond { c } else { o.1 };
-        }
+    for el in lattice_only {
+        batch_update_best(states, out, el);
     }
-
-    // Pure local.
-    for (chi, loc) in local_only {
-        for (state, o) in states.iter().zip(out.iter_mut()) {
-            let s = loc.apply(*state);
-            let mut c = *chi;
-            if fermionic {
-                c *= Complex::new(loc.fermion_sign(*state), 0.0);
-            }
-            let cond = s > o.0;
-            o.0 = o.0.max(s);
-            o.1 = if cond { c } else { o.1 };
-        }
+    for el in local_only {
+        batch_update_best(states, out, el);
     }
-
-    // Composite: perm then local, single character per element.
-    for (lat, loc) in composite {
-        for (state, o) in states.iter().zip(out.iter_mut()) {
-            let perm_state = lat.apply_state(*state);
-            let s = loc.apply(perm_state);
-            let mut c = lat.grp_char_for(*state);
-            if fermionic {
-                c *= Complex::new(loc.fermion_sign(perm_state), 0.0);
-            }
-            let cond = s > o.0;
-            o.0 = o.0.max(s);
-            o.1 = if cond { c } else { o.1 };
-        }
+    for el in composite {
+        batch_update_best(states, out, el);
     }
 }
 
@@ -215,9 +188,8 @@ pub(crate) fn get_refstate_batch<B, L>(
 /// Panics if `states.len() != out.len()`.
 pub(crate) fn check_refstate_batch<B, L>(
     lattice_only: &[BenesLatticeElement<B>],
-    local_only: &[(Complex<f64>, L)],
-    composite: &[(BenesLatticeElement<B>, L)],
-    _fermionic: bool,
+    local_only: &[LocalElement<L>],
+    composite: &[CompositeElement<B, L>],
     states: &[B],
     out: &mut [(B, f64)],
 ) where
@@ -227,40 +199,23 @@ pub(crate) fn check_refstate_batch<B, L>(
     let n = states.len();
     assert_eq!(n, out.len());
 
-    // Init representatives; norms start at 1 (self-image from implicit identity).
+    // Init representatives; norms start at 1 (the implicit identity is
+    // every state's first self-image).
     for (state, o) in states.iter().zip(out.iter_mut()) {
         o.0 = *state;
     }
-    let mut norms = vec![1u32; n]; // identity contributes +1 to every state's norm
+    let mut norms = vec![1u32; n];
 
-    // Pure lattice.
-    for lat in lattice_only {
-        for ((state, o), norm) in states.iter().zip(out.iter_mut()).zip(norms.iter_mut()) {
-            let s = lat.apply_state(*state);
-            o.0 = o.0.max(s);
-            *norm += (s == *state) as u32;
-        }
+    for el in lattice_only {
+        batch_update_count(states, out, &mut norms, el);
+    }
+    for el in local_only {
+        batch_update_count(states, out, &mut norms, el);
+    }
+    for el in composite {
+        batch_update_count(states, out, &mut norms, el);
     }
 
-    // Pure local.
-    for (_, loc) in local_only {
-        for ((state, o), norm) in states.iter().zip(out.iter_mut()).zip(norms.iter_mut()) {
-            let s = loc.apply(*state);
-            o.0 = o.0.max(s);
-            *norm += (s == *state) as u32;
-        }
-    }
-
-    // Composite: perm then local.
-    for (lat, loc) in composite {
-        for ((state, o), norm) in states.iter().zip(out.iter_mut()).zip(norms.iter_mut()) {
-            let s = loc.apply(lat.apply_state(*state));
-            o.0 = o.0.max(s);
-            *norm += (s == *state) as u32;
-        }
-    }
-
-    // Write norms as f64.
     for (o, norm) in out.iter_mut().zip(norms.iter()) {
         o.1 = *norm as f64;
     }
@@ -293,15 +248,23 @@ mod tests {
     }
 
     /// XOR bit-flip local op with its character.
-    fn local_xor(char_: Complex<f64>, mask: u32) -> (Complex<f64>, PermDitMask<u32>) {
-        (char_, PermDitMask::new(mask))
+    fn local_xor(char_: Complex<f64>, mask: u32) -> LocalElement<PermDitMask<u32>> {
+        LocalElement::new(char_, PermDitMask::new(mask))
+    }
+
+    fn composite_lat_local(
+        char_: Complex<f64>,
+        perm: &[usize],
+        mask: u32,
+    ) -> CompositeElement<u32, PermDitMask<u32>> {
+        CompositeElement::new(lat(char_, perm), PermDitMask::new(mask))
     }
 
     // --- iter_images ---------------------------------------------------------
 
     #[test]
     fn iter_images_empty_group_is_identity_only() {
-        let images = iter_images::<u32, PermDitMask<u32>>(&[], &[], &[], false, 0b01u32);
+        let images = iter_images::<u32, PermDitMask<u32>>(&[], &[], &[], 0b01u32);
         assert_eq!(images.len(), 1);
         assert_eq!(images[0].0, 0b01u32);
         assert_eq!(images[0].1, one());
@@ -310,7 +273,7 @@ mod tests {
     #[test]
     fn iter_images_lattice_only() {
         let lattice = vec![lat(one(), &[1, 0])];
-        let images = iter_images::<u32, PermDitMask<u32>>(&lattice, &[], &[], false, 0b01u32);
+        let images = iter_images::<u32, PermDitMask<u32>>(&lattice, &[], &[], 0b01u32);
         assert_eq!(images.len(), 2);
         let states: Vec<u32> = images.iter().map(|(s, _)| *s).collect();
         assert!(states.contains(&0b01u32)); // identity
@@ -320,7 +283,7 @@ mod tests {
     #[test]
     fn iter_images_local_only() {
         let local = vec![local_xor(minus_one(), 0b11u32)];
-        let images = iter_images(&[], &local, &[], false, 0b01u32);
+        let images = iter_images::<u32, PermDitMask<u32>>(&[], &local, &[], 0b01u32);
         assert_eq!(images.len(), 2);
         assert!(images.iter().any(|(s, c)| *s == 0b01u32 && *c == one()));
         assert!(
@@ -334,27 +297,18 @@ mod tests {
     fn iter_images_composite_pz_example() {
         // The motivating case: reflection P = [1, 0] composed with spin-flip
         // Z = XOR 0b11 as a single composite element. Group is {I, PZ};
-        // images of 0b01 are {0b01, 0b01} — same state twice! (P flips the
-        // bits position, Z flips the values, so PZ on 0b01 = swap-then-flip.
-        // Actually: state 0b01 → swap [1,0] → 0b10 → XOR 11 → 0b01.)
+        // composite-only walker yields 2 images.
         let lattice = vec![lat(one(), &[1, 0])];
         let local = vec![local_xor(one(), 0b11u32)];
-        let composite = vec![(lat(one(), &[1, 0]), PermDitMask::new(0b11u32))];
+        let composite = vec![composite_lat_local(one(), &[1, 0], 0b11u32)];
 
         // Three separate vectors produce three separate images (+ identity).
-        // Group {I, P, Z, PZ} = 4 elements.
-        let images = iter_images(&lattice, &local, &composite, false, 0b01u32);
+        let images = iter_images(&lattice, &local, &composite, 0b01u32);
         assert_eq!(images.len(), 4);
 
-        // Composite-only — user's actual case: no P, no Z alone, just PZ.
-        let images_pz_only = iter_images::<u32, PermDitMask<u32>>(
-            &[],
-            &[],
-            &composite, // just (P, Z) atomic
-            false,
-            0b01u32,
-        );
-        assert_eq!(images_pz_only.len(), 2); // {I, PZ}
+        // Composite-only: just the {I, PZ} group of order 2.
+        let images_pz_only = iter_images::<u32, PermDitMask<u32>>(&[], &[], &composite, 0b01u32);
+        assert_eq!(images_pz_only.len(), 2);
     }
 
     // --- get_refstate / check_refstate --------------------------------------
@@ -362,14 +316,14 @@ mod tests {
     #[test]
     fn get_refstate_returns_max_image() {
         let lattice = vec![lat(one(), &[1, 0])];
-        let (ref_s, _) = get_refstate::<u32, PermDitMask<u32>>(&lattice, &[], &[], false, 0b01u32);
+        let (ref_s, _) = get_refstate::<u32, PermDitMask<u32>>(&lattice, &[], &[], 0b01u32);
         assert_eq!(ref_s, 0b10u32);
     }
 
     #[test]
     fn get_refstate_character_from_winning_image() {
         let lattice = vec![lat(minus_one(), &[1, 0])];
-        let (ref_s, c) = get_refstate::<u32, PermDitMask<u32>>(&lattice, &[], &[], false, 0b01u32);
+        let (ref_s, c) = get_refstate::<u32, PermDitMask<u32>>(&lattice, &[], &[], 0b01u32);
         assert_eq!(ref_s, 0b10u32);
         assert_eq!(c, minus_one());
     }
@@ -377,7 +331,7 @@ mod tests {
     #[test]
     fn check_refstate_identity_contributes_to_norm() {
         // Empty group → one self-image → norm = 1.
-        let (ref_s, norm) = check_refstate::<u32, PermDitMask<u32>>(&[], &[], &[], false, 0b01u32);
+        let (ref_s, norm) = check_refstate::<u32, PermDitMask<u32>>(&[], &[], &[], 0b01u32);
         assert_eq!(ref_s, 0b01u32);
         assert_eq!(norm, 1.0);
     }
@@ -387,8 +341,7 @@ mod tests {
         // P = swap; state 0b11 maps to itself under P.
         // Group: {I, P}. Images of 0b11: {0b11, 0b11} → norm 2.
         let lattice = vec![lat(one(), &[1, 0])];
-        let (ref_s, norm) =
-            check_refstate::<u32, PermDitMask<u32>>(&lattice, &[], &[], false, 0b11u32);
+        let (ref_s, norm) = check_refstate::<u32, PermDitMask<u32>>(&lattice, &[], &[], 0b11u32);
         assert_eq!(ref_s, 0b11u32);
         assert_eq!(norm, 2.0);
     }
@@ -400,10 +353,10 @@ mod tests {
         let lattice = vec![lat(one(), &[0, 1]), lat(one(), &[1, 0])];
         let states: Vec<u32> = (0u32..4).collect();
         let mut out = vec![(0u32, 0.0); states.len()];
-        check_refstate_batch::<u32, PermDitMask<u32>>(&lattice, &[], &[], false, &states, &mut out);
+        check_refstate_batch::<u32, PermDitMask<u32>>(&lattice, &[], &[], &states, &mut out);
         for (state, (batch_ref, batch_norm)) in states.iter().zip(out.iter()) {
             let (scalar_ref, scalar_norm) =
-                check_refstate::<u32, PermDitMask<u32>>(&lattice, &[], &[], false, *state);
+                check_refstate::<u32, PermDitMask<u32>>(&lattice, &[], &[], *state);
             assert_eq!(*batch_ref, scalar_ref);
             assert_eq!(*batch_norm, scalar_norm);
         }
@@ -413,13 +366,12 @@ mod tests {
     fn batch_matches_scalar_with_local_and_composite() {
         let lattice = vec![lat(one(), &[1, 0])];
         let local = vec![local_xor(one(), 0b11u32)];
-        let composite = vec![(lat(one(), &[1, 0]), PermDitMask::new(0b11u32))];
+        let composite = vec![composite_lat_local(one(), &[1, 0], 0b11u32)];
         let states: Vec<u32> = (0u32..4).collect();
         let mut out = vec![(0u32, 0.0); states.len()];
-        check_refstate_batch(&lattice, &local, &composite, false, &states, &mut out);
+        check_refstate_batch(&lattice, &local, &composite, &states, &mut out);
         for (state, (batch_ref, batch_norm)) in states.iter().zip(out.iter()) {
-            let (scalar_ref, scalar_norm) =
-                check_refstate(&lattice, &local, &composite, false, *state);
+            let (scalar_ref, scalar_norm) = check_refstate(&lattice, &local, &composite, *state);
             assert_eq!(*batch_ref, scalar_ref);
             assert_eq!(*batch_norm, scalar_norm);
         }
@@ -429,6 +381,7 @@ mod tests {
     fn batch_empty_input_is_noop() {
         let lattice = vec![lat(one(), &[0, 1])];
         let mut out: Vec<(u32, f64)> = vec![];
-        check_refstate_batch::<u32, PermDitMask<u32>>(&lattice, &[], &[], false, &[], &mut out); // must not panic
+        check_refstate_batch::<u32, PermDitMask<u32>>(&lattice, &[], &[], &[], &mut out);
+        // must not panic
     }
 }

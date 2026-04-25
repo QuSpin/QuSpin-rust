@@ -392,7 +392,6 @@ where
             &self.lattice_only,
             &self.local_only,
             &self.composite,
-            self.fermionic,
             ref_state,
         )
         .into_iter()

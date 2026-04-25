@@ -4,7 +4,7 @@
 /// with a single flat struct. `N` is an explicit type parameter — the B→N
 /// pairing is encoded in `SpaceInner` variant definitions, not a runtime enum.
 use super::bfs::{AMP_CANCEL_TOL, PARALLEL_FRONTIER_THRESHOLD};
-use super::lattice::BenesLatticeElement;
+use super::lattice::{BenesLatticeElement, CompositeElement, LocalElement};
 use super::traits::BasisSpace;
 use num_complex::Complex;
 use quspin_bitbasis::{
@@ -116,11 +116,10 @@ pub struct SymBasis<B: BitInt, L, N: NormInt> {
     /// Pure-lattice group elements: site permutation only, no local op.
     pub(crate) lattice_only: Vec<BenesLatticeElement<B>>,
     /// Pure-local group elements: local op only, no site permutation.
-    pub(crate) local_only: Vec<(Complex<f64>, L)>,
+    pub(crate) local_only: Vec<LocalElement<L>>,
     /// Composite group elements: site permutation + local op applied
-    /// atomically as one element with a single character. The character
-    /// lives on the `BenesLatticeElement`.
-    pub(crate) composite: Vec<(BenesLatticeElement<B>, L)>,
+    /// atomically as one element with a single character.
+    pub(crate) composite: Vec<CompositeElement<B, L>>,
     // Basis data (was SymmetricSubspace<G, N>)
     /// `(representative_state, orbit_norm)` pairs, sorted ascending by state.
     states: Vec<(B, N)>,
@@ -182,13 +181,13 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
                 Ok(())
             }
             (None, Some(l)) => {
-                self.local_only.push((grp_char, l));
+                self.local_only.push(LocalElement::new(grp_char, l));
                 Ok(())
             }
             (Some(p), Some(l)) => {
                 let op = BenesPermDitLocations::<B>::new(self.lhss, &p, self.fermionic);
-                self.composite
-                    .push((BenesLatticeElement::new(grp_char, op, self.n_sites), l));
+                let lat = BenesLatticeElement::new(grp_char, op, self.n_sites);
+                self.composite.push(CompositeElement::new(lat, l));
                 Ok(())
             }
             (None, None) => Err(QuSpinError::ValueError(
@@ -282,24 +281,12 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
     /// Return the representative state (largest orbit element) and the
     /// accumulated group character for `state`.
     pub fn get_refstate(&self, state: B) -> (B, Complex<f64>) {
-        super::orbit::get_refstate(
-            &self.lattice_only,
-            &self.local_only,
-            &self.composite,
-            self.fermionic,
-            state,
-        )
+        super::orbit::get_refstate(&self.lattice_only, &self.local_only, &self.composite, state)
     }
 
     /// Return the representative state and the orbit norm.
     pub fn check_refstate(&self, state: B) -> (B, f64) {
-        super::orbit::check_refstate(
-            &self.lattice_only,
-            &self.local_only,
-            &self.composite,
-            self.fermionic,
-            state,
-        )
+        super::orbit::check_refstate(&self.lattice_only, &self.local_only, &self.composite, state)
     }
 
     /// Batch variant of [`get_refstate`](Self::get_refstate).
@@ -312,7 +299,6 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
             &self.lattice_only,
             &self.local_only,
             &self.composite,
-            self.fermionic,
             states,
             out,
         );
@@ -328,7 +314,6 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
             &self.lattice_only,
             &self.local_only,
             &self.composite,
-            self.fermionic,
             states,
             out,
         );
@@ -361,11 +346,11 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         for lat in &self.lattice_only {
             elements.push((lat.grp_char, Some(&lat.op), None));
         }
-        for (chi, loc) in &self.local_only {
-            elements.push((*chi, None, Some(loc)));
+        for el in &self.local_only {
+            elements.push((el.grp_char, None, Some(&el.op)));
         }
-        for (lat, loc) in &self.composite {
-            elements.push((lat.grp_char, Some(&lat.op), Some(loc)));
+        for el in &self.composite {
+            elements.push((el.lat.grp_char, Some(&el.lat.op), Some(&el.loc)));
         }
 
         let probes = probe_states::<B>(self.n_sites, self.lhss);
@@ -476,19 +461,12 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
             let lattice_only = &self.lattice_only;
             let local_only = &self.local_only;
             let composite = &self.composite;
-            let fermionic = self.fermionic;
 
             // Phase 1+2a (fused): BFS discovery + orbit-representative mapping
             // in a single parallel fold — one fork/join instead of two.
             // Uses get_refstate (no norm computation) per surviving candidate.
-            let candidate_reps: HashSet<B> = bfs_wave_with_reps(
-                &frontier,
-                graph,
-                lattice_only,
-                local_only,
-                composite,
-                fermionic,
-            );
+            let candidate_reps: HashSet<B> =
+                bfs_wave_with_reps(&frontier, graph, lattice_only, local_only, composite);
 
             if candidate_reps.is_empty() {
                 frontier.clear();
@@ -513,7 +491,6 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
                 lattice_only,
                 local_only,
                 composite,
-                fermionic,
                 &unique_reps,
                 &mut norm_out,
             );
@@ -645,14 +622,12 @@ fn probe_states<B: BitInt>(n_sites: usize, lhss: usize) -> Vec<B> {
 /// - Above threshold: rayon `par_iter().fold().reduce()` — each thread owns a
 ///   disjoint slice of `frontier`, builds a thread-local `HashSet<B>` of
 ///   representatives, and the sets are unioned in the reduce step.
-#[allow(clippy::too_many_arguments)]
 fn bfs_wave_with_reps<B, L, G>(
     frontier: &[B],
     graph: &G,
     lattice_only: &[BenesLatticeElement<B>],
-    local_only: &[(Complex<f64>, L)],
-    composite: &[(BenesLatticeElement<B>, L)],
-    fermionic: bool,
+    local_only: &[LocalElement<L>],
+    composite: &[CompositeElement<B, L>],
 ) -> HashSet<B>
 where
     B: BitInt,
@@ -673,13 +648,8 @@ where
             });
             for (&candidate, &(net_amp, scale)) in &contributions {
                 if net_amp.norm() > scale * AMP_CANCEL_TOL {
-                    let (rep, _) = super::orbit::get_refstate(
-                        lattice_only,
-                        local_only,
-                        composite,
-                        fermionic,
-                        candidate,
-                    );
+                    let (rep, _) =
+                        super::orbit::get_refstate(lattice_only, local_only, composite, candidate);
                     reps.insert(rep);
                 }
             }
@@ -710,7 +680,6 @@ where
                                 lattice_only,
                                 local_only,
                                 composite,
-                                fermionic,
                                 candidate,
                             );
                             reps.insert(rep);
@@ -738,9 +707,8 @@ where
 /// retains its inner auto-vectorisation.
 fn par_check_refstate_batch<B, L>(
     lattice_only: &[BenesLatticeElement<B>],
-    local_only: &[(Complex<f64>, L)],
-    composite: &[(BenesLatticeElement<B>, L)],
-    fermionic: bool,
+    local_only: &[LocalElement<L>],
+    composite: &[CompositeElement<B, L>],
     states: &[B],
     out: &mut [(B, f64)],
 ) where
@@ -753,24 +721,10 @@ fn par_check_refstate_batch<B, L>(
             .par_chunks(chunk_size)
             .zip(out.par_chunks_mut(chunk_size))
             .for_each(|(s, o)| {
-                super::orbit::check_refstate_batch(
-                    lattice_only,
-                    local_only,
-                    composite,
-                    fermionic,
-                    s,
-                    o,
-                );
+                super::orbit::check_refstate_batch(lattice_only, local_only, composite, s, o);
             });
     } else {
-        super::orbit::check_refstate_batch(
-            lattice_only,
-            local_only,
-            composite,
-            fermionic,
-            states,
-            out,
-        );
+        super::orbit::check_refstate_batch(lattice_only, local_only, composite, states, out);
     }
 }
 
