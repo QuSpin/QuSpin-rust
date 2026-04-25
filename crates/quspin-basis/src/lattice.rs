@@ -1,124 +1,45 @@
+//! Lattice / local / composite group-element types used by the orbit
+//! computation.
+//!
+//! All three element shapes implement the [`OrbitImage`] trait with a
+//! uniform `apply(state) -> (new_state, char)` interface, mirroring the
+//! pre-refactor design. The character returned already includes any
+//! state-dependent fermion sign (Jordan-Wigner, particle-hole, …) so
+//! the walker never needs to consult a `fermionic` flag — when the
+//! basis is non-fermionic the underlying `fermionic_sign` /
+//! `fermion_sign` methods return `1.0` and LLVM eliminates the
+//! multiplication.
+
 use num_complex::Complex;
-/// Lattice element types and local-op traits used by the orbit computation.
-use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, PermDitLocations};
+use quspin_bitbasis::{BenesPermDitLocations, BitInt, BitStateOp, FermionicBitStateOp};
 
 // ---------------------------------------------------------------------------
-// LocalOpItem
+// OrbitImage
 // ---------------------------------------------------------------------------
 
-/// A single local symmetry operation that maps a basis state to a new state
-/// and returns the associated group character.
+/// A symmetry-group element acting on a basis state.
 ///
-/// Implemented for:
-/// - [`HardcoreGrpElement<B>`](super::spin::HardcoreGrpElement) — XOR
-///   bit-flip, stores `grp_char` inside the element.
-/// - `(Complex<f64>, Op)` where `Op: BitStateOp<B>` — all dit op types
-///   (`HigherSpinInv`, `DynamicHigherSpinInv`, `PermDitValues`, …).
-pub(crate) trait LocalOpItem<B: BitInt> {
-    /// Apply the local operation to `state`, returning `(new_state, grp_char)`.
-    fn apply_local(&self, state: B) -> (B, Complex<f64>);
-}
-
-/// Blanket impl: a `(grp_char, op)` pair where `op` implements [`BitStateOp<B>`].
-impl<B: BitInt, Op: BitStateOp<B>> LocalOpItem<B> for (Complex<f64>, Op) {
-    #[inline]
-    fn apply_local(&self, state: B) -> (B, Complex<f64>) {
-        (self.1.apply(state), self.0)
-    }
+/// `apply(state)` returns the orbit image `(g · state, χ_g · sign(state))`
+/// — the mapped state plus the full coefficient (1D-representation
+/// character times any state-dependent fermion sign). The walker
+/// iterates each storage vector and calls `apply` uniformly; storage
+/// stays type-homogeneous so the hot loop has zero variant-branching.
+pub(crate) trait OrbitImage<B: BitInt> {
+    fn apply(&self, state: B) -> (B, Complex<f64>);
 }
 
 // ---------------------------------------------------------------------------
-// LatEl
+// BenesLatticeElement — pure site permutation
 // ---------------------------------------------------------------------------
 
-/// A lattice element with state-dependent group character.
+/// A lattice (site-permutation) group element backed by a Benes
+/// permutation network.
 ///
-/// For bosonic elements: `grp_char_for` returns a constant.
-/// For fermionic elements: `grp_char_for` includes the Jordan-Wigner
-/// permutation sign computed from the current state.
-pub(crate) trait LatEl<B: BitInt> {
-    /// Apply the site permutation, returning the new state.
-    fn apply_state(&self, state: B) -> B;
-
-    /// Return the group character for the given pre-image state.
-    ///
-    /// For bosonic elements this is a constant independent of `state`.
-    /// For fermionic elements this includes the Jordan-Wigner sign.
-    fn grp_char_for(&self, state: B) -> Complex<f64>;
-}
-
-// ---------------------------------------------------------------------------
-// LatticeElement — shared by both SpinSymGrp and DitSymGrp
-// ---------------------------------------------------------------------------
-
-/// A site-permutation symmetry element with an associated group character.
-///
-/// Used by both [`SpinSymGrp`] and [`DitSymGrp`].
+/// Supports both bosonic (`fermionic = false`) and fermionic
+/// (`fermionic = true`) symmetry. When fermionic, the Jordan-Wigner
+/// sign returned by [`BenesPermDitLocations::fermionic_sign`] is folded
+/// into the character at [`apply`](OrbitImage::apply) time.
 #[derive(Clone)]
-#[allow(dead_code)]
-pub struct LatticeElement {
-    pub grp_char: Complex<f64>,
-    pub n_sites: usize,
-    pub op: PermDitLocations,
-}
-
-#[allow(dead_code)]
-impl LatticeElement {
-    pub fn new(grp_char: Complex<f64>, op: PermDitLocations, n_sites: usize) -> Self {
-        LatticeElement {
-            grp_char,
-            n_sites,
-            op,
-        }
-    }
-
-    pub fn n_sites(&self) -> usize {
-        self.n_sites
-    }
-
-    /// Apply the permutation and accumulate the group character into `coeff`.
-    #[inline]
-    pub fn apply<B: BitInt>(&self, state: B, coeff: Complex<f64>) -> (B, Complex<f64>) {
-        (self.op.apply(state), coeff * self.grp_char)
-    }
-
-    /// Apply only the site permutation, discarding the group character.
-    ///
-    /// Used by the batch orbit helpers where the character is not needed
-    /// (e.g. [`check_refstate_batch`](super::orbit::check_refstate_batch)).
-    #[inline]
-    pub fn apply_state<B: BitInt>(&self, state: B) -> B {
-        self.op.apply(state)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// LatEl impls for LatticeElement
-// ---------------------------------------------------------------------------
-
-impl<B: BitInt> LatEl<B> for LatticeElement {
-    #[inline]
-    fn apply_state(&self, state: B) -> B {
-        self.op.apply(state)
-    }
-
-    #[inline]
-    fn grp_char_for(&self, _state: B) -> Complex<f64> {
-        self.grp_char
-    }
-}
-
-// ---------------------------------------------------------------------------
-// BenesLatticeElement — Benes-backed lattice element (bosonic or fermionic)
-// ---------------------------------------------------------------------------
-
-/// A lattice element backed by a Benes permutation network.
-///
-/// Supports both bosonic (`fermionic=false`) and fermionic (`fermionic=true`)
-/// symmetry. When fermionic, [`grp_char_for`](LatEl::grp_char_for) multiplies
-/// in the Jordan-Wigner permutation sign computed from the pre-image state.
-#[derive(Clone)]
-#[allow(dead_code)]
 pub struct BenesLatticeElement<B: BitInt> {
     pub grp_char: Complex<f64>,
     pub n_sites: usize,
@@ -140,14 +61,78 @@ impl<B: BitInt> BenesLatticeElement<B> {
     }
 }
 
-impl<B: BitInt> LatEl<B> for BenesLatticeElement<B> {
+impl<B: BitInt> OrbitImage<B> for BenesLatticeElement<B> {
     #[inline]
-    fn apply_state(&self, state: B) -> B {
-        self.op.apply(state)
+    fn apply(&self, state: B) -> (B, Complex<f64>) {
+        let new_state = self.op.apply(state);
+        let char = self.grp_char * Complex::new(self.op.fermionic_sign(state), 0.0);
+        (new_state, char)
     }
+}
 
+// ---------------------------------------------------------------------------
+// LocalElement — pure local op (no site permutation)
+// ---------------------------------------------------------------------------
+
+/// A pure-local group element: character + local op, no site
+/// permutation.
+///
+/// `L: FermionicBitStateOp<B>` so [`apply`](OrbitImage::apply) can fold
+/// in any state-dependent sign (default `1.0` for non-fermionic local
+/// ops like `PermDitMask`).
+#[derive(Clone)]
+pub struct LocalElement<L> {
+    pub grp_char: Complex<f64>,
+    pub op: L,
+}
+
+impl<L> LocalElement<L> {
+    pub fn new(grp_char: Complex<f64>, op: L) -> Self {
+        LocalElement { grp_char, op }
+    }
+}
+
+impl<B: BitInt, L: FermionicBitStateOp<B>> OrbitImage<B> for LocalElement<L> {
     #[inline]
-    fn grp_char_for(&self, state: B) -> Complex<f64> {
-        self.grp_char * Complex::new(self.op.fermionic_sign(state), 0.0)
+    fn apply(&self, state: B) -> (B, Complex<f64>) {
+        let new_state = self.op.apply(state);
+        let char = self.grp_char * Complex::new(self.op.fermion_sign(state), 0.0);
+        (new_state, char)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CompositeElement — atomic site-permutation + local op
+// ---------------------------------------------------------------------------
+
+/// An atomic composite group element: site permutation followed by a
+/// local op, treated as one element with a single character.
+///
+/// The character is stored on the lattice component; the local
+/// component contributes only its state-dependent fermion sign (if
+/// any). The two components commute (orthogonal degrees of freedom),
+/// so "perm first, local second" and "local first, perm second" are
+/// equivalent — the walker uses the former.
+#[derive(Clone)]
+pub struct CompositeElement<B: BitInt, L> {
+    pub lat: BenesLatticeElement<B>,
+    pub loc: L,
+}
+
+impl<B: BitInt, L> CompositeElement<B, L> {
+    pub fn new(lat: BenesLatticeElement<B>, loc: L) -> Self {
+        CompositeElement { lat, loc }
+    }
+}
+
+impl<B: BitInt, L: FermionicBitStateOp<B>> OrbitImage<B> for CompositeElement<B, L> {
+    #[inline]
+    fn apply(&self, state: B) -> (B, Complex<f64>) {
+        let perm_state = self.lat.op.apply(state);
+        let new_state = self.loc.apply(perm_state);
+        let char = self.lat.grp_char
+            * Complex::new(self.lat.op.fermionic_sign(state), 0.0)
+            * Complex::new(self.loc.fermion_sign(perm_state), 0.0);
+        (new_state, char)
     }
 }

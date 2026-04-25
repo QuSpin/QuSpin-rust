@@ -16,6 +16,42 @@ pub trait BitStateOp<I: BitInt> {
     fn apply(&self, state: I) -> I;
 }
 
+/// Extension of [`BitStateOp`] that reports a fermion sign contributed by
+/// the operation when applied on a fermionic basis.
+///
+/// The default implementation returns `1.0` — no sign contribution —
+/// which is correct for every symmetry that acts only by reordering /
+/// bit-flipping without crossing fermion creation operators. Types that
+/// genuinely pick up a state-dependent fermion sign (e.g.
+/// [`SignedPermDitMask`] for particle-hole) override `fermion_sign`.
+///
+/// The symmetry walker consults this method **only** when the enclosing
+/// basis's `fermionic` flag is `true`; on spin-1/2 / bosonic paths the
+/// call is dead code and is eliminated by LLVM.
+pub trait FermionicBitStateOp<I: BitInt>: BitStateOp<I> {
+    /// Fermion sign contributed when applied to `state`. Default: `1.0`.
+    fn fermion_sign(&self, _state: I) -> f64 {
+        1.0
+    }
+}
+
+/// Group-composition trait for local operators.
+///
+/// `a.compose(b)` returns the element representing `a · b` — the operator
+/// that, when applied, first applies `b` and then `a`. Required for types
+/// used with [`SymElement::compose`](../../quspin_basis/struct.SymElement.html)
+/// and the `add_cyclic` helper on `SymBasis`.
+///
+/// Not implemented for [`SignedPermDitMask`]: composition of two signed
+/// bit-flip operators produces a state-independent prefactor that
+/// belongs on the character (not the operator), so it does not round-trip
+/// cleanly to a new `SignedPermDitMask`. Callers who need cyclic groups
+/// of signed elements should enumerate the group explicitly via
+/// `add_symmetry` instead of using `add_cyclic`.
+pub trait Compose: Clone + Sized {
+    fn compose(&self, other: &Self) -> Self;
+}
+
 // ---------------------------------------------------------------------------
 // PermDitLocations — permute which site goes where
 // ---------------------------------------------------------------------------
@@ -66,6 +102,8 @@ impl<I: BitInt> BitStateOp<I> for PermDitLocations {
     }
 }
 
+impl<I: BitInt> FermionicBitStateOp<I> for PermDitLocations {}
+
 // ---------------------------------------------------------------------------
 // PermDitValues — permute the dit values at given locations
 // ---------------------------------------------------------------------------
@@ -98,6 +136,23 @@ impl<const LHSS: usize, I: BitInt> BitStateOp<I> for PermDitValues<LHSS> {
             out = DitManip::<LHSS>::set_dit(out, self.perm[v] as usize, loc);
         }
         out
+    }
+}
+
+impl<const LHSS: usize, I: BitInt> FermionicBitStateOp<I> for PermDitValues<LHSS> {}
+
+impl<const LHSS: usize> Compose for PermDitValues<LHSS> {
+    /// `(a ∘ b)[v] = a[b[v]]`. Requires identical `locs`; panics otherwise.
+    fn compose(&self, other: &Self) -> Self {
+        assert_eq!(
+            self.locs, other.locs,
+            "Compose on PermDitValues requires identical `locs`"
+        );
+        let mut combined = [0u8; LHSS];
+        for (v, slot) in combined.iter_mut().enumerate() {
+            *slot = self.perm[other.perm[v] as usize];
+        }
+        PermDitValues::new(combined, self.locs.clone())
     }
 }
 
@@ -142,6 +197,27 @@ impl<I: BitInt> BitStateOp<I> for DynamicPermDitValues {
     }
 }
 
+impl<I: BitInt> FermionicBitStateOp<I> for DynamicPermDitValues {}
+
+impl Compose for DynamicPermDitValues {
+    /// `(a ∘ b)[v] = a[b[v]]`. Requires identical `lhss` and `locs`; panics otherwise.
+    fn compose(&self, other: &Self) -> Self {
+        assert_eq!(
+            self.perm.len(),
+            other.perm.len(),
+            "Compose on DynamicPermDitValues requires identical `lhss`"
+        );
+        assert_eq!(
+            self.locs, other.locs,
+            "Compose on DynamicPermDitValues requires identical `locs`"
+        );
+        let combined: Vec<u8> = (0..self.perm.len())
+            .map(|v| self.perm[other.perm[v] as usize])
+            .collect();
+        DynamicPermDitValues::new(self.perm.len(), combined, self.locs.clone())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // PermDitMask — XOR with a fixed mask (parity-like operations)
 // ---------------------------------------------------------------------------
@@ -164,6 +240,108 @@ impl<I: BitInt> BitStateOp<I> for PermDitMask<I> {
     #[inline]
     fn apply(&self, state: I) -> I {
         state ^ self.mask
+    }
+}
+
+impl<I: BitInt> FermionicBitStateOp<I> for PermDitMask<I> {}
+
+impl<I: BitInt> Compose for PermDitMask<I> {
+    /// XOR masks compose by XOR: `(a ∘ b)(state) = a(b(state)) = state ^ b.mask ^ a.mask`.
+    #[inline]
+    fn compose(&self, other: &Self) -> Self {
+        PermDitMask::new(self.mask ^ other.mask)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SignedPermDitMask — bit-flip with per-site fermion signs (particle-hole)
+// ---------------------------------------------------------------------------
+
+/// Bit-flip at every set bit in `mask`, with a per-site fermion sign.
+///
+/// Used for the particle-hole transformation on fermionic bases. When
+/// applied to `state`:
+///
+/// - [`apply`]: returns `state ^ mask` (same as [`PermDitMask`]).
+/// - [`fermion_sign`]: returns `∏_{i: bit i of state is set} sign[i]` —
+///   a product over the sites that are *occupied* in the input state.
+///
+/// The per-site `sign` array has length `n_sites`. For a 1D fermionic
+/// chain the canonical choice is `sign[i] = (-1)^i`; in higher
+/// dimensions or for non-uniform lattices the sign structure depends
+/// on the model, so the user must supply it explicitly. See
+/// [QuSpin/QuSpin#390](https://github.com/QuSpin/QuSpin/issues/390) for
+/// the Python-side history of this requirement.
+///
+/// [`apply`]: BitStateOp::apply
+/// [`fermion_sign`]: FermionicBitStateOp::fermion_sign
+#[derive(Clone, Debug)]
+pub struct SignedPermDitMask<I: BitInt> {
+    mask: I,
+    sign: Vec<f64>,
+}
+
+impl<I: BitInt> SignedPermDitMask<I> {
+    /// Construct with an explicit per-site sign array.
+    ///
+    /// # Panics
+    /// - `sign` is empty: the type is meaningless without at least one
+    ///   site's sign.
+    /// - `sign.len() > I::BITS as usize`: `fermion_sign` iterates `0..sign.len()`
+    ///   and shifts `1 << i` into an `I`-typed mask, which would overflow
+    ///   the bit-width of `I` once `i == I::BITS`.
+    pub fn new(mask: I, sign: Vec<f64>) -> Self {
+        assert!(!sign.is_empty(), "sign must be non-empty");
+        assert!(
+            sign.len() <= I::BITS as usize,
+            "sign.len()={} exceeds bit-width of I (I::BITS={})",
+            sign.len(),
+            I::BITS,
+        );
+        SignedPermDitMask { mask, sign }
+    }
+
+    /// Convenience: `(-1)^i` per-site sign for a 1D fermionic chain of
+    /// length `n_sites`.
+    ///
+    /// # Panics
+    /// - `n_sites == 0` (inherited from [`new`](Self::new)).
+    /// - `n_sites > I::BITS as usize` (inherited from [`new`](Self::new)).
+    pub fn default_1d(mask: I, n_sites: usize) -> Self {
+        let sign = (0..n_sites)
+            .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
+            .collect();
+        Self::new(mask, sign)
+    }
+
+    /// Borrow the per-site sign array.
+    pub fn sign(&self) -> &[f64] {
+        &self.sign
+    }
+
+    /// Borrow the bit-flip mask.
+    pub fn mask(&self) -> I {
+        self.mask
+    }
+}
+
+impl<I: BitInt> BitStateOp<I> for SignedPermDitMask<I> {
+    #[inline]
+    fn apply(&self, state: I) -> I {
+        state ^ self.mask
+    }
+}
+
+impl<I: BitInt> FermionicBitStateOp<I> for SignedPermDitMask<I> {
+    #[inline]
+    fn fermion_sign(&self, state: I) -> f64 {
+        let mut s = 1.0;
+        for (i, &si) in self.sign.iter().enumerate() {
+            if (state & (I::from_u64(1) << i)) != I::from_u64(0) {
+                s *= si;
+            }
+        }
+        s
     }
 }
 
@@ -284,6 +462,16 @@ impl<B: BitInt> BitStateOp<B> for BenesPermDitLocations<B> {
     #[inline]
     fn apply(&self, state: B) -> B {
         benes_fwd(&self.benes, state)
+    }
+}
+
+impl<B: BitInt> FermionicBitStateOp<B> for BenesPermDitLocations<B> {
+    /// Jordan-Wigner sign from the permutation's inversion count restricted
+    /// to occupied sites of `state`. Matches the existing
+    /// [`fermionic_sign`](BenesPermDitLocations::fermionic_sign) method.
+    #[inline]
+    fn fermion_sign(&self, state: B) -> f64 {
+        self.fermionic_sign(state)
     }
 }
 
@@ -445,5 +633,60 @@ mod tests {
         for s in 0u32..8u32 {
             assert_eq!(perm.fermionic_sign(s), 1.0);
         }
+    }
+
+    // --- SignedPermDitMask ---
+
+    #[test]
+    fn signed_mask_apply_matches_unsigned() {
+        let mask = 0b1111u32;
+        let unsigned = PermDitMask::new(mask);
+        let signed = SignedPermDitMask::default_1d(mask, 4);
+        for s in 0u32..16u32 {
+            assert_eq!(
+                BitStateOp::apply(&unsigned, s),
+                BitStateOp::apply(&signed, s)
+            );
+        }
+    }
+
+    #[test]
+    fn signed_mask_sign_on_vacuum_is_one() {
+        let op = SignedPermDitMask::default_1d(0b1111u32, 4);
+        // No occupied sites → empty product → +1.
+        assert_eq!(op.fermion_sign(0u32), 1.0);
+    }
+
+    #[test]
+    fn signed_mask_sign_products() {
+        // sign = [1, -1, 1, -1]
+        let op = SignedPermDitMask::new(0b1111u32, vec![1.0, -1.0, 1.0, -1.0]);
+
+        // |0001⟩: only site 0 occupied → sign = 1.
+        assert_eq!(op.fermion_sign(0b0001u32), 1.0);
+
+        // |0010⟩: only site 1 occupied → sign = -1.
+        assert_eq!(op.fermion_sign(0b0010u32), -1.0);
+
+        // |1010⟩: sites 1 and 3 occupied → sign = -1 · -1 = 1.
+        assert_eq!(op.fermion_sign(0b1010u32), 1.0);
+
+        // |1100⟩: sites 2 and 3 occupied → sign = 1 · -1 = -1.
+        assert_eq!(op.fermion_sign(0b1100u32), -1.0);
+
+        // |1111⟩: all four sites → sign = 1 · -1 · 1 · -1 = 1.
+        assert_eq!(op.fermion_sign(0b1111u32), 1.0);
+    }
+
+    #[test]
+    fn signed_mask_default_1d_alternates() {
+        let op = SignedPermDitMask::default_1d(0b1111u32, 6);
+        assert_eq!(op.sign(), &[1.0, -1.0, 1.0, -1.0, 1.0, -1.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "sign must be non-empty")]
+    fn signed_mask_rejects_empty_sign() {
+        let _ = SignedPermDitMask::new(0u32, vec![]);
     }
 }

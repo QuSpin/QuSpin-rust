@@ -10,6 +10,7 @@ pub mod seed;
 pub mod space;
 pub mod spin;
 pub mod sym;
+pub mod sym_element;
 pub mod traits;
 
 pub use boson::BosonBasis;
@@ -22,6 +23,7 @@ pub use seed::{
 pub use space::{FullSpace, Subspace};
 pub use spin::{SpaceKind, SpinBasis};
 pub use sym::{NormInt, SymBasis};
+pub use sym_element::SymElement;
 pub use traits::{BasisSpace, SymGrp};
 
 // ---------------------------------------------------------------------------
@@ -164,7 +166,7 @@ pub(crate) fn build_inner<G: quspin_bitbasis::StateTransitions>(
             with_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, graph);
+                    sym_basis.build(s, graph)?;
                 }
             });
         }
@@ -172,7 +174,7 @@ pub(crate) fn build_inner<G: quspin_bitbasis::StateTransitions>(
             with_trit_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, graph);
+                    sym_basis.build(s, graph)?;
                 }
             });
         }
@@ -180,7 +182,7 @@ pub(crate) fn build_inner<G: quspin_bitbasis::StateTransitions>(
             with_quat_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, graph);
+                    sym_basis.build(s, graph)?;
                 }
             });
         }
@@ -188,7 +190,7 @@ pub(crate) fn build_inner<G: quspin_bitbasis::StateTransitions>(
             with_dit_sym_basis_mut!(inner, B, sym_basis, {
                 for seed in seeds {
                     let s = decode_seed!(B, seed);
-                    sym_basis.build(s, graph);
+                    sym_basis.build(s, graph)?;
                 }
             });
         }

@@ -156,10 +156,11 @@ mod tests {
         let ham = MonomialOperatorInner::Ham8(MonomialOperator::new(vec![term], lhss).unwrap());
 
         let mut basis = GenericBasis::new(n_sites, lhss, SpaceKind::Symm).unwrap();
-        // Translation symmetry k=0: perm = [1, 2, 3, 0], char = 1.
-        basis
-            .add_lattice(Complex::new(1.0, 0.0), vec![1, 2, 3, 0])
-            .unwrap();
+        // Translation symmetry k=0: full cyclic group {T, T², T³} (identity is
+        // implicit), all with χ = 1.
+        for perm in [vec![1, 2, 3, 0], vec![2, 3, 0, 1], vec![3, 0, 1, 2]] {
+            basis.add_lattice(Complex::new(1.0, 0.0), perm).unwrap();
+        }
         // Seed |0000> is its own canonical representative in any translation sector.
         let seed = vec![0u8, 0, 0, 0];
         basis.build(&ham, &[seed]).unwrap();

@@ -13,22 +13,22 @@ from quspin_rs._rs import (
 
 
 def _make_operator(L: int) -> PauliOperator:
-    """Nearest-neighbor XX interaction with transverse Z field on L sites (PBC)."""
-    xx_bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
-    z_bonds = [[1.0, i] for i in range(L)]
-    return PauliOperator([("xx", xx_bonds)], [("z", z_bonds)])
+    """Nearest-neighbor XX and YY interactions on L sites (PBC)."""
+    bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
+    return PauliOperator([("xx", bonds)], [("yy", bonds)])
 
 
 def _translation_group(
     L: int, k: int = 0
 ) -> list[tuple[list[int], tuple[float, float]]]:
-    """All L elements of the cyclic translation group on L sites.
+    """Non-identity elements of the cyclic translation group on L sites.
 
     Each element is (perm, (re, im)) where perm = T^n and the character is
-    exp(2*pi*i*k*n/L) for momentum sector k.
+    exp(2*pi*i*k*n/L) for momentum sector k. The identity (T^0) is implicit
+    in `SymBasis` and is not included.
     """
     elements = []
-    for power in range(L):
+    for power in range(1, L):
         perm = [(i + power) % L for i in range(L)]
         angle = 2 * math.pi * k * power / L
         # TODO: change input to complex number instead of tuple
@@ -38,15 +38,17 @@ def _translation_group(
 
 # TODO build example onf PZ symmetry group, particle-hole symmetry, etc. need to extend symmetry groups
 
-L = 4
+L = 28
+M = L // 2
 op = _make_operator(L)
-seeds = ["0" * L]
+seeds = [M * "1" + (L - M) * "0"]
 # seeds.append("1" + "0" * (L - 1))
 
 # TODO: where is spin-inversion???
 symmetries = _translation_group(L)
 basis = SpinBasis.symmetric(L, op, seeds, symmetries)
 print(basis)
+
 # TODO:
 # * create and expose nbytes calculation to python
 # * create some way of visualizing the matrix in, something like Julia's sparse

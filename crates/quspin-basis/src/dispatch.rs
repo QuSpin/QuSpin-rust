@@ -843,62 +843,116 @@ impl SpaceInner {
             seen[p] = true;
         }
         match self {
-            SpaceInner::Sym32(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::Sym64(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::Sym128(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::Sym256(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::Sym32(b) => b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?,
+            SpaceInner::Sym64(b) => b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?,
+            SpaceInner::Sym128(b) => b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?,
+            SpaceInner::Sym256(b) => b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?,
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym512(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::Sym512(b) => b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?,
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym1024(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::Sym1024(b) => b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?,
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym2048(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::Sym2048(b) => b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?,
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym4096(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::Sym4096(b) => b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?,
             #[cfg(feature = "large-int")]
-            SpaceInner::Sym8192(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::DitSym32(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::DitSym64(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::DitSym128(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::DitSym256(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::Sym8192(b) => b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?,
+            SpaceInner::DitSym32(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::DitSym64(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::DitSym128(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::DitSym256(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym512(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::DitSym512(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym1024(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::DitSym1024(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym2048(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::DitSym2048(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym4096(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::DitSym4096(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::DitSym8192(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::TritSym32(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::TritSym64(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::TritSym128(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::TritSym256(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::DitSym8192(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::TritSym32(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::TritSym64(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::TritSym128(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::TritSym256(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::TritSym512(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::TritSym512(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::TritSym1024(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::TritSym1024(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::TritSym2048(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::TritSym2048(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::TritSym4096(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::TritSym4096(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::TritSym8192(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::QuatSym32(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::QuatSym64(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::QuatSym128(b) => b.add_lattice(grp_char, perm),
-            SpaceInner::QuatSym256(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::TritSym8192(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::QuatSym32(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::QuatSym64(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::QuatSym128(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
+            SpaceInner::QuatSym256(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::QuatSym512(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::QuatSym512(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::QuatSym1024(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::QuatSym1024(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::QuatSym2048(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::QuatSym2048(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::QuatSym4096(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::QuatSym4096(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             #[cfg(feature = "large-int")]
-            SpaceInner::QuatSym8192(b) => b.add_lattice(grp_char, perm),
+            SpaceInner::QuatSym8192(b) => {
+                b.add_symmetry(grp_char, crate::SymElement::lattice(perm))?
+            }
             _ => unreachable!("non-symmetric variants ruled out above"),
         }
         Ok(())
@@ -946,7 +1000,7 @@ impl SpaceInner {
                         acc
                     }
                 });
-                $basis.add_local(grp_char, PermDitMask::new(mask));
+                $basis.add_symmetry(grp_char, crate::SymElement::local(PermDitMask::new(mask)))?;
             }};
         }
         match self {
@@ -1048,38 +1102,47 @@ impl SpaceInner {
             3 => {
                 let arr: [u8; 3] = perm_vals.try_into().expect("length validated above");
                 match self {
-                    SpaceInner::TritSym32(b) => {
-                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
-                    }
-                    SpaceInner::TritSym64(b) => {
-                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
-                    }
-                    SpaceInner::TritSym128(b) => {
-                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
-                    }
-                    SpaceInner::TritSym256(b) => {
-                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
-                    }
+                    SpaceInner::TritSym32(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<3>::new(arr, locs)),
+                    )?,
+                    SpaceInner::TritSym64(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<3>::new(arr, locs)),
+                    )?,
+                    SpaceInner::TritSym128(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<3>::new(arr, locs)),
+                    )?,
+                    SpaceInner::TritSym256(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<3>::new(arr, locs)),
+                    )?,
                     #[cfg(feature = "large-int")]
-                    SpaceInner::TritSym512(b) => {
-                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
-                    }
+                    SpaceInner::TritSym512(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<3>::new(arr, locs)),
+                    )?,
                     #[cfg(feature = "large-int")]
-                    SpaceInner::TritSym1024(b) => {
-                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
-                    }
+                    SpaceInner::TritSym1024(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<3>::new(arr, locs)),
+                    )?,
                     #[cfg(feature = "large-int")]
-                    SpaceInner::TritSym2048(b) => {
-                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
-                    }
+                    SpaceInner::TritSym2048(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<3>::new(arr, locs)),
+                    )?,
                     #[cfg(feature = "large-int")]
-                    SpaceInner::TritSym4096(b) => {
-                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
-                    }
+                    SpaceInner::TritSym4096(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<3>::new(arr, locs)),
+                    )?,
                     #[cfg(feature = "large-int")]
-                    SpaceInner::TritSym8192(b) => {
-                        b.add_local(grp_char, PermDitValues::<3>::new(arr, locs))
-                    }
+                    SpaceInner::TritSym8192(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<3>::new(arr, locs)),
+                    )?,
                     _ => {
                         return Err(QuSpinError::ValueError(
                             "add_local with lhss=3 requires a TritSym* variant".into(),
@@ -1090,38 +1153,47 @@ impl SpaceInner {
             4 => {
                 let arr: [u8; 4] = perm_vals.try_into().expect("length validated above");
                 match self {
-                    SpaceInner::QuatSym32(b) => {
-                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
-                    }
-                    SpaceInner::QuatSym64(b) => {
-                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
-                    }
-                    SpaceInner::QuatSym128(b) => {
-                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
-                    }
-                    SpaceInner::QuatSym256(b) => {
-                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
-                    }
+                    SpaceInner::QuatSym32(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<4>::new(arr, locs)),
+                    )?,
+                    SpaceInner::QuatSym64(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<4>::new(arr, locs)),
+                    )?,
+                    SpaceInner::QuatSym128(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<4>::new(arr, locs)),
+                    )?,
+                    SpaceInner::QuatSym256(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<4>::new(arr, locs)),
+                    )?,
                     #[cfg(feature = "large-int")]
-                    SpaceInner::QuatSym512(b) => {
-                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
-                    }
+                    SpaceInner::QuatSym512(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<4>::new(arr, locs)),
+                    )?,
                     #[cfg(feature = "large-int")]
-                    SpaceInner::QuatSym1024(b) => {
-                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
-                    }
+                    SpaceInner::QuatSym1024(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<4>::new(arr, locs)),
+                    )?,
                     #[cfg(feature = "large-int")]
-                    SpaceInner::QuatSym2048(b) => {
-                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
-                    }
+                    SpaceInner::QuatSym2048(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<4>::new(arr, locs)),
+                    )?,
                     #[cfg(feature = "large-int")]
-                    SpaceInner::QuatSym4096(b) => {
-                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
-                    }
+                    SpaceInner::QuatSym4096(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<4>::new(arr, locs)),
+                    )?,
                     #[cfg(feature = "large-int")]
-                    SpaceInner::QuatSym8192(b) => {
-                        b.add_local(grp_char, PermDitValues::<4>::new(arr, locs))
-                    }
+                    SpaceInner::QuatSym8192(b) => b.add_symmetry(
+                        grp_char,
+                        crate::SymElement::local(PermDitValues::<4>::new(arr, locs)),
+                    )?,
                     _ => {
                         return Err(QuSpinError::ValueError(
                             "add_local with lhss=4 requires a QuatSym* variant".into(),
@@ -1130,38 +1202,47 @@ impl SpaceInner {
                 }
             }
             _ => match self {
-                SpaceInner::DitSym32(b) => {
-                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
-                }
-                SpaceInner::DitSym64(b) => {
-                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
-                }
-                SpaceInner::DitSym128(b) => {
-                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
-                }
-                SpaceInner::DitSym256(b) => {
-                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
-                }
+                SpaceInner::DitSym32(b) => b.add_symmetry(
+                    grp_char,
+                    crate::SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
+                )?,
+                SpaceInner::DitSym64(b) => b.add_symmetry(
+                    grp_char,
+                    crate::SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
+                )?,
+                SpaceInner::DitSym128(b) => b.add_symmetry(
+                    grp_char,
+                    crate::SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
+                )?,
+                SpaceInner::DitSym256(b) => b.add_symmetry(
+                    grp_char,
+                    crate::SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
+                )?,
                 #[cfg(feature = "large-int")]
-                SpaceInner::DitSym512(b) => {
-                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
-                }
+                SpaceInner::DitSym512(b) => b.add_symmetry(
+                    grp_char,
+                    crate::SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
+                )?,
                 #[cfg(feature = "large-int")]
-                SpaceInner::DitSym1024(b) => {
-                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
-                }
+                SpaceInner::DitSym1024(b) => b.add_symmetry(
+                    grp_char,
+                    crate::SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
+                )?,
                 #[cfg(feature = "large-int")]
-                SpaceInner::DitSym2048(b) => {
-                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
-                }
+                SpaceInner::DitSym2048(b) => b.add_symmetry(
+                    grp_char,
+                    crate::SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
+                )?,
                 #[cfg(feature = "large-int")]
-                SpaceInner::DitSym4096(b) => {
-                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
-                }
+                SpaceInner::DitSym4096(b) => b.add_symmetry(
+                    grp_char,
+                    crate::SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
+                )?,
                 #[cfg(feature = "large-int")]
-                SpaceInner::DitSym8192(b) => {
-                    b.add_local(grp_char, DynamicPermDitValues::new(lhss, perm_vals, locs))
-                }
+                SpaceInner::DitSym8192(b) => b.add_symmetry(
+                    grp_char,
+                    crate::SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
+                )?,
                 _ => {
                     return Err(QuSpinError::ValueError(
                         "add_local with lhss>=5 requires a DitSym* variant".into(),

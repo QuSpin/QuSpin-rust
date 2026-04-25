@@ -311,7 +311,7 @@ The trailing space in `"quspin-operator "` excludes matches against `quspin-oper
 
 ## 8. Out of scope / known follow-ups
 
-- Collapsing the four basis types (`SpinBasis`, `BosonBasis`, `FermionBasis`, `GenericBasis`) into one. Requires restructuring the symmetry-group API, which the user wants to address as a separate subsequent refactor.
+- Collapsing the four basis types (`SpinBasis`, `BosonBasis`, `FermionBasis`, `GenericBasis`) into one. Requires restructuring the symmetry-group API. Addressed in the follow-up spec [`2026-04-19-symmetry-group-refactor.md`](2026-04-19-symmetry-group-refactor.md), which redesigns the user-facing symmetry API around a single `add_symmetry(SymElement)` entry point and adds closure + character validation.
 - Any change to `quspin-matrix`, `quspin-expm`, or `quspin-krylov`.
 
 ### Open tension: amplitude is a basis-layer concern (review #2)

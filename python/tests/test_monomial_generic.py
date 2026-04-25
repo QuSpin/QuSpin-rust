@@ -171,6 +171,15 @@ class TestGenericBasisSubspace:
 
 
 class TestGenericBasisSymmetric:
+    # Non-identity powers of the 4-site translation generator T = [1,2,3,0].
+    # Identity (T^0) is implicit in SymBasis, so the user supplies only
+    # {T, T^2, T^3}.
+    TRANSLATION_4 = [
+        ([1, 2, 3, 0], (1.0, 0.0)),
+        ([2, 3, 0, 1], (1.0, 0.0)),
+        ([3, 0, 1, 2], (1.0, 0.0)),
+    ]
+
     def test_translation_lhss2(self):
         op = swap_op(2, 4)
         basis = GenericBasis.symmetric(
@@ -178,7 +187,7 @@ class TestGenericBasisSymmetric:
             2,
             op,
             ["0000"],
-            symmetries=[([1, 2, 3, 0], (1.0, 0.0))],
+            symmetries=self.TRANSLATION_4,
         )
         assert basis.size > 0
 
@@ -189,33 +198,41 @@ class TestGenericBasisSymmetric:
             3,
             op,
             ["0000"],
-            symmetries=[([1, 2, 3, 0], (1.0, 0.0))],
+            symmetries=self.TRANSLATION_4,
         )
         assert basis.size > 0
 
     def test_local_symmetry_all_sites(self):
         op = cyclic_op(3, 4)
-        # Z_3 local symmetry: [1,2,0] is cyclic shift of dit values
+        # Z_3 local symmetry: cyclic shift of dit values. The identity shift
+        # [0,1,2] is implicit; supply only the two non-identity powers.
         basis = GenericBasis.symmetric(
             4,
             3,
             op,
             ["0000"],
             symmetries=[],
-            local_symmetries=[([1, 2, 0], (1.0, 0.0))],
+            local_symmetries=[
+                ([1, 2, 0], (1.0, 0.0)),
+                ([2, 0, 1], (1.0, 0.0)),
+            ],
         )
         assert basis.size >= 0  # just check it doesn't crash
 
     def test_local_symmetry_masked(self):
         op = cyclic_op(3, 4)
-        # Apply local symmetry only to sites 0 and 2
+        # Apply local symmetry only to sites 0 and 2; supply both non-identity
+        # powers of the Z_3 cyclic dit shift.
         basis = GenericBasis.symmetric(
             4,
             3,
             op,
             ["0000"],
             symmetries=[],
-            local_symmetries=[([1, 2, 0], (1.0, 0.0), [0, 2])],
+            local_symmetries=[
+                ([1, 2, 0], (1.0, 0.0), [0, 2]),
+                ([2, 0, 1], (1.0, 0.0), [0, 2]),
+            ],
         )
         assert basis.size >= 0
 
@@ -227,7 +244,7 @@ class TestGenericBasisSymmetric:
             2,
             op,
             ["0000"],
-            symmetries=[([1, 2, 3, 0], (1.0, 0.0))],
+            symmetries=self.TRANSLATION_4,
         )
         assert sym.size <= full.size
 

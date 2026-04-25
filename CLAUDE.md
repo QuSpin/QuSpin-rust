@@ -48,6 +48,7 @@ All four crates at the mid level (`quspin-operator`, `quspin-basis`, `quspin-exp
 - **`StateGraph` trait** (in `quspin-bitbasis`) is the connectivity abstraction `SpinBasis::build` / `BosonBasis::build` / `FermionBasis::build` / `GenericBasis::build` take. Every `*Operator<C>` and `*OperatorInner` impls it — callers do `basis.build(&op.inner, seeds)` or `basis.build(&op, seeds)`.
 - **`OperatorDispatch` trait** (in `quspin-matrix`) carries the basis-dependent methods (`apply_and_project_to`, `apply`) on `*OperatorInner`. Consumers (e.g. `quspin-py`) need `use quspin_core::OperatorDispatch;` for method-call syntax.
 - **`Operator<C>` trait** (in `quspin-operator`) defines `max_site`, `num_cindices`, `lhss`, `apply`. All concrete operator types implement it; `StateGraph` is derived from `apply` by dropping the cindex argument.
+- **`SymElement<L>` + `add_symmetry`** (in `quspin-basis`) is the single user-facing shape for group elements on `SymBasis`. Constructors `SymElement::lattice(perm)`, `::local(op)`, `::composite(perm, op)` produce one element; the identity is always implicit and rejected if added explicitly. `SymBasis` stores every element in one of three typed vectors (`lattice_only`, `local_only`, `composite`) so the orbit hot loop is variant-free. `SymBasis::build` runs an `O(|G|²·probes)` closure + 1D-character validation (`χ(g·h) = χ(g)·χ(h)`) before BFS, catching missing closure / bad characters / duplicate actions at build time.
 
 ## Build & Dev Commands
 

@@ -16,6 +16,6 @@ pub use benes::{BenesNetwork, benes_fwd, gen_benes};
 pub use manip::{DitManip, DynamicDitManip};
 pub use quspin_types::{BitInt, StateTransitions};
 pub use transform::{
-    BenesPermDitLocations, BitStateOp, DynamicPermDitValues, PermDitLocations, PermDitMask,
-    PermDitValues,
+    BenesPermDitLocations, BitStateOp, Compose, DynamicPermDitValues, FermionicBitStateOp,
+    PermDitLocations, PermDitMask, PermDitValues, SignedPermDitMask,
 };
