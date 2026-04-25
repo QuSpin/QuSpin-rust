@@ -316,57 +316,99 @@ fn validate_args(
 // ---------------------------------------------------------------------------
 
 pub use quspin_basis::dispatch::SpaceInner;
+use quspin_basis::dispatch::{
+    SpaceInnerBit, SpaceInnerBitDefault, SpaceInnerDit, SpaceInnerDitDefault, SpaceInnerQuat,
+    SpaceInnerQuatDefault, SpaceInnerTrit, SpaceInnerTritDefault,
+};
+#[cfg(feature = "large-int")]
+use quspin_basis::dispatch::{
+    SpaceInnerBitLargeInt, SpaceInnerDitLargeInt, SpaceInnerQuatLargeInt, SpaceInnerTritLargeInt,
+};
 
-/// Handle a single input variant: dispatch over all output variants.
-macro_rules! dispatch_one_input {
-    (
-        $op:expr, $input:expr, $output:expr,
-        $coeffs:expr, $in_vec:expr, $out_vec:expr, $overwrite:expr,
-        $InVar:ident,
-        output = [$($OutVar:ident),*]
-    ) => {
-        if let SpaceInner::$InVar(in_s) = $input {
-            $(
-                if let SpaceInner::$OutVar(out_s) = $output {
-                    return apply_and_project_to_inner($op, in_s, out_s, $coeffs, $in_vec, $out_vec, $overwrite);
-                }
-            )*
-            return Err(QuSpinError::ValueError(
+/// Cross-dispatch over a per-family `Default` sub-enum (variants
+/// `Full32`/`Full64`/`Sub32`/`Sub64`/`Sub128`/`Sub256`/`Sym32`/`Sym64`/
+/// `Sym128`/`Sym256`). Only same-width pairs are valid; cross-width
+/// pairs fall through to the catch-all error arm.
+///
+/// `$body` is an expression using the bound `in_s` and `out_s`
+/// identifiers (closure-like syntax). The same body shape is reused by
+/// `apply_and_project_to` and `project_to` with different inner-fn
+/// invocations.
+macro_rules! dispatch_default {
+    ($Enum:ident, $input:expr, $output:expr, |$in_s:ident, $out_s:ident| $body:expr) => {
+        match ($input, $output) {
+            // width 32
+            ($Enum::Full32($in_s), $Enum::Full32($out_s)) => $body,
+            ($Enum::Full32($in_s), $Enum::Sub32($out_s)) => $body,
+            ($Enum::Full32($in_s), $Enum::Sym32($out_s)) => $body,
+            ($Enum::Sub32($in_s), $Enum::Full32($out_s)) => $body,
+            ($Enum::Sub32($in_s), $Enum::Sub32($out_s)) => $body,
+            ($Enum::Sub32($in_s), $Enum::Sym32($out_s)) => $body,
+            ($Enum::Sym32($in_s), $Enum::Full32($out_s)) => $body,
+            ($Enum::Sym32($in_s), $Enum::Sub32($out_s)) => $body,
+            ($Enum::Sym32($in_s), $Enum::Sym32($out_s)) => $body,
+            // width 64
+            ($Enum::Full64($in_s), $Enum::Full64($out_s)) => $body,
+            ($Enum::Full64($in_s), $Enum::Sub64($out_s)) => $body,
+            ($Enum::Full64($in_s), $Enum::Sym64($out_s)) => $body,
+            ($Enum::Sub64($in_s), $Enum::Full64($out_s)) => $body,
+            ($Enum::Sub64($in_s), $Enum::Sub64($out_s)) => $body,
+            ($Enum::Sub64($in_s), $Enum::Sym64($out_s)) => $body,
+            ($Enum::Sym64($in_s), $Enum::Full64($out_s)) => $body,
+            ($Enum::Sym64($in_s), $Enum::Sub64($out_s)) => $body,
+            ($Enum::Sym64($in_s), $Enum::Sym64($out_s)) => $body,
+            // width 128
+            ($Enum::Sub128($in_s), $Enum::Sub128($out_s)) => $body,
+            ($Enum::Sub128($in_s), $Enum::Sym128($out_s)) => $body,
+            ($Enum::Sym128($in_s), $Enum::Sub128($out_s)) => $body,
+            ($Enum::Sym128($in_s), $Enum::Sym128($out_s)) => $body,
+            // width 256
+            ($Enum::Sub256($in_s), $Enum::Sub256($out_s)) => $body,
+            ($Enum::Sub256($in_s), $Enum::Sym256($out_s)) => $body,
+            ($Enum::Sym256($in_s), $Enum::Sub256($out_s)) => $body,
+            ($Enum::Sym256($in_s), $Enum::Sym256($out_s)) => $body,
+            _ => Err(QuSpinError::ValueError(
                 "input and output bases have incompatible state integer types".into(),
-            ));
+            )),
         }
     };
 }
 
-/// Dispatch over one BitInt family via recursive tt-munching.
-/// Peels off one input variant at a time to avoid repetition count conflicts.
-macro_rules! dispatch_project_b {
-    // Base case: no more input variants
-    (
-        $op:expr, $input:expr, $output:expr,
-        $coeffs:expr, $in_vec:expr, $out_vec:expr, $overwrite:expr,
-        input = [],
-        $($out_tt:tt)*
-    ) => {};
-    // Recursive case: peel off first input variant
-    (
-        $op:expr, $input:expr, $output:expr,
-        $coeffs:expr, $in_vec:expr, $out_vec:expr, $overwrite:expr,
-        input = [$first:ident $(, $rest:ident)*],
-        $($out_tt:tt)*
-    ) => {
-        dispatch_one_input!(
-            $op, $input, $output,
-            $coeffs, $in_vec, $out_vec, $overwrite,
-            $first,
-            $($out_tt)*
-        );
-        dispatch_project_b!(
-            $op, $input, $output,
-            $coeffs, $in_vec, $out_vec, $overwrite,
-            input = [$($rest),*],
-            $($out_tt)*
-        );
+/// Cross-dispatch over a per-family `LargeInt` sub-enum (variants
+/// `Sub*` / `Sym*` for widths 512..8192). See [`dispatch_default`].
+#[cfg(feature = "large-int")]
+macro_rules! dispatch_largeint {
+    ($Enum:ident, $input:expr, $output:expr, |$in_s:ident, $out_s:ident| $body:expr) => {
+        match ($input, $output) {
+            // width 512
+            ($Enum::Sub512($in_s), $Enum::Sub512($out_s)) => $body,
+            ($Enum::Sub512($in_s), $Enum::Sym512($out_s)) => $body,
+            ($Enum::Sym512($in_s), $Enum::Sub512($out_s)) => $body,
+            ($Enum::Sym512($in_s), $Enum::Sym512($out_s)) => $body,
+            // width 1024
+            ($Enum::Sub1024($in_s), $Enum::Sub1024($out_s)) => $body,
+            ($Enum::Sub1024($in_s), $Enum::Sym1024($out_s)) => $body,
+            ($Enum::Sym1024($in_s), $Enum::Sub1024($out_s)) => $body,
+            ($Enum::Sym1024($in_s), $Enum::Sym1024($out_s)) => $body,
+            // width 2048
+            ($Enum::Sub2048($in_s), $Enum::Sub2048($out_s)) => $body,
+            ($Enum::Sub2048($in_s), $Enum::Sym2048($out_s)) => $body,
+            ($Enum::Sym2048($in_s), $Enum::Sub2048($out_s)) => $body,
+            ($Enum::Sym2048($in_s), $Enum::Sym2048($out_s)) => $body,
+            // width 4096
+            ($Enum::Sub4096($in_s), $Enum::Sub4096($out_s)) => $body,
+            ($Enum::Sub4096($in_s), $Enum::Sym4096($out_s)) => $body,
+            ($Enum::Sym4096($in_s), $Enum::Sub4096($out_s)) => $body,
+            ($Enum::Sym4096($in_s), $Enum::Sym4096($out_s)) => $body,
+            // width 8192
+            ($Enum::Sub8192($in_s), $Enum::Sub8192($out_s)) => $body,
+            ($Enum::Sub8192($in_s), $Enum::Sym8192($out_s)) => $body,
+            ($Enum::Sym8192($in_s), $Enum::Sub8192($out_s)) => $body,
+            ($Enum::Sym8192($in_s), $Enum::Sym8192($out_s)) => $body,
+            _ => Err(QuSpinError::ValueError(
+                "input and output bases have incompatible state integer types".into(),
+            )),
+        }
     };
 }
 
@@ -374,8 +416,8 @@ macro_rules! dispatch_project_b {
 /// project the result into `output` space.
 ///
 /// Called from each `OperatorInner::apply_and_project_to` after resolving the
-/// cindex type.
-#[allow(unused_imports, dead_code)]
+/// cindex type. Errors when the input and output bases have different
+/// LHSS families (no cross-LHSS apply is supported).
 pub fn apply_and_project_to<H, C>(
     op: &H,
     input: &SpaceInner,
@@ -389,143 +431,86 @@ where
     H: Operator<C> + Sync,
     C: CIndex,
 {
-    #[allow(unused_imports)]
-    use quspin_bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
+    match (input, output) {
+        // ----------------------------------------------------------------
+        // Bit family
+        // ----------------------------------------------------------------
+        (
+            SpaceInner::Bit(SpaceInnerBit::Default(i)),
+            SpaceInner::Bit(SpaceInnerBit::Default(o)),
+        ) => {
+            dispatch_default!(SpaceInnerBitDefault, i, o, |in_s, out_s| {
+                apply_and_project_to_inner(op, in_s, out_s, coeffs, in_vec, out_vec, overwrite)
+            })
+        }
+        #[cfg(feature = "large-int")]
+        (
+            SpaceInner::Bit(SpaceInnerBit::LargeInt(i)),
+            SpaceInner::Bit(SpaceInnerBit::LargeInt(o)),
+        ) => dispatch_largeint!(SpaceInnerBitLargeInt, i, o, |in_s, out_s| {
+            apply_and_project_to_inner(op, in_s, out_s, coeffs, in_vec, out_vec, overwrite)
+        }),
 
-    type B128 = ruint::Uint<128, 2>;
-    type B256 = ruint::Uint<256, 4>;
-    #[cfg(feature = "large-int")]
-    type B512 = ruint::Uint<512, 8>;
-    #[cfg(feature = "large-int")]
-    type B1024 = ruint::Uint<1024, 16>;
-    #[cfg(feature = "large-int")]
-    type B2048 = ruint::Uint<2048, 32>;
-    #[cfg(feature = "large-int")]
-    type B4096 = ruint::Uint<4096, 64>;
-    #[cfg(feature = "large-int")]
-    type B8192 = ruint::Uint<8192, 128>;
+        // ----------------------------------------------------------------
+        // Trit family
+        // ----------------------------------------------------------------
+        (
+            SpaceInner::Trit(SpaceInnerTrit::Default(i)),
+            SpaceInner::Trit(SpaceInnerTrit::Default(o)),
+        ) => dispatch_default!(SpaceInnerTritDefault, i, o, |in_s, out_s| {
+            apply_and_project_to_inner(op, in_s, out_s, coeffs, in_vec, out_vec, overwrite)
+        }),
+        #[cfg(feature = "large-int")]
+        (
+            SpaceInner::Trit(SpaceInnerTrit::LargeInt(i)),
+            SpaceInner::Trit(SpaceInnerTrit::LargeInt(o)),
+        ) => dispatch_largeint!(SpaceInnerTritLargeInt, i, o, |in_s, out_s| {
+            apply_and_project_to_inner(op, in_s, out_s, coeffs, in_vec, out_vec, overwrite)
+        }),
 
-    // u32 family
-    dispatch_project_b!(
-        op,
-        input,
-        output,
-        coeffs,
-        in_vec,
-        out_vec,
-        overwrite,
-        input = [Full32, Sub32, Sym32, TritSym32, QuatSym32, DitSym32],
-        output = [Full32, Sub32, Sym32, TritSym32, QuatSym32, DitSym32]
-    );
+        // ----------------------------------------------------------------
+        // Quat family
+        // ----------------------------------------------------------------
+        (
+            SpaceInner::Quat(SpaceInnerQuat::Default(i)),
+            SpaceInner::Quat(SpaceInnerQuat::Default(o)),
+        ) => dispatch_default!(SpaceInnerQuatDefault, i, o, |in_s, out_s| {
+            apply_and_project_to_inner(op, in_s, out_s, coeffs, in_vec, out_vec, overwrite)
+        }),
+        #[cfg(feature = "large-int")]
+        (
+            SpaceInner::Quat(SpaceInnerQuat::LargeInt(i)),
+            SpaceInner::Quat(SpaceInnerQuat::LargeInt(o)),
+        ) => dispatch_largeint!(SpaceInnerQuatLargeInt, i, o, |in_s, out_s| {
+            apply_and_project_to_inner(op, in_s, out_s, coeffs, in_vec, out_vec, overwrite)
+        }),
 
-    // u64 family
-    dispatch_project_b!(
-        op,
-        input,
-        output,
-        coeffs,
-        in_vec,
-        out_vec,
-        overwrite,
-        input = [Full64, Sub64, Sym64, TritSym64, QuatSym64, DitSym64],
-        output = [Full64, Sub64, Sym64, TritSym64, QuatSym64, DitSym64]
-    );
+        // ----------------------------------------------------------------
+        // Dit family
+        // ----------------------------------------------------------------
+        (
+            SpaceInner::Dit(SpaceInnerDit::Default(i)),
+            SpaceInner::Dit(SpaceInnerDit::Default(o)),
+        ) => {
+            dispatch_default!(SpaceInnerDitDefault, i, o, |in_s, out_s| {
+                apply_and_project_to_inner(op, in_s, out_s, coeffs, in_vec, out_vec, overwrite)
+            })
+        }
+        #[cfg(feature = "large-int")]
+        (
+            SpaceInner::Dit(SpaceInnerDit::LargeInt(i)),
+            SpaceInner::Dit(SpaceInnerDit::LargeInt(o)),
+        ) => dispatch_largeint!(SpaceInnerDitLargeInt, i, o, |in_s, out_s| {
+            apply_and_project_to_inner(op, in_s, out_s, coeffs, in_vec, out_vec, overwrite)
+        }),
 
-    // B128 family
-    dispatch_project_b!(
-        op,
-        input,
-        output,
-        coeffs,
-        in_vec,
-        out_vec,
-        overwrite,
-        input = [Sub128, Sym128, TritSym128, QuatSym128, DitSym128],
-        output = [Sub128, Sym128, TritSym128, QuatSym128, DitSym128]
-    );
-
-    // B256 family
-    dispatch_project_b!(
-        op,
-        input,
-        output,
-        coeffs,
-        in_vec,
-        out_vec,
-        overwrite,
-        input = [Sub256, Sym256, TritSym256, QuatSym256, DitSym256],
-        output = [Sub256, Sym256, TritSym256, QuatSym256, DitSym256]
-    );
-
-    // large-int families (B512..B8192)
-    #[cfg(feature = "large-int")]
-    {
-        dispatch_project_b!(
-            op,
-            input,
-            output,
-            coeffs,
-            in_vec,
-            out_vec,
-            overwrite,
-            input = [Sub512, Sym512, TritSym512, QuatSym512, DitSym512],
-            output = [Sub512, Sym512, TritSym512, QuatSym512, DitSym512]
-        );
-        dispatch_project_b!(
-            op,
-            input,
-            output,
-            coeffs,
-            in_vec,
-            out_vec,
-            overwrite,
-            input = [Sub1024, Sym1024, TritSym1024, QuatSym1024, DitSym1024],
-            output = [Sub1024, Sym1024, TritSym1024, QuatSym1024, DitSym1024]
-        );
-        dispatch_project_b!(
-            op,
-            input,
-            output,
-            coeffs,
-            in_vec,
-            out_vec,
-            overwrite,
-            input = [Sub2048, Sym2048, TritSym2048, QuatSym2048, DitSym2048],
-            output = [Sub2048, Sym2048, TritSym2048, QuatSym2048, DitSym2048]
-        );
-        dispatch_project_b!(
-            op,
-            input,
-            output,
-            coeffs,
-            in_vec,
-            out_vec,
-            overwrite,
-            input = [Sub4096, Sym4096, TritSym4096, QuatSym4096, DitSym4096],
-            output = [Sub4096, Sym4096, TritSym4096, QuatSym4096, DitSym4096]
-        );
-        dispatch_project_b!(
-            op,
-            input,
-            output,
-            coeffs,
-            in_vec,
-            out_vec,
-            overwrite,
-            input = [Sub8192, Sym8192, TritSym8192, QuatSym8192, DitSym8192],
-            output = [Sub8192, Sym8192, TritSym8192, QuatSym8192, DitSym8192]
-        );
+        _ => Err(QuSpinError::ValueError(
+            "input and output bases have incompatible LHSS families or width groups".into(),
+        )),
     }
-
-    Err(QuSpinError::ValueError(
-        "unsupported input basis type for apply_and_project_to \
-         (unsupported or mismatched state integer types)"
-            .into(),
-    ))
 }
 
 /// Type-erased dispatch for identity projection (no operator).
-#[allow(dead_code)]
 pub fn project_to(
     input: &SpaceInner,
     output: &SpaceInner,
@@ -533,146 +518,75 @@ pub fn project_to(
     out_vec: &mut [C64],
     overwrite: bool,
 ) -> Result<(), QuSpinError> {
-    // Reuse the same dispatch macros by wrapping project_to in a closure
-    // that matches the dispatch_one_input_project pattern.
-    macro_rules! dispatch_one_project {
-        ($input:expr, $output:expr, $in_vec:expr, $out_vec:expr, $overwrite:expr,
-         $InVar:ident, output = [$($OutVar:ident),*]) => {
-            if let SpaceInner::$InVar(in_s) = $input {
-                $(
-                    if let SpaceInner::$OutVar(out_s) = $output {
-                        return project_to_inner(in_s, out_s, $in_vec, $out_vec, $overwrite);
-                    }
-                )*
-                return Err(QuSpinError::ValueError(
-                    "input and output bases have incompatible state integer types".into(),
-                ));
-            }
-        };
+    match (input, output) {
+        // Bit family
+        (
+            SpaceInner::Bit(SpaceInnerBit::Default(i)),
+            SpaceInner::Bit(SpaceInnerBit::Default(o)),
+        ) => {
+            dispatch_default!(SpaceInnerBitDefault, i, o, |in_s, out_s| {
+                project_to_inner(in_s, out_s, in_vec, out_vec, overwrite)
+            })
+        }
+        #[cfg(feature = "large-int")]
+        (
+            SpaceInner::Bit(SpaceInnerBit::LargeInt(i)),
+            SpaceInner::Bit(SpaceInnerBit::LargeInt(o)),
+        ) => dispatch_largeint!(SpaceInnerBitLargeInt, i, o, |in_s, out_s| {
+            project_to_inner(in_s, out_s, in_vec, out_vec, overwrite)
+        }),
+
+        // Trit family
+        (
+            SpaceInner::Trit(SpaceInnerTrit::Default(i)),
+            SpaceInner::Trit(SpaceInnerTrit::Default(o)),
+        ) => dispatch_default!(SpaceInnerTritDefault, i, o, |in_s, out_s| {
+            project_to_inner(in_s, out_s, in_vec, out_vec, overwrite)
+        }),
+        #[cfg(feature = "large-int")]
+        (
+            SpaceInner::Trit(SpaceInnerTrit::LargeInt(i)),
+            SpaceInner::Trit(SpaceInnerTrit::LargeInt(o)),
+        ) => dispatch_largeint!(SpaceInnerTritLargeInt, i, o, |in_s, out_s| {
+            project_to_inner(in_s, out_s, in_vec, out_vec, overwrite)
+        }),
+
+        // Quat family
+        (
+            SpaceInner::Quat(SpaceInnerQuat::Default(i)),
+            SpaceInner::Quat(SpaceInnerQuat::Default(o)),
+        ) => dispatch_default!(SpaceInnerQuatDefault, i, o, |in_s, out_s| {
+            project_to_inner(in_s, out_s, in_vec, out_vec, overwrite)
+        }),
+        #[cfg(feature = "large-int")]
+        (
+            SpaceInner::Quat(SpaceInnerQuat::LargeInt(i)),
+            SpaceInner::Quat(SpaceInnerQuat::LargeInt(o)),
+        ) => dispatch_largeint!(SpaceInnerQuatLargeInt, i, o, |in_s, out_s| {
+            project_to_inner(in_s, out_s, in_vec, out_vec, overwrite)
+        }),
+
+        // Dit family
+        (
+            SpaceInner::Dit(SpaceInnerDit::Default(i)),
+            SpaceInner::Dit(SpaceInnerDit::Default(o)),
+        ) => {
+            dispatch_default!(SpaceInnerDitDefault, i, o, |in_s, out_s| {
+                project_to_inner(in_s, out_s, in_vec, out_vec, overwrite)
+            })
+        }
+        #[cfg(feature = "large-int")]
+        (
+            SpaceInner::Dit(SpaceInnerDit::LargeInt(i)),
+            SpaceInner::Dit(SpaceInnerDit::LargeInt(o)),
+        ) => dispatch_largeint!(SpaceInnerDitLargeInt, i, o, |in_s, out_s| {
+            project_to_inner(in_s, out_s, in_vec, out_vec, overwrite)
+        }),
+
+        _ => Err(QuSpinError::ValueError(
+            "input and output bases have incompatible LHSS families or width groups".into(),
+        )),
     }
-
-    macro_rules! dispatch_project_family {
-        ($input:expr, $output:expr, $in_vec:expr, $out_vec:expr, $overwrite:expr,
-         input = [], $($out_tt:tt)*) => {};
-        ($input:expr, $output:expr, $in_vec:expr, $out_vec:expr, $overwrite:expr,
-         input = [$first:ident $(, $rest:ident)*], $($out_tt:tt)*) => {
-            dispatch_one_project!(
-                $input, $output, $in_vec, $out_vec, $overwrite,
-                $first, $($out_tt)*
-            );
-            dispatch_project_family!(
-                $input, $output, $in_vec, $out_vec, $overwrite,
-                input = [$($rest),*], $($out_tt)*
-            );
-        };
-    }
-
-    #[allow(unused_imports)]
-    use quspin_bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
-
-    type B128 = ruint::Uint<128, 2>;
-    type B256 = ruint::Uint<256, 4>;
-    #[cfg(feature = "large-int")]
-    type B512 = ruint::Uint<512, 8>;
-    #[cfg(feature = "large-int")]
-    type B1024 = ruint::Uint<1024, 16>;
-    #[cfg(feature = "large-int")]
-    type B2048 = ruint::Uint<2048, 32>;
-    #[cfg(feature = "large-int")]
-    type B4096 = ruint::Uint<4096, 64>;
-    #[cfg(feature = "large-int")]
-    type B8192 = ruint::Uint<8192, 128>;
-
-    dispatch_project_family!(
-        input,
-        output,
-        in_vec,
-        out_vec,
-        overwrite,
-        input = [Full32, Sub32, Sym32, TritSym32, QuatSym32, DitSym32],
-        output = [Full32, Sub32, Sym32, TritSym32, QuatSym32, DitSym32]
-    );
-    dispatch_project_family!(
-        input,
-        output,
-        in_vec,
-        out_vec,
-        overwrite,
-        input = [Full64, Sub64, Sym64, TritSym64, QuatSym64, DitSym64],
-        output = [Full64, Sub64, Sym64, TritSym64, QuatSym64, DitSym64]
-    );
-    dispatch_project_family!(
-        input,
-        output,
-        in_vec,
-        out_vec,
-        overwrite,
-        input = [Sub128, Sym128, TritSym128, QuatSym128, DitSym128],
-        output = [Sub128, Sym128, TritSym128, QuatSym128, DitSym128]
-    );
-    dispatch_project_family!(
-        input,
-        output,
-        in_vec,
-        out_vec,
-        overwrite,
-        input = [Sub256, Sym256, TritSym256, QuatSym256, DitSym256],
-        output = [Sub256, Sym256, TritSym256, QuatSym256, DitSym256]
-    );
-    #[cfg(feature = "large-int")]
-    {
-        dispatch_project_family!(
-            input,
-            output,
-            in_vec,
-            out_vec,
-            overwrite,
-            input = [Sub512, Sym512, TritSym512, QuatSym512, DitSym512],
-            output = [Sub512, Sym512, TritSym512, QuatSym512, DitSym512]
-        );
-        dispatch_project_family!(
-            input,
-            output,
-            in_vec,
-            out_vec,
-            overwrite,
-            input = [Sub1024, Sym1024, TritSym1024, QuatSym1024, DitSym1024],
-            output = [Sub1024, Sym1024, TritSym1024, QuatSym1024, DitSym1024]
-        );
-        dispatch_project_family!(
-            input,
-            output,
-            in_vec,
-            out_vec,
-            overwrite,
-            input = [Sub2048, Sym2048, TritSym2048, QuatSym2048, DitSym2048],
-            output = [Sub2048, Sym2048, TritSym2048, QuatSym2048, DitSym2048]
-        );
-        dispatch_project_family!(
-            input,
-            output,
-            in_vec,
-            out_vec,
-            overwrite,
-            input = [Sub4096, Sym4096, TritSym4096, QuatSym4096, DitSym4096],
-            output = [Sub4096, Sym4096, TritSym4096, QuatSym4096, DitSym4096]
-        );
-        dispatch_project_family!(
-            input,
-            output,
-            in_vec,
-            out_vec,
-            overwrite,
-            input = [Sub8192, Sym8192, TritSym8192, QuatSym8192, DitSym8192],
-            output = [Sub8192, Sym8192, TritSym8192, QuatSym8192, DitSym8192]
-        );
-    }
-
-    Err(QuSpinError::ValueError(
-        "unsupported input basis type for project_to \
-         (unsupported or mismatched state integer types)"
-            .into(),
-    ))
 }
 
 // ---------------------------------------------------------------------------

@@ -64,9 +64,9 @@ impl PyQMatrix {
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
         let space = if let Ok(b) = basis.downcast::<PySpinBasis>() {
-            QMatrixInner::build_hardcore(&op.inner, &b.borrow().inner.inner, vdtype)
+            QMatrixInner::build_hardcore(&op.inner, &b.borrow().inner.inner.inner, vdtype)
         } else if let Ok(b) = basis.downcast::<PyFermionBasis>() {
-            QMatrixInner::build_hardcore(&op.inner, &b.borrow().inner.inner, vdtype)
+            QMatrixInner::build_hardcore(&op.inner, &b.borrow().inner.inner.inner, vdtype)
         } else {
             return Err(pyo3::exceptions::PyTypeError::new_err(
                 "basis must be SpinBasis or FermionBasis for build_pauli",
@@ -86,11 +86,11 @@ impl PyQMatrix {
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
         let space = if let Ok(b) = basis.downcast::<PySpinBasis>() {
-            QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner, vdtype)
+            QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner.inner, vdtype)
         } else if let Ok(b) = basis.downcast::<PyFermionBasis>() {
-            QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner, vdtype)
+            QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner.inner, vdtype)
         } else if let Ok(b) = basis.downcast::<PyBosonBasis>() {
-            QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner, vdtype)
+            QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner.inner, vdtype)
         } else {
             return Err(pyo3::exceptions::PyTypeError::new_err(
                 "basis must be SpinBasis, FermionBasis, or BosonBasis for build_bond",
@@ -109,7 +109,7 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
-        let inner = QMatrixInner::build_boson(&op.inner, &basis.inner.inner, vdtype);
+        let inner = QMatrixInner::build_boson(&op.inner, &basis.inner.inner.inner, vdtype);
         Ok(PyQMatrix { inner })
     }
 
@@ -123,7 +123,7 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
-        let inner = QMatrixInner::build_fermion(&op.inner, &basis.inner.inner, vdtype);
+        let inner = QMatrixInner::build_fermion(&op.inner, &basis.inner.inner.inner, vdtype);
         Ok(PyQMatrix { inner })
     }
 

@@ -25,8 +25,8 @@ fn apply_local_symmetries(
     basis: &mut GenericBasis,
     local_symmetries: &[PyObject],
 ) -> PyResult<()> {
-    let n_sites = basis.inner.n_sites();
-    let lhss = basis.inner.lhss();
+    let n_sites = basis.n_sites();
+    let lhss = basis.lhss();
 
     for (i, sym_obj) in local_symmetries.iter().enumerate() {
         let sym = sym_obj.bind(py);
@@ -99,7 +99,8 @@ impl PyGenericBasis {
     ///     lhss:    on-site state count (≥ 2).
     #[classmethod]
     fn full(_cls: &Bound<'_, PyType>, n_sites: usize, lhss: usize) -> PyResult<Self> {
-        let inner = GenericBasis::new(n_sites, lhss, SpaceKind::Full).map_err(Error::from)?;
+        let inner =
+            GenericBasis::new(n_sites, lhss, SpaceKind::Full, false).map_err(Error::from)?;
         Ok(PyGenericBasis { inner })
     }
 
@@ -119,7 +120,8 @@ impl PyGenericBasis {
         seeds: Vec<String>,
     ) -> PyResult<Self> {
         let byte_seeds = parse_seeds(&seeds, lhss)?;
-        let mut basis = GenericBasis::new(n_sites, lhss, SpaceKind::Sub).map_err(Error::from)?;
+        let mut basis =
+            GenericBasis::new(n_sites, lhss, SpaceKind::Sub, false).map_err(Error::from)?;
         basis.build(&ham.inner, &byte_seeds).map_err(Error::from)?;
         Ok(PyGenericBasis { inner: basis })
     }
@@ -148,7 +150,8 @@ impl PyGenericBasis {
     ) -> PyResult<Self> {
         let py = _cls.py();
         let byte_seeds = parse_seeds(&seeds, lhss)?;
-        let mut basis = GenericBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
+        let mut basis =
+            GenericBasis::new(n_sites, lhss, SpaceKind::Symm, false).map_err(Error::from)?;
         apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
         apply_local_symmetries(py, &mut basis, &local_symmetries)?;
         basis.build(&ham.inner, &byte_seeds).map_err(Error::from)?;

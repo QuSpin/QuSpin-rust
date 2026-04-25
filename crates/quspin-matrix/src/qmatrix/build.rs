@@ -6,7 +6,7 @@ use quspin_basis::{
     BasisSpace,
     sym::{NormInt, SymBasis},
 };
-use quspin_bitbasis::{BitInt, FermionicBitStateOp, PermDitValues};
+use quspin_bitbasis::{BitInt, FermionicBitStateOp};
 use quspin_operator::Operator;
 use quspin_types::Primitive;
 use rayon::prelude::*;
@@ -181,8 +181,16 @@ where
     M: quspin_types::Primitive,
     C: CIndex + Copy + Ord,
 {
-    use quspin_basis::dispatch::SpaceInner;
-    use quspin_bitbasis::{DynamicPermDitValues, PermDitMask};
+    use quspin_basis::dispatch::{
+        SpaceInner, SpaceInnerBit, SpaceInnerBitDefault, SpaceInnerDit, SpaceInnerDitDefault,
+        SpaceInnerQuat, SpaceInnerQuatDefault, SpaceInnerTrit, SpaceInnerTritDefault,
+    };
+    #[cfg(feature = "large-int")]
+    use quspin_basis::dispatch::{
+        SpaceInnerBitLargeInt, SpaceInnerDitLargeInt, SpaceInnerQuatLargeInt,
+        SpaceInnerTritLargeInt,
+    };
+    use quspin_bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues};
 
     type B128 = ruint::Uint<128, 2>;
     type B256 = ruint::Uint<256, 4>;
@@ -197,156 +205,190 @@ where
     #[cfg(feature = "large-int")]
     type B8192 = ruint::Uint<8192, 128>;
 
+    // Each per-family Default/LargeInt enum has Full*/Sub* variants (built
+    // via build_from_basis, which doesn't care about L) plus Sym*
+    // variants (built via build_from_symmetric, which needs the family's
+    // L type and the right N). The macros below generate the per-enum
+    // match arms for both flavors.
+    macro_rules! plain_arms {
+        ($Enum:ident, $self:expr, with_full = true) => {
+            match $self {
+                $Enum::Full32(b) => build_from_basis::<H, u32, M, i64, C, _>(ham, b),
+                $Enum::Full64(b) => build_from_basis::<H, u64, M, i64, C, _>(ham, b),
+                $Enum::Sub32(b) => build_from_basis::<H, u32, M, i64, C, _>(ham, b),
+                $Enum::Sub64(b) => build_from_basis::<H, u64, M, i64, C, _>(ham, b),
+                $Enum::Sub128(b) => build_from_basis::<H, B128, M, i64, C, _>(ham, b),
+                $Enum::Sub256(b) => build_from_basis::<H, B256, M, i64, C, _>(ham, b),
+                _ => unreachable!("only plain (Full*/Sub*) variants reach this branch"),
+            }
+        };
+        ($Enum:ident, $self:expr, with_full = false) => {
+            match $self {
+                $Enum::Sub512(b) => build_from_basis::<H, B512, M, i64, C, _>(ham, b),
+                $Enum::Sub1024(b) => build_from_basis::<H, B1024, M, i64, C, _>(ham, b),
+                $Enum::Sub2048(b) => build_from_basis::<H, B2048, M, i64, C, _>(ham, b),
+                $Enum::Sub4096(b) => build_from_basis::<H, B4096, M, i64, C, _>(ham, b),
+                $Enum::Sub8192(b) => build_from_basis::<H, B8192, M, i64, C, _>(ham, b),
+                _ => unreachable!("only plain (Sub*) variants reach this branch"),
+            }
+        };
+    }
+
+    // L_for!(width) expands to the family's local-op type at that width.
+    // PermDitMask<B> needs the per-width B substitution; PermDitValues<3>/<4>
+    // and DynamicPermDitValues are uniform.
     match space {
-        // Non-symmetric
-        SpaceInner::Full32(b) => build_from_basis::<H, u32, M, i64, C, _>(ham, b),
-        SpaceInner::Full64(b) => build_from_basis::<H, u64, M, i64, C, _>(ham, b),
-        SpaceInner::Sub32(b) => build_from_basis::<H, u32, M, i64, C, _>(ham, b),
-        SpaceInner::Sub64(b) => build_from_basis::<H, u64, M, i64, C, _>(ham, b),
-        SpaceInner::Sub128(b) => build_from_basis::<H, B128, M, i64, C, _>(ham, b),
-        SpaceInner::Sub256(b) => build_from_basis::<H, B256, M, i64, C, _>(ham, b),
+        // ----------------------------------------------------------------
+        // Bit family — L = PermDitMask<B>
+        // ----------------------------------------------------------------
+        SpaceInner::Bit(SpaceInnerBit::Default(d)) => match d {
+            SpaceInnerBitDefault::Sym32(b) => {
+                build_from_symmetric::<H, u32, PermDitMask<u32>, u8, M, i64, C>(ham, b)
+            }
+            SpaceInnerBitDefault::Sym64(b) => {
+                build_from_symmetric::<H, u64, PermDitMask<u64>, u16, M, i64, C>(ham, b)
+            }
+            SpaceInnerBitDefault::Sym128(b) => {
+                build_from_symmetric::<H, B128, PermDitMask<B128>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerBitDefault::Sym256(b) => {
+                build_from_symmetric::<H, B256, PermDitMask<B256>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_arms!(SpaceInnerBitDefault, other, with_full = true),
+        },
         #[cfg(feature = "large-int")]
-        SpaceInner::Sub512(b) => build_from_basis::<H, B512, M, i64, C, _>(ham, b),
+        SpaceInner::Bit(SpaceInnerBit::LargeInt(d)) => match d {
+            SpaceInnerBitLargeInt::Sym512(b) => {
+                build_from_symmetric::<H, B512, PermDitMask<B512>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerBitLargeInt::Sym1024(b) => {
+                build_from_symmetric::<H, B1024, PermDitMask<B1024>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerBitLargeInt::Sym2048(b) => {
+                build_from_symmetric::<H, B2048, PermDitMask<B2048>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerBitLargeInt::Sym4096(b) => {
+                build_from_symmetric::<H, B4096, PermDitMask<B4096>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerBitLargeInt::Sym8192(b) => {
+                build_from_symmetric::<H, B8192, PermDitMask<B8192>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_arms!(SpaceInnerBitLargeInt, other, with_full = false),
+        },
+
+        // ----------------------------------------------------------------
+        // Trit family — L = PermDitValues<3>
+        // ----------------------------------------------------------------
+        SpaceInner::Trit(SpaceInnerTrit::Default(d)) => match d {
+            SpaceInnerTritDefault::Sym32(b) => {
+                build_from_symmetric::<H, u32, PermDitValues<3>, u8, M, i64, C>(ham, b)
+            }
+            SpaceInnerTritDefault::Sym64(b) => {
+                build_from_symmetric::<H, u64, PermDitValues<3>, u16, M, i64, C>(ham, b)
+            }
+            SpaceInnerTritDefault::Sym128(b) => {
+                build_from_symmetric::<H, B128, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerTritDefault::Sym256(b) => {
+                build_from_symmetric::<H, B256, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_arms!(SpaceInnerTritDefault, other, with_full = true),
+        },
         #[cfg(feature = "large-int")]
-        SpaceInner::Sub1024(b) => build_from_basis::<H, B1024, M, i64, C, _>(ham, b),
+        SpaceInner::Trit(SpaceInnerTrit::LargeInt(d)) => match d {
+            SpaceInnerTritLargeInt::Sym512(b) => {
+                build_from_symmetric::<H, B512, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerTritLargeInt::Sym1024(b) => {
+                build_from_symmetric::<H, B1024, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerTritLargeInt::Sym2048(b) => {
+                build_from_symmetric::<H, B2048, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerTritLargeInt::Sym4096(b) => {
+                build_from_symmetric::<H, B4096, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerTritLargeInt::Sym8192(b) => {
+                build_from_symmetric::<H, B8192, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_arms!(SpaceInnerTritLargeInt, other, with_full = false),
+        },
+
+        // ----------------------------------------------------------------
+        // Quat family — L = PermDitValues<4>
+        // ----------------------------------------------------------------
+        SpaceInner::Quat(SpaceInnerQuat::Default(d)) => match d {
+            SpaceInnerQuatDefault::Sym32(b) => {
+                build_from_symmetric::<H, u32, PermDitValues<4>, u8, M, i64, C>(ham, b)
+            }
+            SpaceInnerQuatDefault::Sym64(b) => {
+                build_from_symmetric::<H, u64, PermDitValues<4>, u16, M, i64, C>(ham, b)
+            }
+            SpaceInnerQuatDefault::Sym128(b) => {
+                build_from_symmetric::<H, B128, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerQuatDefault::Sym256(b) => {
+                build_from_symmetric::<H, B256, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_arms!(SpaceInnerQuatDefault, other, with_full = true),
+        },
         #[cfg(feature = "large-int")]
-        SpaceInner::Sub2048(b) => build_from_basis::<H, B2048, M, i64, C, _>(ham, b),
+        SpaceInner::Quat(SpaceInnerQuat::LargeInt(d)) => match d {
+            SpaceInnerQuatLargeInt::Sym512(b) => {
+                build_from_symmetric::<H, B512, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerQuatLargeInt::Sym1024(b) => {
+                build_from_symmetric::<H, B1024, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerQuatLargeInt::Sym2048(b) => {
+                build_from_symmetric::<H, B2048, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerQuatLargeInt::Sym4096(b) => {
+                build_from_symmetric::<H, B4096, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerQuatLargeInt::Sym8192(b) => {
+                build_from_symmetric::<H, B8192, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_arms!(SpaceInnerQuatLargeInt, other, with_full = false),
+        },
+
+        // ----------------------------------------------------------------
+        // Dit family — L = DynamicPermDitValues
+        // ----------------------------------------------------------------
+        SpaceInner::Dit(SpaceInnerDit::Default(d)) => match d {
+            SpaceInnerDitDefault::Sym32(b) => {
+                build_from_symmetric::<H, u32, DynamicPermDitValues, u8, M, i64, C>(ham, b)
+            }
+            SpaceInnerDitDefault::Sym64(b) => {
+                build_from_symmetric::<H, u64, DynamicPermDitValues, u16, M, i64, C>(ham, b)
+            }
+            SpaceInnerDitDefault::Sym128(b) => {
+                build_from_symmetric::<H, B128, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerDitDefault::Sym256(b) => {
+                build_from_symmetric::<H, B256, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            other => plain_arms!(SpaceInnerDitDefault, other, with_full = true),
+        },
         #[cfg(feature = "large-int")]
-        SpaceInner::Sub4096(b) => build_from_basis::<H, B4096, M, i64, C, _>(ham, b),
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sub8192(b) => build_from_basis::<H, B8192, M, i64, C, _>(ham, b),
-        // LHSS=2 symmetric
-        SpaceInner::Sym32(b) => {
-            build_from_symmetric::<H, u32, PermDitMask<u32>, u8, M, i64, C>(ham, b)
-        }
-        SpaceInner::Sym64(b) => {
-            build_from_symmetric::<H, u64, PermDitMask<u64>, u16, M, i64, C>(ham, b)
-        }
-        SpaceInner::Sym128(b) => {
-            build_from_symmetric::<H, B128, PermDitMask<B128>, u32, M, i64, C>(ham, b)
-        }
-        SpaceInner::Sym256(b) => {
-            build_from_symmetric::<H, B256, PermDitMask<B256>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sym512(b) => {
-            build_from_symmetric::<H, B512, PermDitMask<B512>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sym1024(b) => {
-            build_from_symmetric::<H, B1024, PermDitMask<B1024>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sym2048(b) => {
-            build_from_symmetric::<H, B2048, PermDitMask<B2048>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sym4096(b) => {
-            build_from_symmetric::<H, B4096, PermDitMask<B4096>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sym8192(b) => {
-            build_from_symmetric::<H, B8192, PermDitMask<B8192>, u32, M, i64, C>(ham, b)
-        }
-        // LHSS≥3 symmetric (dit)
-        SpaceInner::DitSym32(b) => {
-            build_from_symmetric::<H, u32, DynamicPermDitValues, u8, M, i64, C>(ham, b)
-        }
-        SpaceInner::DitSym64(b) => {
-            build_from_symmetric::<H, u64, DynamicPermDitValues, u16, M, i64, C>(ham, b)
-        }
-        SpaceInner::DitSym128(b) => {
-            build_from_symmetric::<H, B128, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        SpaceInner::DitSym256(b) => {
-            build_from_symmetric::<H, B256, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::DitSym512(b) => {
-            build_from_symmetric::<H, B512, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::DitSym1024(b) => {
-            build_from_symmetric::<H, B1024, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::DitSym2048(b) => {
-            build_from_symmetric::<H, B2048, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::DitSym4096(b) => {
-            build_from_symmetric::<H, B4096, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::DitSym8192(b) => {
-            build_from_symmetric::<H, B8192, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        // LHSS=3 symmetric (trit)
-        SpaceInner::TritSym32(b) => {
-            build_from_symmetric::<H, u32, PermDitValues<3>, u8, M, i64, C>(ham, b)
-        }
-        SpaceInner::TritSym64(b) => {
-            build_from_symmetric::<H, u64, PermDitValues<3>, u16, M, i64, C>(ham, b)
-        }
-        SpaceInner::TritSym128(b) => {
-            build_from_symmetric::<H, B128, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        SpaceInner::TritSym256(b) => {
-            build_from_symmetric::<H, B256, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::TritSym512(b) => {
-            build_from_symmetric::<H, B512, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::TritSym1024(b) => {
-            build_from_symmetric::<H, B1024, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::TritSym2048(b) => {
-            build_from_symmetric::<H, B2048, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::TritSym4096(b) => {
-            build_from_symmetric::<H, B4096, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::TritSym8192(b) => {
-            build_from_symmetric::<H, B8192, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        // LHSS=4 symmetric (quat)
-        SpaceInner::QuatSym32(b) => {
-            build_from_symmetric::<H, u32, PermDitValues<4>, u8, M, i64, C>(ham, b)
-        }
-        SpaceInner::QuatSym64(b) => {
-            build_from_symmetric::<H, u64, PermDitValues<4>, u16, M, i64, C>(ham, b)
-        }
-        SpaceInner::QuatSym128(b) => {
-            build_from_symmetric::<H, B128, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        SpaceInner::QuatSym256(b) => {
-            build_from_symmetric::<H, B256, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::QuatSym512(b) => {
-            build_from_symmetric::<H, B512, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::QuatSym1024(b) => {
-            build_from_symmetric::<H, B1024, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::QuatSym2048(b) => {
-            build_from_symmetric::<H, B2048, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::QuatSym4096(b) => {
-            build_from_symmetric::<H, B4096, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::QuatSym8192(b) => {
-            build_from_symmetric::<H, B8192, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
+        SpaceInner::Dit(SpaceInnerDit::LargeInt(d)) => match d {
+            SpaceInnerDitLargeInt::Sym512(b) => {
+                build_from_symmetric::<H, B512, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerDitLargeInt::Sym1024(b) => {
+                build_from_symmetric::<H, B1024, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerDitLargeInt::Sym2048(b) => {
+                build_from_symmetric::<H, B2048, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerDitLargeInt::Sym4096(b) => {
+                build_from_symmetric::<H, B4096, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            SpaceInnerDitLargeInt::Sym8192(b) => {
+                build_from_symmetric::<H, B8192, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            other => plain_arms!(SpaceInnerDitLargeInt, other, with_full = false),
+        },
     }
 }
 

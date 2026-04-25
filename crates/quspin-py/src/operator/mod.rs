@@ -25,11 +25,11 @@ where
     F: FnOnce(&SpaceInner) -> R,
 {
     if let Ok(b) = basis.downcast::<PySpinBasis>() {
-        Ok(f(&b.borrow().inner.inner))
+        Ok(f(&b.borrow().inner.inner.inner))
     } else if let Ok(b) = basis.downcast::<PyFermionBasis>() {
-        Ok(f(&b.borrow().inner.inner))
+        Ok(f(&b.borrow().inner.inner.inner))
     } else if let Ok(b) = basis.downcast::<PyBosonBasis>() {
-        Ok(f(&b.borrow().inner.inner))
+        Ok(f(&b.borrow().inner.inner.inner))
     } else if let Ok(b) = basis.downcast::<PyGenericBasis>() {
         Ok(f(&b.borrow().inner.inner))
     } else {
