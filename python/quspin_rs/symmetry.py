@@ -150,8 +150,11 @@ class SymmetryGroup:
                 for g in generators:
                     try:
                         composed = _compose(x, g)
-                    except ValueError:
-                        # composition produced identity — skip
+                    except ValueError as exc:
+                        # Only skip identity-composition results; re-raise length /
+                        # locs / shape errors so malformed generators surface.
+                        if "produced identity" not in str(exc):
+                            raise
                         continue
                     if composed in seen:
                         continue

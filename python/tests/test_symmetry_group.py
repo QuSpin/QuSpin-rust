@@ -318,3 +318,15 @@ class TestClose:
 
         for elem in seen:
             assert isinstance(elem, SymElement)
+
+    def test_close_propagates_malformed_generator(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        # Two lattice generators with incompatible perm lengths — should
+        # surface as a ValueError mentioning length, NOT be silently
+        # swallowed by close's identity-skip.
+        a = Lattice([1, 2, 3, 0])  # length 4
+        b = Lattice([1, 0])  # length 2
+        with pytest.raises(ValueError, match="lengths differ"):
+            g.close(generators=[a, b], char=lambda elem: 1.0)
