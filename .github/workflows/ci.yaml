@@ -42,6 +42,16 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace -- -D warnings
 
+      # Default builds skip `large-int` so CI / dev iteration aren't paying
+      # for the wide-integer (Uint<512..8192>) monomorphizations. Run a
+      # type-check pass with the feature on so the gated paths don't
+      # bit-rot.
+      - name: cargo check (large-int)
+        run: cargo check --workspace --features quspin-py/large-int
+
+      - name: cargo clippy (large-int)
+        run: cargo clippy --workspace --features quspin-py/large-int -- -D warnings
+
       # Enforces the basis/operator DAG invariant that the StateTransitions
       # refactor was designed to achieve. A plain `cargo build` does NOT
       # catch someone reintroducing `quspin-operator` to quspin-basis's

@@ -94,6 +94,6 @@ GitHub Actions (`.github/workflows/ci.yaml`): `Swatinem/rust-cache` warms `targe
 - **Error handling:** `Result<T, QuSpinError>` in the physics crates; maps to Python exceptions via PyO3
 - **Python package:** `quspin-rs`, module `quspin_rs._rs`, built with maturin against `quspin-py`
 - **Type stubs:** `python/quspin_rs/_rs.pyi`
-- **`large-int` feature:** gates `Uint<512..8192>` variants; declared on `quspin-bitbasis`, `quspin-basis`, `quspin-matrix`, and `quspin-core` (which forwards through the chain)
+- **`large-int` feature:** gates `Uint<512..8192>` variants; declared on `quspin-bitbasis`, `quspin-basis`, `quspin-matrix`, and `quspin-core` (which forwards through the chain). `quspin-py` re-exposes it as its own feature, off by default — `cargo build` / `maturin develop` skip the wide-integer monomorphizations for faster dev iteration. Enable explicitly with `cargo build --features quspin-py/large-int` or `maturin develop --features large-int`. CI runs a separate `cargo check`/`clippy` pass with the feature on so the gated paths don't bit-rot.
 
 See `docs/` for detailed design documents, including `docs/superpowers/specs/2026-04-18-crate-split-design.md` for the crate-split rationale.

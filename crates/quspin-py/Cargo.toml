@@ -7,8 +7,17 @@ edition.workspace = true
 name = "_rs"
 crate-type = ["cdylib"]
 
+[features]
+# Forwards `large-int` through quspin-core, gating the wide-integer
+# (Uint<512..8192>) variants of every dispatch enum. Off by default so
+# `cargo build` / `maturin develop` skip the heavy monomorphizations
+# during day-to-day development; enable explicitly for release wheels
+# or when needed via `cargo build --features large-int` /
+# `maturin develop --features large-int`.
+large-int = ["quspin-core/large-int"]
+
 [dependencies]
-quspin-core = { path = "../quspin-core", features = ["large-int"] }
+quspin-core = { path = "../quspin-core" }
 num-complex = { workspace = true }
 ndarray = { workspace = true }
 ruint = { workspace = true }
