@@ -290,6 +290,35 @@ pub fn _compose(a: &PySymElement, b: &PySymElement) -> PyResult<PySymElement> {
     })
 }
 
+/// Validate a list of (element, character) pairs forms a closed symmetry
+/// group with a consistent 1-D representation. Spawns a throwaway
+/// `GenericBasis::Symm` at `(n_sites, lhss)`, replays each element via
+/// `add_symmetry_raw`, then runs `SymBasis::validate_group` directly via
+/// the dispatch-layer `validate_group()` method (no BFS / build step).
+///
+/// Raises `ValueError` (mapped from `QuSpinError::ValueError`) on
+/// non-closure, character inconsistency, or duplicate-action elements.
+#[pyfunction]
+#[pyo3(name = "_validate_group")]
+pub fn _validate_group(
+    elements: Vec<(PySymElement, (f64, f64))>,
+    n_sites: usize,
+    lhss: usize,
+) -> PyResult<()> {
+    use crate::error::Error;
+    use quspin_core::basis::{GenericBasis, SpaceKind};
+
+    let fermionic = false;
+    let mut basis =
+        GenericBasis::new(n_sites, lhss, SpaceKind::Symm, fermionic).map_err(Error::from)?;
+    for (elem, (re, im)) in &elements {
+        elem.add_to_basis(&mut basis, num_complex::Complex::new(*re, *im))
+            .map_err(Error::from)?;
+    }
+    basis.validate_group().map_err(Error::from)?;
+    Ok(())
+}
+
 /// Composite symmetry element (lattice + local applied atomically).
 ///
 /// Both `perm` (site permutation) and `perm_vals` (per-site value

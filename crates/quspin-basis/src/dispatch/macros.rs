@@ -191,6 +191,17 @@ macro_rules! impl_inner_dispatch_enum {
                     ),)*
                 }
             }
+
+            /// Eagerly run [`SymBasis::validate_group`] on a `Sym*`
+            /// variant. No-op (returns `Ok(())`) on `Full*` and `Sub*`
+            /// variants — there's no group to validate.
+            pub fn validate_group(&self) -> Result<(), ::quspin_types::QuSpinError> {
+                match self {
+                    $(Self::$full(_) => Ok(()),)*
+                    $(Self::$sub(_)  => Ok(()),)*
+                    $(Self::$sym(b)  => b.validate_group(),)*
+                }
+            }
         }
     };
 }
@@ -307,6 +318,15 @@ macro_rules! impl_family_dispatch_enum {
                     Self::Default(inner) => inner.add_lattice(grp_char, perm),
                     #[cfg(feature = "large-int")]
                     Self::LargeInt(inner) => inner.add_lattice(grp_char, perm),
+                }
+            }
+
+            #[inline]
+            pub fn validate_group(&self) -> Result<(), ::quspin_types::QuSpinError> {
+                match self {
+                    Self::Default(inner) => inner.validate_group(),
+                    #[cfg(feature = "large-int")]
+                    Self::LargeInt(inner) => inner.validate_group(),
                 }
             }
         }

@@ -343,6 +343,16 @@ impl DitBasis {
             Self::Dyn(b) => b.build_seeds(graph, seeds),
         }
     }
+
+    /// Eagerly run [`SymBasis::validate_group`] on the inner `Sym*`
+    /// variant. No-op (returns `Ok(())`) on `Full*` / `Sub*` variants.
+    pub fn validate_group(&self) -> Result<(), QuSpinError> {
+        match self {
+            Self::Trit(b) => b.validate_group(),
+            Self::Quat(b) => b.validate_group(),
+            Self::Dyn(b) => b.validate_group(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -572,6 +582,19 @@ impl GenericBasis {
         match self {
             Self::Bit(b) => b.build(graph, seeds),
             Self::Dit(b) => b.build(graph, seeds),
+        }
+    }
+
+    /// Eagerly run [`SymBasis::validate_group`] on the inner `Sym*`
+    /// variant. No-op (returns `Ok(())`) on `Full*` / `Sub*` variants.
+    /// Lets callers (e.g. `SymmetryGroup.validate` in the Python
+    /// bindings) surface closure / character / duplicate-action errors
+    /// without having to call `build` (which is otherwise the only
+    /// trigger for `validate_group`, and only on the first invocation).
+    pub fn validate_group(&self) -> Result<(), QuSpinError> {
+        match self {
+            Self::Bit(b) => b.validate_group(),
+            Self::Dit(b) => b.validate_group(),
         }
     }
 }

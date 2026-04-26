@@ -282,6 +282,15 @@ def _compose(a: SymElement, b: SymElement) -> SymElement:
     Raises ValueError on length mismatch or identity result."""
     ...
 
+def _validate_group(
+    elements: list[tuple[SymElement, tuple[float, float]]],
+    n_sites: int,
+    lhss: int,
+) -> None:
+    """Eager closure + 1-D character validation. Raises ValueError on
+    non-closure, character inconsistency, or duplicate-action elements."""
+    ...
+
 # ---------------------------------------------------------------------------
 # Operator types
 # ---------------------------------------------------------------------------

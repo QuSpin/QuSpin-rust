@@ -381,3 +381,45 @@ class TestProduct:
         c = a.product(b)
         assert c is not a
         assert c is not b
+
+
+class TestValidate:
+    def test_validate_clean_group(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        g.add_cyclic(Lattice([1, 2, 3, 0]), k=1)
+        g.validate()  # should not raise
+
+    def test_validate_rejects_missing_closure(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        # Add T but not T^2 / T^3 - closure broken.
+        g.add(Lattice([1, 2, 3, 0]), 1.0 + 0j)
+        with pytest.raises(ValueError, match="closed|closure"):
+            g.validate()
+
+    def test_validate_rejects_inconsistent_chars(self):
+        from quspin_rs import SymmetryGroup
+        from quspin_rs._rs import _compose
+
+        # Cyclic group with wrong chars (not a 1-D rep).
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        T = Lattice([1, 2, 3, 0])
+        g.add(
+            T, -1.0 + 0j
+        )  # chi(T) = -1, but T has order 4 so chi should be a 4th root of unity
+        T2 = _compose(T, T)
+        g.add(T2, 2.0 + 0j)  # chi(T^2) should be (-1)^2 = 1, not 2
+        T3 = _compose(T2, T)
+        g.add(T3, -1.0 + 0j)  # chi(T^3)
+        with pytest.raises(ValueError, match="character"):
+            g.validate()
+
+    def test_validate_empty_group_ok(self):
+        from quspin_rs import SymmetryGroup
+
+        # Trivial group (only implicit identity) should validate.
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        g.validate()

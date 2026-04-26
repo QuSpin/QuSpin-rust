@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator
 from math import gcd, pi
 from typing import TYPE_CHECKING
 
-from quspin_rs._rs import _compose, _order
+from quspin_rs._rs import _compose, _order, _validate_group
 
 if TYPE_CHECKING:
     from quspin_rs._rs import SymElement
@@ -202,6 +202,22 @@ class SymmetryGroup:
                     continue
                 out._elements.append((composed, chi_a * chi_b))
         return out
+
+    def validate(self) -> None:
+        """Eagerly run SymBasis::validate_group: closure under
+        composition + 1-D-rep character consistency.
+
+        Raises :class:`ValueError` if the supplied elements don't form
+        a closed group, the characters violate ``χ(g·h) = χ(g)·χ(h)``,
+        or any two elements have the same action.
+
+        ``*Basis.symmetric(group, ...)`` runs the same check
+        implicitly on first build, so calling :meth:`validate`
+        directly is opt-in early-feedback."""
+        elements_for_rust = [
+            (elem, (chi.real, chi.imag)) for elem, chi in self._elements
+        ]
+        _validate_group(elements_for_rust, self._n_sites, self._lhss)
 
     def __len__(self) -> int:
         return len(self._elements)
