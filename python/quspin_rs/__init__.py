@@ -22,6 +22,7 @@ from quspin_rs._rs import (
     Static,
     SymElement,
 )
+from quspin_rs.symmetry import SymmetryGroup
 
 __all__ = [
     "BondOperator",
@@ -39,4 +40,5 @@ __all__ = [
     "SpinBasis",
     "Static",
     "SymElement",
+    "SymmetryGroup",
 ]

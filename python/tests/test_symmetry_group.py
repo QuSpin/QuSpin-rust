@@ -3,6 +3,42 @@ import pytest
 from quspin_rs import Composite, Lattice, Local, SymElement
 
 
+class TestSymmetryGroupBasics:
+    def test_construct(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        assert g.n_sites == 4
+        assert g.lhss == 2
+        assert len(g) == 0
+
+    def test_add_and_iter(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        T = Lattice([1, 2, 3, 0])
+        g.add(T, 1.0 + 0j)
+        assert len(g) == 1
+        elems = list(g)
+        assert elems[0][0] == T
+        assert elems[0][1] == 1.0 + 0j
+
+    def test_repr(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        assert "SymmetryGroup" in repr(g)
+        assert "n_sites=4" in repr(g)
+
+    def test_n_sites_lhss_validation(self):
+        from quspin_rs import SymmetryGroup
+
+        with pytest.raises(ValueError, match="n_sites"):
+            SymmetryGroup(n_sites=0, lhss=2)
+        with pytest.raises(ValueError, match="lhss"):
+            SymmetryGroup(n_sites=4, lhss=1)
+
+
 class TestSymElementConstructors:
     def test_lattice_repr_roundtrip(self):
         a = Lattice([1, 2, 0])
