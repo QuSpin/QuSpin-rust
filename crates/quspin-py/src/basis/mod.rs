@@ -2,11 +2,13 @@ pub mod boson;
 pub mod fermion;
 pub mod generic;
 pub mod spin;
+pub mod sym_element;
 
 pub use boson::PyBosonBasis;
 pub use fermion::PyFermionBasis;
 pub use generic::PyGenericBasis;
 pub use spin::PySpinBasis;
+pub use sym_element::PySymElement;
 
 // ---------------------------------------------------------------------------
 // Shared basis helpers

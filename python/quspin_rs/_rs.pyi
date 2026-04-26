@@ -214,6 +214,65 @@ class GenericBasis:
     def __repr__(self) -> str: ...
 
 # ---------------------------------------------------------------------------
+# Symmetry-element handle
+# ---------------------------------------------------------------------------
+
+class SymElement:
+    """Opaque handle for a single symmetry-group element.
+
+    Construct via the ``Lattice``, ``Local``, or ``Composite`` factory
+    functions.  LHSS-agnostic — the actual lattice / local / composite
+    decomposition is materialised when the element is added to a basis.
+    """
+
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __repr__(self) -> str: ...
+
+def Lattice(perm: list[int]) -> SymElement:
+    """Pure site-permutation symmetry element.
+
+    Args:
+        perm: Site permutation (non-negative integers).
+
+    Raises:
+        ValueError: If ``perm`` contains a negative integer.  In old QuSpin
+            negatives encoded a spin-flip combined with a permutation; that
+            should now be expressed via ``Composite(perm, perm_vals=[1, 0])``.
+    """
+    ...
+
+def Local(perm_vals: list[int], locs: list[int] | None = None) -> SymElement:
+    """Pure on-site (dit-permutation) symmetry element.
+
+    Args:
+        perm_vals: Permutation of the local Hilbert-space states
+            ``0 … lhss-1`` (each value must fit in ``u8``).
+        locs:      Optional list of sites the local action applies to.
+            ``None`` means all sites.
+    """
+    ...
+
+def Composite(
+    perm: list[int],
+    perm_vals: list[int],
+    locs: list[int] | None = None,
+) -> SymElement:
+    """Combined site-permutation + local-permutation symmetry element.
+
+    Args:
+        perm:      Site permutation (non-negative integers).
+        perm_vals: Permutation of the local Hilbert-space states
+            ``0 … lhss-1`` (each value must fit in ``u8``).
+        locs:      Optional list of sites the local action applies to.
+            ``None`` means all sites.
+
+    Raises:
+        ValueError: If ``perm`` contains a negative integer.
+    """
+    ...
+
+# ---------------------------------------------------------------------------
 # Operator types
 # ---------------------------------------------------------------------------
 
