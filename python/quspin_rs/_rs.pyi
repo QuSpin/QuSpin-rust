@@ -277,6 +277,11 @@ def _order(elem: SymElement, n_sites: int, lhss: int) -> int:
     and perm_vals cycle orders); returns 1 for the identity element."""
     ...
 
+def _compose(a: SymElement, b: SymElement) -> SymElement:
+    """Compose two SymElements: (a ∘ b)(state) = a(b(state)).
+    Raises ValueError on length mismatch or identity result."""
+    ...
+
 # ---------------------------------------------------------------------------
 # Operator types
 # ---------------------------------------------------------------------------

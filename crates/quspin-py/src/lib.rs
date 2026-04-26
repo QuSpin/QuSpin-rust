@@ -7,7 +7,7 @@ pub mod operator;
 pub mod qmatrix;
 pub mod schrodinger;
 
-use basis::sym_element::{_order, composite, lattice, local};
+use basis::sym_element::{_compose, _order, composite, lattice, local};
 use basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis, PySymElement};
 use hamiltonian::{PyHamiltonian, PyStatic};
 use krylov::{PyEigSolver, PyFTLM, PyFTLMDynamic, PyLTLM};
@@ -32,6 +32,7 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(local, m)?)?;
     m.add_function(wrap_pyfunction!(composite, m)?)?;
     m.add_function(wrap_pyfunction!(_order, m)?)?;
+    m.add_function(wrap_pyfunction!(_compose, m)?)?;
     // Operator types
     m.add_class::<PyPauliOperator>()?;
     m.add_class::<PyBondOperator>()?;

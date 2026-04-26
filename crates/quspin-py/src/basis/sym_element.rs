@@ -178,6 +178,92 @@ pub fn _order(elem: &PySymElement, n_sites: usize, lhss: usize) -> usize {
     lcm_u(perm_o, pv_o)
 }
 
+/// Compose two permutations: `(a ∘ b)[src] = a[b[src]]` — meaning `b`
+/// is applied first, then `a`. Both inputs must have the same length.
+fn compose_perms(a: &[usize], b: &[usize]) -> Vec<usize> {
+    debug_assert_eq!(a.len(), b.len(), "perm length mismatch");
+    (0..b.len()).map(|s| a[b[s]]).collect()
+}
+
+/// Compose two `SymElement`s. Mirrors `SymElement::compose` for the
+/// untyped triple — applied as `(a ∘ b)(state) = a(b(state))`.
+///
+/// - Pure-lattice ∘ pure-lattice → pure-lattice (perms must match length).
+/// - Pure-local ∘ pure-local → pure-local (perm_vals must match length).
+/// - Any mix promotes to composite.
+/// - If either side is identity-shaped (the other side present), the
+///   output adopts the present side's perm / perm_vals / locs.
+/// - locs union: when both sides supply explicit locs, take their
+///   set union (sorted, deduplicated); when one side is `None`, the
+///   other's `locs` carries through unchanged.
+///
+/// Returns an error when the perms or perm_vals have mismatched
+/// lengths, or when the result would be the identity (caller should
+/// drop the element rather than store it).
+#[pyfunction]
+#[pyo3(name = "_compose")]
+pub fn _compose(a: &PySymElement, b: &PySymElement) -> PyResult<PySymElement> {
+    let perm = match (&a.perm, &b.perm) {
+        (None, None) => None,
+        (Some(p), None) | (None, Some(p)) => Some(p.clone()),
+        (Some(x), Some(y)) => {
+            if x.len() != y.len() {
+                return Err(PyValueError::new_err(format!(
+                    "_compose: perm lengths differ ({} vs {})",
+                    x.len(),
+                    y.len()
+                )));
+            }
+            Some(compose_perms(x, y))
+        }
+    };
+    let perm_vals = match (&a.perm_vals, &b.perm_vals) {
+        (None, None) => None,
+        (Some(v), None) | (None, Some(v)) => Some(v.clone()),
+        (Some(x), Some(y)) => {
+            if x.len() != y.len() {
+                return Err(PyValueError::new_err(format!(
+                    "_compose: perm_vals lengths differ ({} vs {})",
+                    x.len(),
+                    y.len()
+                )));
+            }
+            let xu: Vec<usize> = x.iter().map(|&v| v as usize).collect();
+            let yu: Vec<usize> = y.iter().map(|&v| v as usize).collect();
+            Some(
+                compose_perms(&xu, &yu)
+                    .into_iter()
+                    .map(|v| v as u8)
+                    .collect(),
+            )
+        }
+    };
+    let locs = match (&a.locs, &b.locs) {
+        (None, x) | (x, None) => x.clone(),
+        (Some(x), Some(y)) => {
+            let mut s: std::collections::BTreeSet<usize> = x.iter().copied().collect();
+            s.extend(y.iter().copied());
+            Some(s.into_iter().collect())
+        }
+    };
+    let kind = match (perm.is_some(), perm_vals.is_some()) {
+        (true, false) => SymElementKind::Lattice,
+        (false, true) => SymElementKind::Local,
+        (true, true) => SymElementKind::Composite,
+        (false, false) => {
+            return Err(PyValueError::new_err(
+                "_compose produced identity (both components empty)",
+            ));
+        }
+    };
+    Ok(PySymElement {
+        kind,
+        perm,
+        perm_vals,
+        locs,
+    })
+}
+
 /// Composite symmetry element (lattice + local applied atomically).
 ///
 /// Both `perm` (site permutation) and `perm_vals` (per-site value

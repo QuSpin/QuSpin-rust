@@ -89,3 +89,31 @@ class TestOrder:
         from quspin_rs._rs import _order
 
         assert _order(Lattice([0, 1, 2]), n_sites=3, lhss=2) == 1
+
+
+class TestCompose:
+    def test_lattice_lattice_stays_lattice(self):
+        from quspin_rs._rs import _compose
+
+        a = Lattice([1, 2, 0])  # 3-cycle
+        b = Lattice([1, 2, 0])
+        c = _compose(a, b)
+        assert c == Lattice([2, 0, 1])  # (a∘b)[s] = a[b[s]]
+
+    def test_local_local_stays_local(self):
+        from quspin_rs._rs import _compose
+
+        a = Local([1, 0])
+        b = Local([1, 0])
+        c = _compose(a, b)
+        assert c == Local([0, 1])  # involution squared = identity perm_vals
+
+    def test_lattice_local_promotes_to_composite(self):
+        from quspin_rs._rs import _compose
+
+        a = Lattice([1, 2, 0])
+        b = Local([1, 0])
+        c = _compose(a, b)
+        assert isinstance(c, SymElement)
+        # repr indicates Composite kind
+        assert "Composite" in repr(c)
