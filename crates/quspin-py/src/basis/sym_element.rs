@@ -111,6 +111,65 @@ pub fn local(perm_vals: Vec<u64>, locs: Option<Vec<usize>>) -> PyResult<PySymEle
     })
 }
 
+/// Compute the order of a permutation `p` over `0..N` as LCM of cycle lengths.
+fn perm_order(p: &[usize]) -> usize {
+    let n = p.len();
+    let mut visited = vec![false; n];
+    let mut lcm: usize = 1;
+    for start in 0..n {
+        if visited[start] {
+            continue;
+        }
+        let mut len = 0usize;
+        let mut i = start;
+        while !visited[i] {
+            visited[i] = true;
+            i = p[i];
+            len += 1;
+        }
+        if len > 1 {
+            lcm = lcm_u(lcm, len);
+        }
+    }
+    lcm
+}
+
+fn lcm_u(a: usize, b: usize) -> usize {
+    a / gcd_u(a, b) * b
+}
+
+fn gcd_u(mut a: usize, mut b: usize) -> usize {
+    while b != 0 {
+        let t = a % b;
+        a = b;
+        b = t;
+    }
+    a
+}
+
+/// Compute the order of a SymElement: the smallest positive integer N
+/// such that g^N is the identity. Computed as the LCM of the
+/// permutation component's cycle order and the perm_vals component's
+/// cycle order. Returns 1 for the identity element.
+///
+/// `n_sites` and `lhss` are accepted for API uniformity / future use
+/// but are currently unused — element shape encodes the cycle domains.
+#[pyfunction]
+#[pyo3(signature = (elem, n_sites, lhss))]
+pub fn _order(elem: &PySymElement, n_sites: usize, lhss: usize) -> usize {
+    let _ = (n_sites, lhss);
+    let perm_o = elem.perm.as_deref().map(perm_order).unwrap_or(1);
+    let pv_o = elem
+        .perm_vals
+        .as_deref()
+        .map(|v| {
+            let v_us: Vec<usize> = v.iter().map(|&x| x as usize).collect();
+            perm_order(&v_us)
+        })
+        .unwrap_or(1);
+    lcm_u(perm_o, pv_o)
+}
+
 /// Composite symmetry element (lattice + local applied atomically).
 ///
 /// Both `perm` (site permutation) and `perm_vals` (per-site value

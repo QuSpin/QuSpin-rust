@@ -43,3 +43,42 @@ class TestSymElementConstructors:
         sb = repr(b)
         assert "Some(" not in sb
         assert "locs=None" in sb
+
+
+class TestOrder:
+    def test_lattice_4cycle(self):
+        from quspin_rs._rs import _order
+
+        assert _order(Lattice([1, 2, 3, 0]), n_sites=4, lhss=2) == 4
+
+    def test_lattice_two_2cycles(self):
+        from quspin_rs._rs import _order
+
+        assert _order(Lattice([1, 0, 3, 2]), n_sites=4, lhss=2) == 2
+
+    def test_lattice_3cycle_plus_2cycle(self):
+        from quspin_rs._rs import _order
+
+        # sites 0->1->2->0 (3-cycle) and 3<->4 (2-cycle): order = lcm(3,2) = 6
+        assert _order(Lattice([1, 2, 0, 4, 3]), n_sites=5, lhss=2) == 6
+
+    def test_local_z2_swap(self):
+        from quspin_rs._rs import _order
+
+        assert _order(Local([1, 0]), n_sites=4, lhss=2) == 2
+
+    def test_local_z3_cycle(self):
+        from quspin_rs._rs import _order
+
+        assert _order(Local([1, 2, 0]), n_sites=4, lhss=3) == 3
+
+    def test_composite_lcm(self):
+        from quspin_rs._rs import _order
+
+        # perm has order 4 (4-cycle), perm_vals has order 2 -> composite order 4
+        assert _order(Composite([1, 2, 3, 0], [1, 0]), n_sites=4, lhss=2) == 4
+
+    def test_identity_order_is_one(self):
+        from quspin_rs._rs import _order
+
+        assert _order(Lattice([0, 1, 2]), n_sites=3, lhss=2) == 1
