@@ -2,8 +2,10 @@
 ///
 /// Replaces the two-type hierarchy (`SymGrpBase<B,L>` + `SymmetricSubspace<G,N>`)
 /// with a single flat struct. `N` is an explicit type parameter — the B→N
-/// pairing is encoded in `SpaceInner` variant definitions, not a runtime enum.
+/// pairing is encoded in the per-family dispatch enum variant definitions
+/// (`BitBasisDefault`, `TritBasisDefault`, etc.), not a runtime enum.
 use super::bfs::{AMP_CANCEL_TOL, PARALLEL_FRONTIER_THRESHOLD};
+use super::dispatch::validate::validate_perm;
 use super::lattice::{BenesLatticeElement, CompositeElement, LocalElement};
 use super::traits::BasisSpace;
 use num_complex::Complex;
@@ -49,8 +51,8 @@ type ElementRef<'a, B, L> = (
 /// - B = u64  → N = u16
 /// - B = Uint<128..8192> → N = u32
 ///
-/// This pairing is enforced statically via [`SpaceInner`](crate::dispatch::SpaceInner)
-/// variant definitions and the `with_sym_grp!` macro.
+/// This pairing is enforced statically by the per-family dispatch enum
+/// variant definitions (e.g. [`BitBasisDefault`](crate::dispatch::BitBasisDefault)).
 pub trait NormInt: Copy + Send + Sync + 'static {
     fn from_norm(norm: f64) -> Self;
     fn to_f64(self) -> f64;
@@ -164,6 +166,10 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
     /// (both `perm` and `local` absent) are rejected — the identity
     /// must not be added explicitly.
     ///
+    /// The site-permutation component (if present) is validated against
+    /// `self.n_sites` here — every dispatch path through `SymBasis<B,L,N>`
+    /// shares this check, so callers don't need to pre-validate.
+    ///
     /// The walker dispatches each element into one of three typed
     /// storage vectors at insert time based on which components are
     /// present, so the orbit hot loop has zero variant-branching.
@@ -172,7 +178,15 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
         grp_char: Complex<f64>,
         element: crate::SymElement<L>,
     ) -> Result<(), QuSpinError> {
+        if self.built {
+            return Err(QuSpinError::ValueError(
+                "cannot add symmetry elements after basis is built".into(),
+            ));
+        }
         let (perm, local) = element.into_parts();
+        if let Some(ref p) = perm {
+            validate_perm(p, self.n_sites)?;
+        }
         match (perm, local) {
             (Some(p), None) => {
                 let op = BenesPermDitLocations::<B>::new(self.lhss, &p, self.fermionic);
@@ -441,6 +455,13 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         G: StateTransitions,
         L: Sync,
     {
+        if graph.lhss() != self.lhss {
+            return Err(QuSpinError::ValueError(format!(
+                "graph.lhss()={} does not match basis lhss={}",
+                graph.lhss(),
+                self.lhss,
+            )));
+        }
         if !self.built {
             self.validate_group()?;
         }

@@ -4,6 +4,7 @@ use quspin_bitbasis::{
     BitInt, StateTransitions,
     manip::{DitManip, DynamicDitManip},
 };
+use quspin_types::QuSpinError;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -168,7 +169,17 @@ impl<B: BitInt> Subspace<B> {
     /// in parallel (when large enough), discovers new states, and forms the
     /// next frontier.  After the walk, states are sorted ascending and the
     /// index map is rebuilt.
-    pub fn build<G: StateTransitions>(&mut self, seed: B, graph: &G) {
+    ///
+    /// # Errors
+    /// - `graph.lhss() != self.lhss()`
+    pub fn build<G: StateTransitions>(&mut self, seed: B, graph: &G) -> Result<(), QuSpinError> {
+        if graph.lhss() != self.lhss {
+            return Err(QuSpinError::ValueError(format!(
+                "graph.lhss()={} does not match basis lhss={}",
+                graph.lhss(),
+                self.lhss,
+            )));
+        }
         self.built = true;
 
         let is_new =
@@ -181,7 +192,7 @@ impl<B: BitInt> Subspace<B> {
             };
 
         if !is_new {
-            return;
+            return Ok(());
         }
 
         let max_size = self.lhss.saturating_pow(self.n_sites as u32);
@@ -204,6 +215,7 @@ impl<B: BitInt> Subspace<B> {
         }
 
         self.sort();
+        Ok(())
     }
 
     fn sort(&mut self) {

@@ -39,7 +39,7 @@ pub use quspin_types::{
 
 // Modules reachable as paths (for quspin-py's deep imports like
 // `quspin_core::operator::bond::BondOperator` or
-// `quspin_core::basis::dispatch::SpaceInner`):
+// `quspin_core::basis::dispatch::GenericBasis`):
 pub mod basis {
     pub use quspin_basis::*;
 }

@@ -11,45 +11,162 @@ pub use monomial::PyMonomialOperator;
 pub use pauli::PyPauliOperator;
 
 use crate::basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis};
+use crate::error::Error;
 use num_complex::Complex;
 use numpy::{Complex64, PyArray1, PyArrayMethods};
 use pyo3::prelude::*;
+use quspin_core::OperatorDispatch;
 use quspin_core::ParseOp;
-use quspin_core::basis::dispatch::SpaceInner;
+use quspin_core::basis::dispatch::GenericBasis;
 use smallvec::SmallVec;
 
-/// Extract a reference to `SpaceInner` from any Python basis object,
-/// passing it to a closure while the PyRef borrow is live.
-pub(crate) fn with_space_inner<F, R>(basis: &Bound<'_, PyAny>, f: F) -> PyResult<R>
+// ---------------------------------------------------------------------------
+// Basis-aware operator dispatch
+// ---------------------------------------------------------------------------
+
+/// Dispatch a single-basis `apply` call to the right typed entry point on
+/// `op` based on the concrete Python basis type.
+///
+/// `PyFermionBasis` routes through [`OperatorDispatch::apply_bit`] (with
+/// its `&BitBasis`); the other three wrappers route through
+/// [`OperatorDispatch::apply`] (with their `&GenericBasis`).
+pub(crate) fn dispatch_apply<OP>(
+    op: &OP,
+    basis: &Bound<'_, PyAny>,
+    coeffs: &[Complex<f64>],
+    input: &[Complex<f64>],
+    output: &mut [Complex<f64>],
+    overwrite: bool,
+) -> PyResult<()>
 where
-    F: FnOnce(&SpaceInner) -> R,
+    OP: OperatorDispatch,
 {
-    if let Ok(b) = basis.downcast::<PySpinBasis>() {
-        Ok(f(&b.borrow().inner.inner))
-    } else if let Ok(b) = basis.downcast::<PyFermionBasis>() {
-        Ok(f(&b.borrow().inner.inner))
+    if let Ok(b) = basis.downcast::<PyFermionBasis>() {
+        op.apply_bit(&b.borrow().inner.inner, coeffs, input, output, overwrite)
+            .map_err(Error::from)?;
+    } else if let Ok(b) = basis.downcast::<PySpinBasis>() {
+        op.apply(&b.borrow().inner.inner, coeffs, input, output, overwrite)
+            .map_err(Error::from)?;
     } else if let Ok(b) = basis.downcast::<PyBosonBasis>() {
-        Ok(f(&b.borrow().inner.inner))
+        op.apply(&b.borrow().inner.inner, coeffs, input, output, overwrite)
+            .map_err(Error::from)?;
     } else if let Ok(b) = basis.downcast::<PyGenericBasis>() {
-        Ok(f(&b.borrow().inner.inner))
+        op.apply(&b.borrow().inner, coeffs, input, output, overwrite)
+            .map_err(Error::from)?;
     } else {
-        Err(pyo3::exceptions::PyTypeError::new_err(
+        return Err(pyo3::exceptions::PyTypeError::new_err(
             "basis must be SpinBasis, FermionBasis, BosonBasis, or GenericBasis",
+        ));
+    }
+    Ok(())
+}
+
+/// Dispatch a two-basis `apply_and_project_to` call. Both bases must
+/// belong to the same family (both `PyFermionBasis` for the bit path,
+/// or both spin/boson/generic for the GenericBasis path) — mixing is
+/// rejected at the boundary.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn dispatch_apply_and_project_to<OP>(
+    op: &OP,
+    input_basis: &Bound<'_, PyAny>,
+    output_basis: &Bound<'_, PyAny>,
+    coeffs: &[Complex<f64>],
+    input: &[Complex<f64>],
+    output: &mut [Complex<f64>],
+    overwrite: bool,
+) -> PyResult<()>
+where
+    OP: OperatorDispatch,
+{
+    let in_is_fermion = input_basis.is_instance_of::<PyFermionBasis>();
+    let out_is_fermion = output_basis.is_instance_of::<PyFermionBasis>();
+
+    if in_is_fermion != out_is_fermion {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "input and output basis must both be FermionBasis or both not be FermionBasis",
+        ));
+    }
+
+    if in_is_fermion {
+        let in_b = input_basis.downcast::<PyFermionBasis>()?.borrow();
+        let out_b = output_basis.downcast::<PyFermionBasis>()?.borrow();
+        op.apply_and_project_to_bit(
+            &in_b.inner.inner,
+            &out_b.inner.inner,
+            coeffs,
+            input,
+            output,
+            overwrite,
+        )
+        .map_err(Error::from)?;
+    } else {
+        // Both bases must resolve to GenericBasis. Hold both PyRefs so the
+        // borrows live as long as the call.
+        let in_spin = input_basis
+            .downcast::<PySpinBasis>()
+            .ok()
+            .map(|b| b.borrow());
+        let in_boson = input_basis
+            .downcast::<PyBosonBasis>()
+            .ok()
+            .map(|b| b.borrow());
+        let in_generic = input_basis
+            .downcast::<PyGenericBasis>()
+            .ok()
+            .map(|b| b.borrow());
+        let in_space = pick_generic_basis(
+            input_basis,
+            in_spin.as_deref(),
+            in_boson.as_deref(),
+            in_generic.as_deref(),
+        )?;
+        let out_spin = output_basis
+            .downcast::<PySpinBasis>()
+            .ok()
+            .map(|b| b.borrow());
+        let out_boson = output_basis
+            .downcast::<PyBosonBasis>()
+            .ok()
+            .map(|b| b.borrow());
+        let out_generic = output_basis
+            .downcast::<PyGenericBasis>()
+            .ok()
+            .map(|b| b.borrow());
+        let out_space = pick_generic_basis(
+            output_basis,
+            out_spin.as_deref(),
+            out_boson.as_deref(),
+            out_generic.as_deref(),
+        )?;
+        op.apply_and_project_to(in_space, out_space, coeffs, input, output, overwrite)
+            .map_err(Error::from)?;
+    }
+    Ok(())
+}
+
+fn pick_generic_basis<'a>(
+    basis: &Bound<'_, PyAny>,
+    spin: Option<&'a PySpinBasis>,
+    boson: Option<&'a PyBosonBasis>,
+    generic: Option<&'a PyGenericBasis>,
+) -> PyResult<&'a GenericBasis> {
+    if let Some(b) = spin {
+        Ok(&b.inner.inner)
+    } else if let Some(b) = boson {
+        Ok(&b.inner.inner)
+    } else if let Some(b) = generic {
+        Ok(&b.inner)
+    } else {
+        let _ = basis;
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "basis must be SpinBasis, BosonBasis, or GenericBasis",
         ))
     }
 }
 
-/// Same as `with_space_inner` but for two bases at once.
-pub(crate) fn with_two_space_inners<F, R>(
-    basis_a: &Bound<'_, PyAny>,
-    basis_b: &Bound<'_, PyAny>,
-    f: F,
-) -> PyResult<R>
-where
-    F: FnOnce(&SpaceInner, &SpaceInner) -> R,
-{
-    with_space_inner(basis_a, |a| with_space_inner(basis_b, |b| f(a, b)))?
-}
+// ---------------------------------------------------------------------------
+// numpy helpers
+// ---------------------------------------------------------------------------
 
 /// Read a Complex64 numpy array into a Vec<Complex<f64>>.
 ///
@@ -112,10 +229,6 @@ pub(crate) fn extract_coeff(py: Python<'_>, obj: &PyObject) -> PyResult<Complex<
 }
 
 /// Generic parsing of `*terms` for any operator type that implements `ParseOp`.
-///
-/// The `make_entry` closure constructs the concrete entry type (e.g. `OpEntry`,
-/// `BosonOpEntry`, `FermionOpEntry`) from the parsed components, avoiding the
-/// need for a shared trait on the entry types in `quspin-core`.
 pub(crate) fn parse_terms_generic<C, Op, E, F>(
     py: Python<'_>,
     terms: &[Term],

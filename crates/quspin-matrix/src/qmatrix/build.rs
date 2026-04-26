@@ -1,16 +1,38 @@
 use super::matrix::PARALLEL_DIM_THRESHOLD;
 use super::{CIndex, Entry, Index, QMatrix};
 use num_complex::Complex;
-use quspin_basis::dispatch::SpaceInner;
+use quspin_basis::dispatch::{
+    BitBasis, BitBasisDefault, DitBasis, DynDitBasis, DynDitBasisDefault, GenericBasis, QuatBasis,
+    QuatBasisDefault, TritBasis, TritBasisDefault,
+};
+#[cfg(feature = "large-int")]
+use quspin_basis::dispatch::{
+    BitBasisLargeInt, DynDitBasisLargeInt, QuatBasisLargeInt, TritBasisLargeInt,
+};
 use quspin_basis::{
     BasisSpace,
     sym::{NormInt, SymBasis},
 };
-use quspin_bitbasis::{BitInt, FermionicBitStateOp, PermDitValues};
+use quspin_bitbasis::{
+    BitInt, DynamicPermDitValues, FermionicBitStateOp, PermDitMask, PermDitValues,
+};
 use quspin_operator::Operator;
 use quspin_types::Primitive;
 use rayon::prelude::*;
 use smallvec::SmallVec;
+
+type B128 = ruint::Uint<128, 2>;
+type B256 = ruint::Uint<256, 4>;
+#[cfg(feature = "large-int")]
+type B512 = ruint::Uint<512, 8>;
+#[cfg(feature = "large-int")]
+type B1024 = ruint::Uint<1024, 16>;
+#[cfg(feature = "large-int")]
+type B2048 = ruint::Uint<2048, 32>;
+#[cfg(feature = "large-int")]
+type B4096 = ruint::Uint<4096, 64>;
+#[cfg(feature = "large-int")]
+type B8192 = ruint::Uint<8192, 128>;
 
 /// Assemble a `QMatrix` from per-row entry vectors.
 fn rows_to_qmatrix<M: Primitive, I: Index, C: CIndex>(
@@ -33,19 +55,6 @@ fn rows_to_qmatrix<M: Primitive, I: Index, C: CIndex>(
 // ---------------------------------------------------------------------------
 
 /// Construct a `QMatrix` from a `Hamiltonian` and a non-symmetric basis.
-///
-/// For each row (basis state), applies the Hamiltonian and looks up the
-/// resulting state in the basis.  Contributions to the same (col, cindex) pair
-/// are merged by summing.
-///
-/// Mirrors `qmatrix::calculate_row` for `space` / `subspace` variants.
-///
-/// # Type parameters
-/// - `H` — Operator type implementing `Operator<C>`
-/// - `B` — basis integer type
-/// - `M` — matrix element type
-/// - `I` — CSR index type
-/// - `C` — operator-string index type
 pub fn build_from_basis<H, B, M, I, C, S>(ham: &H, basis: &S) -> QMatrix<M, I, C>
 where
     H: Operator<C> + Sync,
@@ -93,12 +102,6 @@ where
 // ---------------------------------------------------------------------------
 
 /// Construct a `QMatrix` from a `Hamiltonian` and a `SymBasis`.
-///
-/// For each row, the Hamiltonian is applied to the representative state.
-/// Each resulting state is mapped to its representative via `check_refstate`,
-/// and the matrix element is scaled by the group character and norm ratio.
-///
-/// Mirrors `qmatrix::calculate_row` for `symmetric_subspace`.
 pub fn build_from_symmetric<H, B, L, N, M, I, C>(
     ham: &H,
     basis: &SymBasis<B, L, N>,
@@ -164,189 +167,212 @@ where
 }
 
 // ---------------------------------------------------------------------------
-// SpaceInner dispatch helpers
+// Type-erased dispatch — split into _bit / _dit / _generic.
 // ---------------------------------------------------------------------------
 
-/// Build a `QMatrix<M, i64, C>` from an `Operator<C>` and a `SpaceInner`.
-///
-/// Dispatches over all 29 `SpaceInner` variants, calling
-/// `build_from_basis` for `Full*`/`Sub*` and `build_from_symmetric` for
-/// `Sym*`/`DitSym*`.
-///
-/// This function is used by the Python FFI layer to avoid duplicating the
-/// 29-arm match for every `(M, C)` combination.
-pub fn build_from_space<H, M, C>(ham: &H, space: &SpaceInner) -> QMatrix<M, i64, C>
+// Each per-family Default/LargeInt enum has Full*/Sub* variants (built
+// via build_from_basis, which doesn't care about L) plus Sym* variants
+// (built via build_from_symmetric, which needs the family's L type and
+// the right N). The macro generates the per-enum match arms for plain
+// (non-symmetric) variants.
+macro_rules! plain_default_arms {
+    ($Enum:ident, $self:expr, $ham:ident, $H:ty, $M:ty, $C:ty) => {
+        match $self {
+            $Enum::Full32(b) => build_from_basis::<$H, u32, $M, i64, $C, _>($ham, b),
+            $Enum::Full64(b) => build_from_basis::<$H, u64, $M, i64, $C, _>($ham, b),
+            $Enum::Sub32(b) => build_from_basis::<$H, u32, $M, i64, $C, _>($ham, b),
+            $Enum::Sub64(b) => build_from_basis::<$H, u64, $M, i64, $C, _>($ham, b),
+            $Enum::Sub128(b) => build_from_basis::<$H, B128, $M, i64, $C, _>($ham, b),
+            $Enum::Sub256(b) => build_from_basis::<$H, B256, $M, i64, $C, _>($ham, b),
+            _ => unreachable!("only plain (Full*/Sub*) variants reach this branch"),
+        }
+    };
+}
+
+#[cfg(feature = "large-int")]
+macro_rules! plain_largeint_arms {
+    ($Enum:ident, $self:expr, $ham:ident, $H:ty, $M:ty, $C:ty) => {
+        match $self {
+            $Enum::Sub512(b) => build_from_basis::<$H, B512, $M, i64, $C, _>($ham, b),
+            $Enum::Sub1024(b) => build_from_basis::<$H, B1024, $M, i64, $C, _>($ham, b),
+            $Enum::Sub2048(b) => build_from_basis::<$H, B2048, $M, i64, $C, _>($ham, b),
+            $Enum::Sub4096(b) => build_from_basis::<$H, B4096, $M, i64, $C, _>($ham, b),
+            $Enum::Sub8192(b) => build_from_basis::<$H, B8192, $M, i64, $C, _>($ham, b),
+            _ => unreachable!("only plain (Sub*) variants reach this branch"),
+        }
+    };
+}
+
+/// Build a `QMatrix<M, i64, C>` from a `BitBasis` (LHSS = 2). FermionBasis
+/// uses this path directly, avoiding monomorphization of the dit families.
+pub fn build_from_bit<H, M, C>(ham: &H, space: &BitBasis) -> QMatrix<M, i64, C>
 where
-    H: quspin_operator::Operator<C> + Sync,
-    M: quspin_types::Primitive,
+    H: Operator<C> + Sync,
+    M: Primitive,
     C: CIndex + Copy + Ord,
 {
-    use quspin_basis::dispatch::SpaceInner;
-    use quspin_bitbasis::{DynamicPermDitValues, PermDitMask};
-
-    type B128 = ruint::Uint<128, 2>;
-    type B256 = ruint::Uint<256, 4>;
-    #[cfg(feature = "large-int")]
-    type B512 = ruint::Uint<512, 8>;
-    #[cfg(feature = "large-int")]
-    type B1024 = ruint::Uint<1024, 16>;
-    #[cfg(feature = "large-int")]
-    type B2048 = ruint::Uint<2048, 32>;
-    #[cfg(feature = "large-int")]
-    type B4096 = ruint::Uint<4096, 64>;
-    #[cfg(feature = "large-int")]
-    type B8192 = ruint::Uint<8192, 128>;
-
     match space {
-        // Non-symmetric
-        SpaceInner::Full32(b) => build_from_basis::<H, u32, M, i64, C, _>(ham, b),
-        SpaceInner::Full64(b) => build_from_basis::<H, u64, M, i64, C, _>(ham, b),
-        SpaceInner::Sub32(b) => build_from_basis::<H, u32, M, i64, C, _>(ham, b),
-        SpaceInner::Sub64(b) => build_from_basis::<H, u64, M, i64, C, _>(ham, b),
-        SpaceInner::Sub128(b) => build_from_basis::<H, B128, M, i64, C, _>(ham, b),
-        SpaceInner::Sub256(b) => build_from_basis::<H, B256, M, i64, C, _>(ham, b),
+        BitBasis::Default(d) => match d {
+            BitBasisDefault::Sym32(b) => {
+                build_from_symmetric::<H, u32, PermDitMask<u32>, u8, M, i64, C>(ham, b)
+            }
+            BitBasisDefault::Sym64(b) => {
+                build_from_symmetric::<H, u64, PermDitMask<u64>, u16, M, i64, C>(ham, b)
+            }
+            BitBasisDefault::Sym128(b) => {
+                build_from_symmetric::<H, B128, PermDitMask<B128>, u32, M, i64, C>(ham, b)
+            }
+            BitBasisDefault::Sym256(b) => {
+                build_from_symmetric::<H, B256, PermDitMask<B256>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_default_arms!(BitBasisDefault, other, ham, H, M, C),
+        },
         #[cfg(feature = "large-int")]
-        SpaceInner::Sub512(b) => build_from_basis::<H, B512, M, i64, C, _>(ham, b),
+        BitBasis::LargeInt(d) => match d {
+            BitBasisLargeInt::Sym512(b) => {
+                build_from_symmetric::<H, B512, PermDitMask<B512>, u32, M, i64, C>(ham, b)
+            }
+            BitBasisLargeInt::Sym1024(b) => {
+                build_from_symmetric::<H, B1024, PermDitMask<B1024>, u32, M, i64, C>(ham, b)
+            }
+            BitBasisLargeInt::Sym2048(b) => {
+                build_from_symmetric::<H, B2048, PermDitMask<B2048>, u32, M, i64, C>(ham, b)
+            }
+            BitBasisLargeInt::Sym4096(b) => {
+                build_from_symmetric::<H, B4096, PermDitMask<B4096>, u32, M, i64, C>(ham, b)
+            }
+            BitBasisLargeInt::Sym8192(b) => {
+                build_from_symmetric::<H, B8192, PermDitMask<B8192>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_largeint_arms!(BitBasisLargeInt, other, ham, H, M, C),
+        },
+    }
+}
+
+/// Build a `QMatrix<M, i64, C>` from a `DitBasis` (LHSS > 2).
+pub fn build_from_dit<H, M, C>(ham: &H, space: &DitBasis) -> QMatrix<M, i64, C>
+where
+    H: Operator<C> + Sync,
+    M: Primitive,
+    C: CIndex + Copy + Ord,
+{
+    match space {
+        DitBasis::Trit(TritBasis::Default(d)) => match d {
+            TritBasisDefault::Sym32(b) => {
+                build_from_symmetric::<H, u32, PermDitValues<3>, u8, M, i64, C>(ham, b)
+            }
+            TritBasisDefault::Sym64(b) => {
+                build_from_symmetric::<H, u64, PermDitValues<3>, u16, M, i64, C>(ham, b)
+            }
+            TritBasisDefault::Sym128(b) => {
+                build_from_symmetric::<H, B128, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            TritBasisDefault::Sym256(b) => {
+                build_from_symmetric::<H, B256, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_default_arms!(TritBasisDefault, other, ham, H, M, C),
+        },
         #[cfg(feature = "large-int")]
-        SpaceInner::Sub1024(b) => build_from_basis::<H, B1024, M, i64, C, _>(ham, b),
+        DitBasis::Trit(TritBasis::LargeInt(d)) => match d {
+            TritBasisLargeInt::Sym512(b) => {
+                build_from_symmetric::<H, B512, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            TritBasisLargeInt::Sym1024(b) => {
+                build_from_symmetric::<H, B1024, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            TritBasisLargeInt::Sym2048(b) => {
+                build_from_symmetric::<H, B2048, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            TritBasisLargeInt::Sym4096(b) => {
+                build_from_symmetric::<H, B4096, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            TritBasisLargeInt::Sym8192(b) => {
+                build_from_symmetric::<H, B8192, PermDitValues<3>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_largeint_arms!(TritBasisLargeInt, other, ham, H, M, C),
+        },
+        DitBasis::Quat(QuatBasis::Default(d)) => match d {
+            QuatBasisDefault::Sym32(b) => {
+                build_from_symmetric::<H, u32, PermDitValues<4>, u8, M, i64, C>(ham, b)
+            }
+            QuatBasisDefault::Sym64(b) => {
+                build_from_symmetric::<H, u64, PermDitValues<4>, u16, M, i64, C>(ham, b)
+            }
+            QuatBasisDefault::Sym128(b) => {
+                build_from_symmetric::<H, B128, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            QuatBasisDefault::Sym256(b) => {
+                build_from_symmetric::<H, B256, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_default_arms!(QuatBasisDefault, other, ham, H, M, C),
+        },
         #[cfg(feature = "large-int")]
-        SpaceInner::Sub2048(b) => build_from_basis::<H, B2048, M, i64, C, _>(ham, b),
+        DitBasis::Quat(QuatBasis::LargeInt(d)) => match d {
+            QuatBasisLargeInt::Sym512(b) => {
+                build_from_symmetric::<H, B512, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            QuatBasisLargeInt::Sym1024(b) => {
+                build_from_symmetric::<H, B1024, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            QuatBasisLargeInt::Sym2048(b) => {
+                build_from_symmetric::<H, B2048, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            QuatBasisLargeInt::Sym4096(b) => {
+                build_from_symmetric::<H, B4096, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            QuatBasisLargeInt::Sym8192(b) => {
+                build_from_symmetric::<H, B8192, PermDitValues<4>, u32, M, i64, C>(ham, b)
+            }
+            other => plain_largeint_arms!(QuatBasisLargeInt, other, ham, H, M, C),
+        },
+        DitBasis::Dyn(DynDitBasis::Default(d)) => match d {
+            DynDitBasisDefault::Sym32(b) => {
+                build_from_symmetric::<H, u32, DynamicPermDitValues, u8, M, i64, C>(ham, b)
+            }
+            DynDitBasisDefault::Sym64(b) => {
+                build_from_symmetric::<H, u64, DynamicPermDitValues, u16, M, i64, C>(ham, b)
+            }
+            DynDitBasisDefault::Sym128(b) => {
+                build_from_symmetric::<H, B128, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            DynDitBasisDefault::Sym256(b) => {
+                build_from_symmetric::<H, B256, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            other => plain_default_arms!(DynDitBasisDefault, other, ham, H, M, C),
+        },
         #[cfg(feature = "large-int")]
-        SpaceInner::Sub4096(b) => build_from_basis::<H, B4096, M, i64, C, _>(ham, b),
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sub8192(b) => build_from_basis::<H, B8192, M, i64, C, _>(ham, b),
-        // LHSS=2 symmetric
-        SpaceInner::Sym32(b) => {
-            build_from_symmetric::<H, u32, PermDitMask<u32>, u8, M, i64, C>(ham, b)
-        }
-        SpaceInner::Sym64(b) => {
-            build_from_symmetric::<H, u64, PermDitMask<u64>, u16, M, i64, C>(ham, b)
-        }
-        SpaceInner::Sym128(b) => {
-            build_from_symmetric::<H, B128, PermDitMask<B128>, u32, M, i64, C>(ham, b)
-        }
-        SpaceInner::Sym256(b) => {
-            build_from_symmetric::<H, B256, PermDitMask<B256>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sym512(b) => {
-            build_from_symmetric::<H, B512, PermDitMask<B512>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sym1024(b) => {
-            build_from_symmetric::<H, B1024, PermDitMask<B1024>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sym2048(b) => {
-            build_from_symmetric::<H, B2048, PermDitMask<B2048>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sym4096(b) => {
-            build_from_symmetric::<H, B4096, PermDitMask<B4096>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::Sym8192(b) => {
-            build_from_symmetric::<H, B8192, PermDitMask<B8192>, u32, M, i64, C>(ham, b)
-        }
-        // LHSS≥3 symmetric (dit)
-        SpaceInner::DitSym32(b) => {
-            build_from_symmetric::<H, u32, DynamicPermDitValues, u8, M, i64, C>(ham, b)
-        }
-        SpaceInner::DitSym64(b) => {
-            build_from_symmetric::<H, u64, DynamicPermDitValues, u16, M, i64, C>(ham, b)
-        }
-        SpaceInner::DitSym128(b) => {
-            build_from_symmetric::<H, B128, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        SpaceInner::DitSym256(b) => {
-            build_from_symmetric::<H, B256, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::DitSym512(b) => {
-            build_from_symmetric::<H, B512, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::DitSym1024(b) => {
-            build_from_symmetric::<H, B1024, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::DitSym2048(b) => {
-            build_from_symmetric::<H, B2048, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::DitSym4096(b) => {
-            build_from_symmetric::<H, B4096, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::DitSym8192(b) => {
-            build_from_symmetric::<H, B8192, DynamicPermDitValues, u32, M, i64, C>(ham, b)
-        }
-        // LHSS=3 symmetric (trit)
-        SpaceInner::TritSym32(b) => {
-            build_from_symmetric::<H, u32, PermDitValues<3>, u8, M, i64, C>(ham, b)
-        }
-        SpaceInner::TritSym64(b) => {
-            build_from_symmetric::<H, u64, PermDitValues<3>, u16, M, i64, C>(ham, b)
-        }
-        SpaceInner::TritSym128(b) => {
-            build_from_symmetric::<H, B128, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        SpaceInner::TritSym256(b) => {
-            build_from_symmetric::<H, B256, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::TritSym512(b) => {
-            build_from_symmetric::<H, B512, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::TritSym1024(b) => {
-            build_from_symmetric::<H, B1024, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::TritSym2048(b) => {
-            build_from_symmetric::<H, B2048, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::TritSym4096(b) => {
-            build_from_symmetric::<H, B4096, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::TritSym8192(b) => {
-            build_from_symmetric::<H, B8192, PermDitValues<3>, u32, M, i64, C>(ham, b)
-        }
-        // LHSS=4 symmetric (quat)
-        SpaceInner::QuatSym32(b) => {
-            build_from_symmetric::<H, u32, PermDitValues<4>, u8, M, i64, C>(ham, b)
-        }
-        SpaceInner::QuatSym64(b) => {
-            build_from_symmetric::<H, u64, PermDitValues<4>, u16, M, i64, C>(ham, b)
-        }
-        SpaceInner::QuatSym128(b) => {
-            build_from_symmetric::<H, B128, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        SpaceInner::QuatSym256(b) => {
-            build_from_symmetric::<H, B256, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::QuatSym512(b) => {
-            build_from_symmetric::<H, B512, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::QuatSym1024(b) => {
-            build_from_symmetric::<H, B1024, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::QuatSym2048(b) => {
-            build_from_symmetric::<H, B2048, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::QuatSym4096(b) => {
-            build_from_symmetric::<H, B4096, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
-        #[cfg(feature = "large-int")]
-        SpaceInner::QuatSym8192(b) => {
-            build_from_symmetric::<H, B8192, PermDitValues<4>, u32, M, i64, C>(ham, b)
-        }
+        DitBasis::Dyn(DynDitBasis::LargeInt(d)) => match d {
+            DynDitBasisLargeInt::Sym512(b) => {
+                build_from_symmetric::<H, B512, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            DynDitBasisLargeInt::Sym1024(b) => {
+                build_from_symmetric::<H, B1024, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            DynDitBasisLargeInt::Sym2048(b) => {
+                build_from_symmetric::<H, B2048, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            DynDitBasisLargeInt::Sym4096(b) => {
+                build_from_symmetric::<H, B4096, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            DynDitBasisLargeInt::Sym8192(b) => {
+                build_from_symmetric::<H, B8192, DynamicPermDitValues, u32, M, i64, C>(ham, b)
+            }
+            other => plain_largeint_arms!(DynDitBasisLargeInt, other, ham, H, M, C),
+        },
+    }
+}
+
+/// Build a `QMatrix<M, i64, C>` from a `GenericBasis`. Branches into
+/// [`build_from_bit`] / [`build_from_dit`] depending on the LHSS family.
+pub fn build_from_space<H, M, C>(ham: &H, space: &GenericBasis) -> QMatrix<M, i64, C>
+where
+    H: Operator<C> + Sync,
+    M: Primitive,
+    C: CIndex + Copy + Ord,
+{
+    match space {
+        GenericBasis::Bit(b) => build_from_bit(ham, b),
+        GenericBasis::Dit(b) => build_from_dit(ham, b),
     }
 }
 
@@ -364,8 +390,6 @@ mod tests {
 
     fn xx_ham() -> HardcoreOperator<u8> {
         use quspin_operator::pauli::{HardcoreOp, OpEntry};
-        // H = Σ_i X_i X_{i+1}, two-site chain
-        // Term 0: X_0 X_1, cindex=0, coeff=1
         let ops0 = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops0)];
         HardcoreOperator::new(terms)
@@ -373,13 +397,6 @@ mod tests {
 
     #[test]
     fn build_fullspace_2site_xx() {
-        // 2-site XX: H|00⟩ = |11⟩, H|01⟩ = |10⟩, H|10⟩ = |01⟩, H|11⟩ = |00⟩
-        // FullSpace dim=4, states ordered descending: state_at(0)=3,1=2,2=1,3=0
-        // H as matrix in this ordering:
-        // row 0 (state=3=|11⟩): XX|11⟩ = |00⟩=state_at(3) → col 3
-        // row 1 (state=2=|10⟩): XX|10⟩ = |01⟩=state_at(2) → col 2
-        // row 2 (state=1=|01⟩): XX|01⟩ = |10⟩=state_at(1) → col 1
-        // row 3 (state=0=|00⟩): XX|00⟩ = |11⟩=state_at(0) → col 0
         let ham = xx_ham();
         let basis = FullSpace::<u32>::new(2, 2, false);
         let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
@@ -387,29 +404,22 @@ mod tests {
         assert_eq!(mat.dim(), 4);
         assert_eq!(mat.nnz(), 4);
 
-        // Each row has exactly 1 non-zero
         for r in 0..4 {
             assert_eq!(mat.row(r).len(), 1);
         }
 
-        // row 0 → col 3
         assert_eq!(mat.row(0)[0].col, 3i64);
-        // row 3 → col 0
         assert_eq!(mat.row(3)[0].col, 0i64);
     }
 
     #[test]
     fn build_subspace_1particle_2site() {
-        // 1-particle sector of 2-site XX: states {|01⟩=1, |10⟩=2}
-        // XX connects them: H|01⟩=|10⟩, H|10⟩=|01⟩
-        // Subspace sorted ascending: state_at(0)=1, state_at(1)=2
         use quspin_operator::pauli::{HardcoreOp, OpEntry};
         let ops = smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)];
         let terms = vec![OpEntry::new(0u8, Complex::new(1.0, 0.0), ops)];
         let ham = HardcoreOperator::new(terms);
 
         let mut sub = Subspace::<u32>::new(2, 2, false);
-        // seed with |01⟩=1
         sub.build(0b01u32, &ham);
         assert_eq!(sub.size(), 2);
 
@@ -417,7 +427,6 @@ mod tests {
         assert_eq!(mat.dim(), 2);
         assert_eq!(mat.nnz(), 2);
 
-        // Matrix should be [[0,1],[1,0]]
         assert!((mat.row(0)[0].value - 1.0).abs() < 1e-12);
         assert_eq!(mat.row(0)[0].col, 1i64);
         assert!((mat.row(1)[0].value - 1.0).abs() < 1e-12);
@@ -426,10 +435,6 @@ mod tests {
 
     #[test]
     fn dot_after_build_fullspace() {
-        // H|ψ⟩ = |11⟩ = [0,0,0,1] in FullSpace ordering (state_at(3)=0=|00⟩)
-        // Wait let's just verify energy with uniform state.
-        // For XX on 2-site full space, eigenvalues are ±1 (from XX^2=I).
-        // Check: H * H * |ψ⟩ = |ψ⟩ for any |ψ⟩
         let ham = xx_ham();
         let basis = FullSpace::<u32>::new(2, 2, false);
         let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
@@ -439,13 +444,11 @@ mod tests {
         mat.dot(true, &coeff, &psi, &mut hpsi).unwrap();
         let mut h2psi = vec![0.0_f64; 4];
         mat.dot(true, &coeff, &hpsi, &mut h2psi).unwrap();
-        // H^2 = I for XX on 2 sites → h2psi == psi
         for i in 0..4 {
             assert!((h2psi[i] - psi[i]).abs() < 1e-12, "h2psi[{i}]={}", h2psi[i]);
         }
     }
 
-    /// Build XX chain Hamiltonian for `n_sites` (periodic boundary).
     fn xx_chain(n_sites: usize) -> HardcoreOperator<u8> {
         use quspin_operator::pauli::{HardcoreOp, OpEntry};
         let mut terms = Vec::new();
@@ -459,14 +462,11 @@ mod tests {
 
     #[test]
     fn build_from_basis_parallel() {
-        // 9-site XX chain → FullSpace dim=512, exercises parallel path.
         let ham = xx_chain(9);
         let basis = FullSpace::<u32>::new(2, 9, false);
         assert_eq!(basis.size(), 512);
         let mat: QMatrix<f64, i64, u8> = build_from_basis(&ham, &basis);
         assert_eq!(mat.dim(), 512);
-        // XX is hermitian: H^2|ψ⟩ should give back a valid result.
-        // Check trace(H) = 0 (off-diagonal operator).
         let mut trace = 0.0f64;
         for r in 0..512 {
             for e in mat.row(r) {

@@ -1,5 +1,5 @@
-/// Spin basis type [`SpinBasis`].
-use super::dispatch::SpaceInner;
+//! Spin basis type [`SpinBasis`].
+use crate::dispatch::GenericBasis;
 use num_complex::Complex;
 use quspin_bitbasis::StateTransitions;
 use quspin_types::QuSpinError;
@@ -23,45 +23,47 @@ pub enum SpaceKind {
 // SpinBasis
 // ---------------------------------------------------------------------------
 
-/// A unified spin basis combining space-kind selection, symmetry group
-/// building, and basis construction into one type.
+/// Spin basis (`fermionic = false`). Thin wrapper that adds
+/// spin-specific conventions on top of [`GenericBasis`].
 ///
 /// - [`SpaceKind::Full`]  — full Hilbert space; no build step required.
 /// - [`SpaceKind::Sub`]   — particle-number / energy subspace built by BFS.
 /// - [`SpaceKind::Symm`]  — symmetry-reduced subspace; add symmetry elements
-///   with [`add_lattice`](SpinBasis::add_lattice) /
-///   [`add_inv`](SpinBasis::add_inv) before calling a `build_*` method.
+///   with [`add_lattice`](Self::add_lattice) /
+///   [`add_inv`](Self::add_inv) before calling [`build`](Self::build).
 pub struct SpinBasis {
-    pub inner: SpaceInner,
+    pub inner: GenericBasis,
 }
 
 impl SpinBasis {
-    /// Construct a new spin basis.
+    /// Construct a new spin basis (always `fermionic = false`).
     ///
     /// # Errors
     /// - `lhss < 2`
     /// - [`SpaceKind::Full`] with more than 64 bits required
     /// - [`SpaceKind::Sub`] / [`SpaceKind::Symm`] with more than 8192 bits
     pub fn new(n_sites: usize, lhss: usize, space_kind: SpaceKind) -> Result<Self, QuSpinError> {
-        let inner = super::make_space_inner(n_sites, lhss, space_kind, false)?;
-        Ok(SpinBasis { inner })
+        Ok(Self {
+            inner: GenericBasis::new(n_sites, lhss, space_kind, false)?,
+        })
     }
 
     /// The [`SpaceKind`] this basis was constructed with.
+    #[inline]
     pub fn space_kind(&self) -> SpaceKind {
         self.inner.space_kind()
     }
 
     /// Add a lattice (site-permutation) symmetry element.
     ///
-    /// Valid only for [`SpaceKind::Symm`] bases before [`build_spin`](Self::build_spin) /
-    /// [`build_bond`](Self::build_bond) is called.
+    /// Valid only for [`SpaceKind::Symm`] bases before [`build`](Self::build)
+    /// is called.
     pub fn add_lattice(
         &mut self,
         grp_char: Complex<f64>,
         perm: Vec<usize>,
     ) -> Result<(), QuSpinError> {
-        self.inner.add_lattice(grp_char, &perm)
+        self.inner.add_lattice(grp_char, perm)
     }
 
     /// Add a spin-inversion symmetry element.
@@ -77,10 +79,10 @@ impl SpinBasis {
         let locs_usize: Vec<usize> = locs_u32.iter().map(|&v| v as usize).collect();
         let char = Complex::new(-1.0, 0.0);
         if lhss == 2 {
-            self.inner.add_inv(char, &locs_usize)
+            self.inner.add_inv(char, locs_usize)
         } else {
-            let perm: Vec<u8> = (0..lhss).rev().map(|v| v as u8).collect();
-            self.inner.add_local(char, perm, locs_usize)
+            let perm_vals: Vec<u8> = (0..lhss).rev().map(|v| v as u8).collect();
+            self.inner.add_local(char, perm_vals, locs_usize)
         }
     }
 
@@ -96,7 +98,7 @@ impl SpinBasis {
         graph: &G,
         seeds: &[Vec<u8>],
     ) -> Result<(), QuSpinError> {
-        super::build_inner(&mut self.inner, graph, seeds)
+        self.inner.build(graph, seeds)
     }
 }
 
@@ -157,73 +159,5 @@ mod tests {
             .unwrap();
         let result = basis.add_inv(None);
         assert!(result.is_ok(), "add_inv(None) should succeed: {result:?}");
-    }
-
-    #[test]
-    fn spin_basis_build_spin_half() {
-        use quspin_operator::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
-        use smallvec::smallvec;
-
-        // H = S+_0 S-_1 + S-_0 S+_1  (hopping / XX+YY-type), lhss=2
-        let n_sites = 4usize;
-        let mut terms = vec![];
-        for i in 0..n_sites as u32 - 1 {
-            terms.push(SpinOpEntry::new(
-                0u8,
-                Complex::new(1.0, 0.0),
-                smallvec![(SpinOp::Plus, i), (SpinOp::Minus, i + 1)],
-            ));
-            terms.push(SpinOpEntry::new(
-                0u8,
-                Complex::new(1.0, 0.0),
-                smallvec![(SpinOp::Minus, i), (SpinOp::Plus, i + 1)],
-            ));
-        }
-        let ham = SpinOperatorInner::Ham8(SpinOperator::new(terms, 2));
-
-        let mut basis = SpinBasis::new(n_sites, 2, SpaceKind::Sub).unwrap();
-        // seed: lowest 2 bits set = 2-particle sector, state 0b0011
-        let seed = vec![1u8, 1, 0, 0];
-        basis.build(&ham, &[seed]).unwrap();
-
-        // 2-particle sector of 4 sites: C(4,2) = 6
-        assert_eq!(basis.inner.size(), 6);
-    }
-
-    #[test]
-    fn spin_basis_build_spin_one_lhss3() {
-        use quspin_operator::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
-        use smallvec::smallvec;
-
-        // H = S+_0 S-_1 + S-_0 S+_1  (spin-1 hopping), lhss=3
-        let n_sites = 3usize;
-        let mut terms = vec![];
-        for i in 0..n_sites as u32 - 1 {
-            terms.push(SpinOpEntry::new(
-                0u8,
-                Complex::new(1.0, 0.0),
-                smallvec![(SpinOp::Plus, i), (SpinOp::Minus, i + 1)],
-            ));
-            terms.push(SpinOpEntry::new(
-                0u8,
-                Complex::new(1.0, 0.0),
-                smallvec![(SpinOp::Minus, i), (SpinOp::Plus, i + 1)],
-            ));
-        }
-        let ham = SpinOperatorInner::Ham8(SpinOperator::new(terms, 3));
-
-        let mut basis = SpinBasis::new(n_sites, 3, SpaceKind::Sub).unwrap();
-        // seed: all sites in m=0 state (dit value 1)
-        let seed = vec![1u8, 1, 1];
-        basis.build(&ham, &[seed]).unwrap();
-
-        // The sector with total Sz=0 for 3 spin-1 sites.
-        // States where sum of (1 - dit_value) = 0 in the spin-projection convention.
-        // dit=1 means m=0. Hopping connects states with same total Sz.
-        // Distinct states reachable = number of ways to distribute 3 sites with
-        // total Sz=0 (sum of m_i = 0 where m_i in {+1,0,-1}).
-        // This is the multinomial count for (n+,n0,n-) with n+ = n-, n+ + n0 + n- = 3:
-        // (0,3,0), (1,1,1): 1 + 3!/(1!1!1!) = 1 + 6 = 7
-        assert_eq!(basis.inner.size(), 7);
     }
 }

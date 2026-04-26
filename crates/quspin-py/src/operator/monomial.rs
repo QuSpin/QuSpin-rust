@@ -1,9 +1,8 @@
 use crate::error::Error;
-use crate::operator::{as_c64_vec, with_space_inner, with_two_space_inners, write_c64_back};
+use crate::operator::{as_c64_vec, dispatch_apply, dispatch_apply_and_project_to, write_c64_back};
 use num_complex::Complex;
 use numpy::{Complex64, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
-use quspin_core::OperatorDispatch;
 use quspin_core::operator::monomial::{MonomialOperator, MonomialOperatorInner, MonomialTerm};
 use smallvec::SmallVec;
 
@@ -124,18 +123,15 @@ impl PyMonomialOperator {
         let input_vec = unsafe { as_c64_vec(input) };
         let mut output_vec = unsafe { as_c64_vec(output) };
 
-        with_two_space_inners(input_basis, output_basis, |in_space, out_space| {
-            self.inner
-                .apply_and_project_to(
-                    in_space,
-                    out_space,
-                    &coeffs_vec,
-                    &input_vec,
-                    &mut output_vec,
-                    overwrite,
-                )
-                .map_err(Error::from)
-        })??;
+        dispatch_apply_and_project_to(
+            &self.inner,
+            input_basis,
+            output_basis,
+            &coeffs_vec,
+            &input_vec,
+            &mut output_vec,
+            overwrite,
+        )?;
 
         unsafe { write_c64_back(output, &output_vec) };
         Ok(())
@@ -155,11 +151,14 @@ impl PyMonomialOperator {
         let input_vec = unsafe { as_c64_vec(input) };
         let mut output_vec = unsafe { as_c64_vec(output) };
 
-        with_space_inner(basis, |space| {
-            self.inner
-                .apply(space, &coeffs_vec, &input_vec, &mut output_vec, overwrite)
-                .map_err(Error::from)
-        })??;
+        dispatch_apply(
+            &self.inner,
+            basis,
+            &coeffs_vec,
+            &input_vec,
+            &mut output_vec,
+            overwrite,
+        )?;
 
         unsafe { write_c64_back(output, &output_vec) };
         Ok(())
