@@ -26,20 +26,24 @@ pub struct PySymElement {
 #[pymethods]
 impl PySymElement {
     fn __repr__(&self) -> String {
+        let locs_str = match &self.locs {
+            Some(v) => format!("{:?}", v),
+            None => "None".to_string(),
+        };
         match self.kind {
             SymElementKind::Lattice => {
                 format!("Lattice(perm={:?})", self.perm.as_ref().unwrap())
             }
             SymElementKind::Local => format!(
-                "Local(perm_vals={:?}, locs={:?})",
+                "Local(perm_vals={:?}, locs={})",
                 self.perm_vals.as_ref().unwrap(),
-                self.locs,
+                locs_str,
             ),
             SymElementKind::Composite => format!(
-                "Composite(perm={:?}, perm_vals={:?}, locs={:?})",
+                "Composite(perm={:?}, perm_vals={:?}, locs={})",
                 self.perm.as_ref().unwrap(),
                 self.perm_vals.as_ref().unwrap(),
-                self.locs,
+                locs_str,
             ),
         }
     }
@@ -61,6 +65,11 @@ impl PySymElement {
     }
 }
 
+/// Pure-lattice symmetry element (site permutation only).
+///
+/// `perm[src] = dst` moves the dit at site `src` to site `dst`.
+/// `perm` must have length `n_sites` and contain a permutation of
+/// `0..n_sites` — validated downstream at *Basis.symmetric(...) time.
 #[pyfunction]
 #[pyo3(name = "Lattice", signature = (perm))]
 pub fn lattice(perm: Vec<i64>) -> PyResult<PySymElement> {
@@ -80,6 +89,11 @@ pub fn lattice(perm: Vec<i64>) -> PyResult<PySymElement> {
     })
 }
 
+/// Pure-local symmetry element (per-site value-permutation only).
+///
+/// `perm_vals` is a permutation of `0..lhss` describing the per-site
+/// action; `locs` selects the sites the local op applies to (None →
+/// all sites). Validated downstream at *Basis.symmetric(...) time.
 #[pyfunction]
 #[pyo3(name = "Local", signature = (perm_vals, locs = None))]
 pub fn local(perm_vals: Vec<u64>, locs: Option<Vec<usize>>) -> PyResult<PySymElement> {
@@ -97,6 +111,12 @@ pub fn local(perm_vals: Vec<u64>, locs: Option<Vec<usize>>) -> PyResult<PySymEle
     })
 }
 
+/// Composite symmetry element (lattice + local applied atomically).
+///
+/// Both `perm` (site permutation) and `perm_vals` (per-site value
+/// permutation) act as a single group element with one character.
+/// Use this for symmetries like PZ where neither component alone is
+/// a symmetry of the Hamiltonian.
 #[pyfunction]
 #[pyo3(name = "Composite", signature = (perm, perm_vals, locs = None))]
 pub fn composite(

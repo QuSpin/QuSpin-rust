@@ -33,3 +33,13 @@ class TestSymElementConstructors:
         assert isinstance(Lattice([0]), SymElement)
         assert isinstance(Local([1, 0]), SymElement)
         assert isinstance(Composite([0], [1, 0]), SymElement)
+
+    def test_local_repr_python_shaped(self):
+        a = Local([1, 0], locs=[0, 2])
+        s = repr(a)
+        assert "Some(" not in s
+        assert "locs=[0, 2]" in s
+        b = Local([1, 0])
+        sb = repr(b)
+        assert "Some(" not in sb
+        assert "locs=None" in sb
