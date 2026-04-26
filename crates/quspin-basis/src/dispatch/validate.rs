@@ -1,11 +1,18 @@
-//! Argument-shape validators called by the user-facing
-//! `GenericBasis::add_lattice` / `add_inv` / `add_local` methods.
+//! Argument-shape validators shared by the concrete-impl entry points
+//! that own validation:
 //!
-//! These check that user-supplied permutations / `perm_vals` / `locs`
-//! have the right length, contain valid values, and (for `perm_vals`)
-//! describe a real bijection. The per-family inner-enum methods that
-//! actually insert the element trust their callers — validation
-//! happens once at the [`GenericBasis`](super::GenericBasis) layer.
+//! - [`validate_perm`] is called by
+//!   [`SymBasis::add_symmetry`](crate::sym::SymBasis::add_symmetry)
+//!   on the site-permutation component of every group element.
+//! - [`validate_perm_vals`] and [`validate_locs`] are called by the
+//!   per-family inner enums' `add_local` / `add_inv` methods, where
+//!   the typed local op is constructed from the user-supplied
+//!   `perm_vals` / `locs`.
+//!
+//! The umbrella dispatch enums ([`GenericBasis`](super::GenericBasis),
+//! [`DitBasis`](super::DitBasis), and the family enums) do no
+//! validation themselves — they only emit "method not supported on
+//! this variant" errors.
 
 use quspin_types::QuSpinError;
 

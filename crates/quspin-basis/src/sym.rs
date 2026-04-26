@@ -2,7 +2,8 @@
 ///
 /// Replaces the two-type hierarchy (`SymGrpBase<B,L>` + `SymmetricSubspace<G,N>`)
 /// with a single flat struct. `N` is an explicit type parameter — the B→N
-/// pairing is encoded in `SpaceInner` variant definitions, not a runtime enum.
+/// pairing is encoded in the per-family dispatch enum variant definitions
+/// (`BitBasisDefault`, `TritBasisDefault`, etc.), not a runtime enum.
 use super::bfs::{AMP_CANCEL_TOL, PARALLEL_FRONTIER_THRESHOLD};
 use super::dispatch::validate::validate_perm;
 use super::lattice::{BenesLatticeElement, CompositeElement, LocalElement};
@@ -50,8 +51,8 @@ type ElementRef<'a, B, L> = (
 /// - B = u64  → N = u16
 /// - B = Uint<128..8192> → N = u32
 ///
-/// This pairing is enforced statically via [`SpaceInner`](crate::dispatch::SpaceInner)
-/// variant definitions and the `with_sym_grp!` macro.
+/// This pairing is enforced statically by the per-family dispatch enum
+/// variant definitions (e.g. [`BitBasisDefault`](crate::dispatch::BitBasisDefault)).
 pub trait NormInt: Copy + Send + Sync + 'static {
     fn from_norm(norm: f64) -> Self;
     fn to_f64(self) -> f64;

@@ -17,10 +17,35 @@
 //! avoid monomorphizing the dit families. [`SpinBasis`](crate::SpinBasis)
 //! and [`BosonBasis`](crate::BosonBasis) wrap [`GenericBasis`].
 //!
-//! Each per-size inner enum has at most 10 arms; each family enum has 1
-//! or 2 arms (Default + optional LargeInt). No match anywhere exceeds 10
-//! arms, and `#[cfg(feature = "large-int")]` gates whole types — never
-//! appears inside a match expression.
+//! ## Match-arm shape
+//!
+//! - Per-size inner enums have at most 10 arms (Full*/Sub*/Sym* over
+//!   the four widths in their tier) and contain no `#[cfg]` attributes —
+//!   the `*LargeInt` enums are themselves feature-gated whole types.
+//! - Family enums have 1 (`large-int` off) or 2 (on) arms. Match arms
+//!   for the `LargeInt` variant carry `#[cfg(feature = "large-int")]`
+//!   because the variant itself is cfg-gated; arm and variant vanish
+//!   together so the match stays exhaustive in either configuration.
+//! - Umbrella enums ([`GenericBasis`], [`DitBasis`]) have 2 / 3 arms
+//!   and no `#[cfg]` arms.
+//!
+//! ## Validation
+//!
+//! The dispatch enums (`GenericBasis`, `DitBasis`, family enums) only
+//! emit "method not supported on this variant" errors (e.g. `add_inv`
+//! on the `Dit` arm of `GenericBasis`, `add_lattice` on a `Full*` /
+//! `Sub*` variant of an inner enum). All argument-shape and
+//! lifecycle validation lives in the concrete impls:
+//!
+//! - [`SymBasis::add_symmetry`](crate::sym::SymBasis::add_symmetry)
+//!   validates `is_built` and the supplied permutation
+//!   (length / range / bijection).
+//! - [`SymBasis::build`](crate::sym::SymBasis::build) and
+//!   [`Subspace::build`](crate::space::Subspace::build) validate the
+//!   graph's LHSS against the basis.
+//! - The per-family inner enums' `add_local` / `add_inv` validate
+//!   `perm_vals` and `locs` at the level where the typed local op is
+//!   constructed.
 //!
 //! ## Supported integer widths
 //!

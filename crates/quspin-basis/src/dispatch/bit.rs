@@ -33,8 +33,9 @@ use quspin_types::QuSpinError;
 
 /// Build a `B`-typed bit-mask with the bits at every site index in
 /// `locs` set. Sites whose index exceeds `B::BITS` are silently
-/// dropped — the upstream validator in [`GenericBasis`] checks
-/// `loc < n_sites`, which is always `<= B::BITS` by construction.
+/// dropped — `BitBasisDefault::add_inv` /
+/// `BitBasisLargeInt::add_inv` validate `loc < n_sites` before calling
+/// this helper, and `n_sites <= B::BITS` by construction.
 #[inline]
 fn build_mask<B: BitInt>(locs: &[usize]) -> B {
     locs.iter().fold(B::from_u64(0), |acc, &site| {

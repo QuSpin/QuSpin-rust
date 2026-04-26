@@ -287,6 +287,23 @@ fn validate_args(
 // ---------------------------------------------------------------------------
 // Type-erased dispatch
 // ---------------------------------------------------------------------------
+//
+// Three entry points layer on the inner kernels above:
+//
+//   - `apply_and_project_to_bit` / `project_to_bit` take `&BitBasis`
+//     (LHSS = 2). FermionBasis-driven call sites flow through these so
+//     the fermion compile path never instantiates the dit families.
+//   - `apply_and_project_to_dit` / `project_to_dit` take `&DitBasis`
+//     (LHSS > 2) and dispatch over its three family variants.
+//   - `apply_and_project_to` / `project_to` take `&GenericBasis` and
+//     branch into `_bit` / `_dit` based on the family arm; mixed
+//     `Bit`/`Dit` pairs return an error.
+//
+// At every level a `#[cfg(feature = "large-int")]` attribute guards
+// the `LargeInt` arm of each family enum match — same pattern as the
+// dispatch hierarchy in `quspin-basis::dispatch`: the variant itself
+// is feature-gated, so its match arm vanishes alongside it when the
+// feature is off and the match remains exhaustive.
 
 pub use quspin_basis::dispatch::{
     BitBasis, BitBasisDefault, DitBasis, DynDitBasis, DynDitBasisDefault, GenericBasis, QuatBasis,
