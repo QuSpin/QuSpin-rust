@@ -78,6 +78,13 @@ class TestOrder:
         # perm has order 4 (4-cycle), perm_vals has order 2 -> composite order 4
         assert _order(Composite([1, 2, 3, 0], [1, 0]), n_sites=4, lhss=2) == 4
 
+    def test_composite_lcm_strict(self):
+        from quspin_rs._rs import _order
+
+        # lattice 3-cycle (order 3) on lhss=2 sites; perm_vals = [1, 0] (order 2).
+        # lcm(3, 2) = 6, which exceeds both 3 and 2. Distinguishes "LCM" from "max".
+        assert _order(Composite([1, 2, 0], [1, 0]), n_sites=3, lhss=2) == 6
+
     def test_identity_order_is_one(self):
         from quspin_rs._rs import _order
 

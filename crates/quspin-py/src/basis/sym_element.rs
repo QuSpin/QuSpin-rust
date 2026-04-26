@@ -147,17 +147,25 @@ fn gcd_u(mut a: usize, mut b: usize) -> usize {
     a
 }
 
-/// Compute the order of a SymElement: the smallest positive integer N
-/// such that g^N is the identity. Computed as the LCM of the
+/// Compute the cyclic order N of a SymElement: the smallest positive
+/// integer such that g^N is the identity. Returned as the LCM of the
 /// permutation component's cycle order and the perm_vals component's
-/// cycle order. Returns 1 for the identity element.
+/// cycle order; returns 1 for the identity element.
 ///
-/// `n_sites` and `lhss` are accepted for API uniformity / future use
-/// but are currently unused — element shape encodes the cycle domains.
+/// Trusts that `perm` and `perm_vals` are well-formed permutations
+/// (each a bijection of its domain). Higher-level validation
+/// (`perm.len() == n_sites`, `perm_vals.len() == lhss`, bijection
+/// checks) lives in `SymBasis::add_symmetry` (perm) and the per-family
+/// inner-enum `add_local` / `add_composite` methods (perm_vals / locs).
+///
+/// `_n_sites` and `_lhss` are accepted for API uniformity with other
+/// `SymElement` helpers (e.g. `_compose`, `_validate_group`) but
+/// currently unused — cycle structure is encoded entirely in the
+/// element itself.
 #[pyfunction]
 #[pyo3(signature = (elem, n_sites, lhss))]
+#[allow(unused_variables)]
 pub fn _order(elem: &PySymElement, n_sites: usize, lhss: usize) -> usize {
-    let _ = (n_sites, lhss);
     let perm_o = elem.perm.as_deref().map(perm_order).unwrap_or(1);
     let pv_o = elem
         .perm_vals
