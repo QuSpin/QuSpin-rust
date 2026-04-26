@@ -1,3 +1,6 @@
+import cmath
+from math import pi
+
 import pytest
 
 from quspin_rs import Composite, Lattice, Local, SymElement
@@ -207,3 +210,65 @@ class TestCompose:
         # perm_vals: [1,0] ∘ [1,0] = [0, 1] (identity perm_vals)
         # But the resulting element still has perm + perm_vals → Composite.
         assert c == Composite([1, 2, 0], [0, 1])
+
+
+class TestAddCyclic:
+    def test_translation_k_equiv_eta_for_z2(self):
+        from quspin_rs import SymmetryGroup
+
+        g_k = SymmetryGroup(n_sites=2, lhss=2)
+        g_k.add_cyclic(Lattice([1, 0]), k=1)
+        g_eta = SymmetryGroup(n_sites=2, lhss=2)
+        g_eta.add_cyclic(Lattice([1, 0]), eta=-1)
+        assert list(g_k) == list(g_eta)
+
+    def test_translation_k1_z4(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        g.add_cyclic(Lattice([1, 2, 3, 0]), k=1)
+        assert len(g) == 3
+        omega = cmath.exp(-2j * pi / 4)
+        for (_, chi), expected in zip(g, [omega, omega**2, omega**3]):
+            assert abs(chi - expected) < 1e-12
+
+    def test_eta_only_for_order_2(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        with pytest.raises(ValueError, match="order"):
+            g.add_cyclic(Lattice([1, 2, 3, 0]), eta=-1)
+
+    def test_exactly_one_of_k_eta_char(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        with pytest.raises(ValueError):
+            g.add_cyclic(Lattice([1, 2, 3, 0]))
+        with pytest.raises(ValueError):
+            g.add_cyclic(Lattice([1, 2, 3, 0]), k=1, eta=1)
+
+    def test_identity_generator_rejected(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=3, lhss=2)
+        with pytest.raises(ValueError):
+            g.add_cyclic(Lattice([0, 1, 2]), k=0)
+
+    def test_k_out_of_range(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        with pytest.raises(ValueError):
+            g.add_cyclic(Lattice([1, 2, 3, 0]), k=5)
+
+    def test_char_argument(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        # Order-4 generator with explicit char z; expect z, z², z³.
+        z = cmath.exp(-1j * pi / 2)  # ω, equivalent to k=1 for order=4
+        g.add_cyclic(Lattice([1, 2, 3, 0]), char=z)
+        chars = [chi for _, chi in g]
+        for got, expected in zip(chars, [z, z**2, z**3]):
+            assert abs(got - expected) < 1e-12
