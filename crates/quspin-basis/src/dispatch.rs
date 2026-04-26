@@ -309,18 +309,24 @@ impl DitBasis {
         perm_vals: Option<Vec<u8>>,
         locs: Option<Vec<usize>>,
     ) -> Result<(), QuSpinError> {
-        let n_sites = self.n_sites();
-        let locs = locs.unwrap_or_else(|| (0..n_sites).collect());
         match (perm, perm_vals) {
             (Some(p), None) => self.add_lattice(grp_char, p),
-            (None, Some(v)) => self.add_local(grp_char, v, locs),
-            (Some(p), Some(v)) => match self {
-                Self::Trit(b) => b.add_composite(grp_char, p, v, locs),
-                Self::Quat(b) => b.add_composite(grp_char, p, v, locs),
-                Self::Dyn(b) => b.add_composite(grp_char, p, v, locs),
-            },
+            (None, Some(v)) => {
+                let locs = locs.unwrap_or_else(|| (0..self.n_sites()).collect());
+                self.add_local(grp_char, v, locs)
+            }
+            (Some(p), Some(v)) => {
+                let locs = locs.unwrap_or_else(|| (0..self.n_sites()).collect());
+                match self {
+                    Self::Trit(b) => b.add_composite(grp_char, p, v, locs),
+                    Self::Quat(b) => b.add_composite(grp_char, p, v, locs),
+                    Self::Dyn(b) => b.add_composite(grp_char, p, v, locs),
+                }
+            }
             (None, None) => Err(QuSpinError::ValueError(
-                "add_symmetry_raw: empty element (identity is implicit)".into(),
+                "add_symmetry_raw requires at least one of `perm` or `perm_vals`; \
+                 the identity element is implicit and must not be added explicitly"
+                    .into(),
             )),
         }
     }
@@ -533,17 +539,23 @@ impl GenericBasis {
         perm_vals: Option<Vec<u8>>,
         locs: Option<Vec<usize>>,
     ) -> Result<(), QuSpinError> {
-        let n_sites = self.n_sites();
-        let locs = locs.unwrap_or_else(|| (0..n_sites).collect());
         match (perm, perm_vals) {
             (Some(p), None) => self.add_lattice(grp_char, p.to_vec()),
-            (None, Some(v)) => self.add_local(grp_char, v, locs),
-            (Some(p), Some(v)) => match self {
-                Self::Bit(b) => b.add_composite(grp_char, p, v, locs),
-                Self::Dit(b) => b.add_composite(grp_char, p, v, locs),
-            },
+            (None, Some(v)) => {
+                let locs = locs.unwrap_or_else(|| (0..self.n_sites()).collect());
+                self.add_local(grp_char, v, locs)
+            }
+            (Some(p), Some(v)) => {
+                let locs = locs.unwrap_or_else(|| (0..self.n_sites()).collect());
+                match self {
+                    Self::Bit(b) => b.add_composite(grp_char, p, v, locs),
+                    Self::Dit(b) => b.add_composite(grp_char, p, v, locs),
+                }
+            }
             (None, None) => Err(QuSpinError::ValueError(
-                "add_symmetry_raw: empty element (identity is implicit)".into(),
+                "add_symmetry_raw requires at least one of `perm` or `perm_vals`; \
+                 the identity element is implicit and must not be added explicitly"
+                    .into(),
             )),
         }
     }
@@ -1461,6 +1473,16 @@ mod tests {
                 None, // no local op
             )
             .unwrap();
+        // 3 sites, lhss=2 → 3 bits → Sym32. Lattice-only element must land
+        // in `lattice_only`, leaving `local_only` and `composite` empty.
+        match &basis {
+            GenericBasis::Bit(BitBasis::Default(BitBasisDefault::Sym32(b))) => {
+                assert_eq!(b.lattice_only.len(), 1);
+                assert_eq!(b.local_only.len(), 0);
+                assert_eq!(b.composite.len(), 0);
+            }
+            _ => panic!("expected Bit/Default/Sym32 inner"),
+        }
     }
 
     #[test]
@@ -1474,6 +1496,15 @@ mod tests {
                 Some(vec![0, 1, 2]),
             )
             .unwrap();
+        // perm=None, perm_vals=Some → must route to add_local.
+        match &basis {
+            GenericBasis::Bit(BitBasis::Default(BitBasisDefault::Sym32(b))) => {
+                assert_eq!(b.lattice_only.len(), 0);
+                assert_eq!(b.local_only.len(), 1);
+                assert_eq!(b.composite.len(), 0);
+            }
+            _ => panic!("expected Bit/Default/Sym32 inner"),
+        }
     }
 
     #[test]
@@ -1487,6 +1518,15 @@ mod tests {
                 Some(vec![0, 1, 2]),
             )
             .unwrap();
+        // perm=Some, perm_vals=Some → must route to add_composite.
+        match &basis {
+            GenericBasis::Bit(BitBasis::Default(BitBasisDefault::Sym32(b))) => {
+                assert_eq!(b.lattice_only.len(), 0);
+                assert_eq!(b.local_only.len(), 0);
+                assert_eq!(b.composite.len(), 1);
+            }
+            _ => panic!("expected Bit/Default/Sym32 inner"),
+        }
     }
 
     #[test]
@@ -1507,5 +1547,36 @@ mod tests {
                 Some(vec![0, 1, 2]),
             )
             .unwrap();
+        // 3 sites, lhss=3 → 6 bits → Sym32 in TritBasisDefault.
+        match &basis {
+            GenericBasis::Dit(DitBasis::Trit(TritBasis::Default(TritBasisDefault::Sym32(b)))) => {
+                assert_eq!(b.lattice_only.len(), 0);
+                assert_eq!(b.local_only.len(), 1);
+                assert_eq!(b.composite.len(), 0);
+            }
+            _ => panic!("expected Dit/Trit/Default/Sym32 inner"),
+        }
+    }
+
+    #[test]
+    fn add_symmetry_raw_dit_basis_composite() {
+        // Drive `DitBasis::add_symmetry_raw` directly (not via GenericBasis).
+        let mut basis = DitBasis::new(3, 3, SpaceKind::Symm).unwrap();
+        basis
+            .add_symmetry_raw(
+                Complex::new(1.0, 0.0),
+                Some(&[1, 2, 0][..]),
+                Some(vec![1, 0, 2]),
+                Some(vec![0, 1, 2]),
+            )
+            .unwrap();
+        match &basis {
+            DitBasis::Trit(TritBasis::Default(TritBasisDefault::Sym32(b))) => {
+                assert_eq!(b.lattice_only.len(), 0);
+                assert_eq!(b.local_only.len(), 0);
+                assert_eq!(b.composite.len(), 1);
+            }
+            _ => panic!("expected Trit/Default/Sym32 inner"),
+        }
     }
 }
