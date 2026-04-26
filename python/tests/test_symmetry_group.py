@@ -330,3 +330,54 @@ class TestClose:
         b = Lattice([1, 0])  # length 2
         with pytest.raises(ValueError, match="lengths differ"):
             g.close(generators=[a, b], char=lambda elem: 1.0)
+
+
+class TestProduct:
+    def test_z4_x_z2_size(self):
+        from quspin_rs import SymmetryGroup
+
+        T = SymmetryGroup(n_sites=4, lhss=2)
+        T.add_cyclic(Lattice([1, 2, 3, 0]), k=1)
+        Z = SymmetryGroup(n_sites=4, lhss=2)
+        Z.add_cyclic(Local([1, 0]), eta=-1)
+        G = T.product(Z)
+        # 4·2 - 1 = 7 non-identity elements
+        assert len(G) == 7
+
+    def test_product_does_not_mutate(self):
+        from quspin_rs import SymmetryGroup
+
+        T = SymmetryGroup(n_sites=4, lhss=2)
+        T.add_cyclic(Lattice([1, 2, 3, 0]), k=1)
+        n_before = len(T)
+        Z = SymmetryGroup(n_sites=4, lhss=2)
+        Z.add_cyclic(Local([1, 0]), eta=-1)
+        _ = T.product(Z)
+        assert len(T) == n_before  # T unchanged
+
+    def test_product_lhss_mismatch_raises(self):
+        from quspin_rs import SymmetryGroup
+
+        a = SymmetryGroup(n_sites=4, lhss=2)
+        b = SymmetryGroup(n_sites=4, lhss=3)
+        with pytest.raises(ValueError):
+            a.product(b)
+
+    def test_product_n_sites_mismatch_raises(self):
+        from quspin_rs import SymmetryGroup
+
+        a = SymmetryGroup(n_sites=4, lhss=2)
+        b = SymmetryGroup(n_sites=3, lhss=2)
+        with pytest.raises(ValueError):
+            a.product(b)
+
+    def test_product_returns_new_object(self):
+        from quspin_rs import SymmetryGroup
+
+        a = SymmetryGroup(n_sites=4, lhss=2)
+        a.add_cyclic(Lattice([1, 2, 3, 0]), k=1)
+        b = SymmetryGroup(n_sites=4, lhss=2)
+        b.add_cyclic(Local([1, 0]), eta=-1)
+        c = a.product(b)
+        assert c is not a
+        assert c is not b

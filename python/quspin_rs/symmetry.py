@@ -163,6 +163,46 @@ class SymmetryGroup:
                     self._elements.append((composed, complex(char(composed))))
             frontier = next_frontier
 
+    def product(self, other: "SymmetryGroup") -> "SymmetryGroup":
+        """Out-of-place direct product. Both groups must share
+        ``(n_sites, lhss)``. Caller asserts the factors commute;
+        :meth:`validate` catches non-commuting products at first build.
+
+        The result contains every element of ``self``, every element of
+        ``other``, plus every cross product ``_compose(a, b)`` with
+        character ``χ_a · χ_b``. Compositions producing the identity are
+        dropped (the identity is implicit in every group).
+
+        ``self`` and ``other`` are not mutated.
+        """
+        if (self._n_sites, self._lhss) != (other._n_sites, other._lhss):
+            raise ValueError(
+                f"product: factor groups must share (n_sites, lhss); "
+                f"got {(self._n_sites, self._lhss)} vs "
+                f"{(other._n_sites, other._lhss)}"
+            )
+        out = SymmetryGroup(self._n_sites, self._lhss)
+        # Self-only.
+        for elem, chi in self._elements:
+            out._elements.append((elem, chi))
+        # Other-only.
+        for elem, chi in other._elements:
+            out._elements.append((elem, chi))
+        # Cross terms.
+        for a_elem, chi_a in self._elements:
+            for b_elem, chi_b in other._elements:
+                try:
+                    composed = _compose(a_elem, b_elem)
+                except ValueError as exc:
+                    # Skip only identity-composition results; re-raise
+                    # length / locs / shape errors so malformed factors
+                    # surface.
+                    if "produced identity" not in str(exc):
+                        raise
+                    continue
+                out._elements.append((composed, chi_a * chi_b))
+        return out
+
     def __len__(self) -> int:
         return len(self._elements)
 
