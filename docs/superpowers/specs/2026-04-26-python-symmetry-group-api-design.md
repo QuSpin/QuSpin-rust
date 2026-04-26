@@ -138,6 +138,11 @@ class SymmetryGroup:
     def product(self, other: "SymmetryGroup") -> "SymmetryGroup":
         """Direct product. Both groups must share (n_sites, lhss).
 
+        **Out-of-place:** returns a new `SymmetryGroup`; neither `self` nor
+        `other` is mutated. Unlike `add` / `add_cyclic` / `close` (which
+        build up a single group in place), `product` combines two
+        already-built groups, so the factor objects must remain reusable.
+
         Cartesian enumeration: for every (a, χ_A) in self and every
         (b, χ_B) in other, the result contains (_compose(a, b), χ_A · χ_B).
         Plus the two factor groups themselves (paired with their
