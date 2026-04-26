@@ -181,8 +181,13 @@ pub fn _order(elem: &PySymElement, n_sites: usize, lhss: usize) -> usize {
 /// Compose two permutations: `(a ∘ b)[src] = a[b[src]]` — meaning `b`
 /// is applied first, then `a`. Both inputs must have the same length.
 fn compose_perms(a: &[usize], b: &[usize]) -> Vec<usize> {
-    debug_assert_eq!(a.len(), b.len(), "perm length mismatch");
     (0..b.len()).map(|s| a[b[s]]).collect()
+}
+
+/// Compose two `perm_vals` (`u8`-typed) directly, avoiding the
+/// `Vec<u8>` ↔ `Vec<usize>` round-trip. `(a ∘ b)[v] = a[b[v]]`.
+fn compose_perm_vals(a: &[u8], b: &[u8]) -> Vec<u8> {
+    (0..b.len()).map(|s| a[b[s] as usize]).collect()
 }
 
 /// Compose two `SymElement`s. Mirrors `SymElement::compose` for the
@@ -193,13 +198,16 @@ fn compose_perms(a: &[usize], b: &[usize]) -> Vec<usize> {
 /// - Any mix promotes to composite.
 /// - If either side is identity-shaped (the other side present), the
 ///   output adopts the present side's perm / perm_vals / locs.
-/// - locs union: when both sides supply explicit locs, take their
-///   set union (sorted, deduplicated); when one side is `None`, the
-///   other's `locs` carries through unchanged.
+/// - locs handling: when both elements have a `perm_vals` component
+///   (so locs are meaningful on both sides), `locs` must match exactly;
+///   otherwise the side that carries `perm_vals` provides the locs.
+///   This mirrors the strict `assert_eq!(self.locs, other.locs)` in
+///   `PermDitValues::compose` upstream.
 ///
 /// Returns an error when the perms or perm_vals have mismatched
-/// lengths, or when the result would be the identity (caller should
-/// drop the element rather than store it).
+/// lengths, when locs disagree on the local-op component, or when the
+/// result would be the identity (caller should drop the element rather
+/// than store it).
 #[pyfunction]
 #[pyo3(name = "_compose")]
 pub fn _compose(a: &PySymElement, b: &PySymElement) -> PyResult<PySymElement> {
@@ -228,26 +236,44 @@ pub fn _compose(a: &PySymElement, b: &PySymElement) -> PyResult<PySymElement> {
                     y.len()
                 )));
             }
-            let xu: Vec<usize> = x.iter().map(|&v| v as usize).collect();
-            let yu: Vec<usize> = y.iter().map(|&v| v as usize).collect();
-            Some(
-                compose_perms(&xu, &yu)
-                    .into_iter()
-                    .map(|v| v as u8)
-                    .collect(),
-            )
+            Some(compose_perm_vals(x, y))
         }
     };
-    let locs = match (&a.locs, &b.locs) {
-        (None, x) | (x, None) => x.clone(),
-        (Some(x), Some(y)) => {
-            let mut s: std::collections::BTreeSet<usize> = x.iter().copied().collect();
-            s.extend(y.iter().copied());
-            Some(s.into_iter().collect())
-        }
+    let locs = match (a.perm_vals.is_some(), b.perm_vals.is_some()) {
+        // Neither side has a local op → no locs.
+        (false, false) => None,
+        // Only one side has a local op → adopt that side's locs (None or explicit).
+        (true, false) => a.locs.clone(),
+        (false, true) => b.locs.clone(),
+        // Both sides have local ops → require strict locs equality.
+        (true, true) => match (&a.locs, &b.locs) {
+            (None, None) => None,
+            (Some(x), Some(y)) if x == y => Some(x.clone()),
+            (Some(x), Some(y)) => {
+                return Err(PyValueError::new_err(format!(
+                    "_compose: locs must match exactly when both elements supply them; \
+                     got a={x:?} and b={y:?}"
+                )));
+            }
+            (None, Some(_)) | (Some(_), None) => {
+                return Err(PyValueError::new_err(
+                    "_compose: cannot mix None locs (default = all sites) with explicit locs \
+                     without n_sites context; supply explicit locs on both sides",
+                ));
+            }
+        },
     };
     let kind = match (perm.is_some(), perm_vals.is_some()) {
-        (true, false) => SymElementKind::Lattice,
+        (true, false) => {
+            // Pure-lattice: error if the composed perm is the identity.
+            let p = perm.as_ref().unwrap();
+            if p.iter().enumerate().all(|(i, &v)| i == v) {
+                return Err(PyValueError::new_err(
+                    "_compose produced identity (perm is identity, no perm_vals)",
+                ));
+            }
+            SymElementKind::Lattice
+        }
         (false, true) => SymElementKind::Local,
         (true, true) => SymElementKind::Composite,
         (false, false) => {

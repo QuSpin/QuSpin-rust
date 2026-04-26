@@ -117,3 +117,57 @@ class TestCompose:
         assert isinstance(c, SymElement)
         # repr indicates Composite kind
         assert "Composite" in repr(c)
+
+    def test_local_locs_mismatch_errors(self):
+        from quspin_rs._rs import _compose
+
+        a = Local([2, 0, 1], locs=[0])
+        b = Local([1, 2, 0], locs=[1])
+        with pytest.raises(ValueError, match="locs must match"):
+            _compose(a, b)
+
+    def test_local_same_locs_carries_through(self):
+        from quspin_rs._rs import _compose
+
+        a = Local([2, 0, 1], locs=[0, 2])
+        b = Local([1, 2, 0], locs=[0, 2])
+        c = _compose(a, b)
+        # composition: [2,0,1] ∘ [1,2,0] -> a[b[0]]=a[1]=0, a[b[1]]=a[2]=1, a[b[2]]=a[0]=2
+        # → identity perm_vals, but with explicit locs preserved.
+        assert c == Local([0, 1, 2], locs=[0, 2])
+
+    def test_mixed_none_explicit_locs_errors(self):
+        from quspin_rs._rs import _compose
+
+        a = Local([1, 0])  # locs=None
+        b = Local([1, 0], locs=[0])  # explicit
+        with pytest.raises(ValueError, match="None locs"):
+            _compose(a, b)
+
+    def test_perm_length_mismatch_errors(self):
+        from quspin_rs._rs import _compose
+
+        a = Lattice([1, 0])
+        b = Lattice([1, 2, 0])
+        with pytest.raises(ValueError, match="perm lengths differ"):
+            _compose(a, b)
+
+    def test_compose_identity_result_errors(self):
+        from quspin_rs._rs import _compose
+
+        # Lattice involution composed with itself yields identity perm.
+        a = Lattice([1, 0])
+        b = Lattice([1, 0])
+        with pytest.raises(ValueError, match="identity"):
+            _compose(a, b)
+
+    def test_composite_composite(self):
+        from quspin_rs._rs import _compose
+
+        a = Composite([2, 1, 0], [1, 0])
+        b = Composite([1, 0, 2], [1, 0])
+        c = _compose(a, b)
+        # perm: a∘b = [a[b[0]], a[b[1]], a[b[2]]] = [a[1], a[0], a[2]] = [1, 2, 0]
+        # perm_vals: [1,0] ∘ [1,0] = [0, 1] (identity perm_vals)
+        # But the resulting element still has perm + perm_vals → Composite.
+        assert c == Composite([1, 2, 0], [0, 1])
