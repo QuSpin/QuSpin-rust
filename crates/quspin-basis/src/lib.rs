@@ -3,7 +3,6 @@ pub mod boson;
 pub mod dispatch;
 pub mod expand;
 pub mod fermion;
-pub mod generic;
 pub(crate) mod lattice;
 pub(crate) mod orbit;
 pub mod seed;
@@ -14,8 +13,8 @@ pub mod sym_element;
 pub mod traits;
 
 pub use boson::BosonBasis;
+pub use dispatch::{BitBasis, DitBasis, GenericBasis};
 pub use fermion::FermionBasis;
-pub use generic::GenericBasis;
 pub use seed::{
     dit_seed_from_bytes, dit_seed_from_str, dit_state_to_str, seed_from_bytes, seed_from_str,
     state_to_str,

@@ -1,5 +1,5 @@
 //! Spin basis type [`SpinBasis`].
-use crate::generic::GenericBasis;
+use crate::dispatch::GenericBasis;
 use num_complex::Complex;
 use quspin_bitbasis::StateTransitions;
 use quspin_types::QuSpinError;

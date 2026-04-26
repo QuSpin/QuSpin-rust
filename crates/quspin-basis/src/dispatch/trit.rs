@@ -8,6 +8,7 @@ use super::macros::{impl_family_dispatch_enum, impl_inner_dispatch_enum};
 use super::types::{B128, B256};
 #[cfg(feature = "large-int")]
 use super::types::{B512, B1024, B2048, B4096, B8192};
+use super::validate::{validate_locs, validate_perm_vals};
 use crate::space::{FullSpace, Subspace};
 use crate::sym::SymBasis;
 use crate::traits::BasisSpace;
@@ -23,7 +24,7 @@ const LHSS: usize = 3;
 // Default-width inner enum
 // ---------------------------------------------------------------------------
 
-pub enum SpaceInnerTritDefault {
+pub enum TritBasisDefault {
     Full32(FullSpace<u32>),
     Full64(FullSpace<u64>),
 
@@ -39,19 +40,21 @@ pub enum SpaceInnerTritDefault {
 }
 
 impl_inner_dispatch_enum!(
-    SpaceInnerTritDefault,
+    TritBasisDefault,
     full = [Full32, Full64],
     sub = [Sub32, Sub64, Sub128, Sub256],
     sym = [Sym32, Sym64, Sym128, Sym256],
 );
 
-impl SpaceInnerTritDefault {
+impl TritBasisDefault {
     pub fn add_local(
         &mut self,
         grp_char: Complex<f64>,
         perm_vals: Vec<u8>,
         locs: Vec<usize>,
     ) -> Result<(), QuSpinError> {
+        validate_perm_vals(&perm_vals, LHSS)?;
+        validate_locs(&locs, self.n_sites())?;
         let arr: [u8; LHSS] = perm_vals.try_into().map_err(|v: Vec<u8>| {
             QuSpinError::ValueError(format!(
                 "add_local on Trit family (LHSS=3) requires perm_vals.len()=3, got len={}",
@@ -76,7 +79,7 @@ impl SpaceInnerTritDefault {
                 SymElement::local(PermDitValues::<3>::new(arr, locs)),
             ),
             _ => Err(QuSpinError::ValueError(
-                "add_local requires a Sym* variant on SpaceInnerTritDefault".into(),
+                "add_local requires a Sym* variant on TritBasisDefault".into(),
             )),
         }
     }
@@ -90,7 +93,7 @@ impl SpaceInnerTritDefault {
         macro_rules! sub_build {
             ($b:ident, $B:ty) => {{
                 for s in seeds {
-                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph);
+                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph)?;
                 }
             }};
         }
@@ -125,7 +128,7 @@ impl SpaceInnerTritDefault {
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "large-int")]
-pub enum SpaceInnerTritLargeInt {
+pub enum TritBasisLargeInt {
     Sub512(Subspace<B512>),
     Sub1024(Subspace<B1024>),
     Sub2048(Subspace<B2048>),
@@ -141,20 +144,22 @@ pub enum SpaceInnerTritLargeInt {
 
 #[cfg(feature = "large-int")]
 impl_inner_dispatch_enum!(
-    SpaceInnerTritLargeInt,
+    TritBasisLargeInt,
     full = [],
     sub = [Sub512, Sub1024, Sub2048, Sub4096, Sub8192],
     sym = [Sym512, Sym1024, Sym2048, Sym4096, Sym8192],
 );
 
 #[cfg(feature = "large-int")]
-impl SpaceInnerTritLargeInt {
+impl TritBasisLargeInt {
     pub fn add_local(
         &mut self,
         grp_char: Complex<f64>,
         perm_vals: Vec<u8>,
         locs: Vec<usize>,
     ) -> Result<(), QuSpinError> {
+        validate_perm_vals(&perm_vals, LHSS)?;
+        validate_locs(&locs, self.n_sites())?;
         let arr: [u8; LHSS] = perm_vals.try_into().map_err(|v: Vec<u8>| {
             QuSpinError::ValueError(format!(
                 "add_local on Trit family (LHSS=3) requires perm_vals.len()=3, got len={}",
@@ -183,7 +188,7 @@ impl SpaceInnerTritLargeInt {
                 SymElement::local(PermDitValues::<3>::new(arr, locs)),
             ),
             _ => Err(QuSpinError::ValueError(
-                "add_local requires a Sym* variant on SpaceInnerTritLargeInt".into(),
+                "add_local requires a Sym* variant on TritBasisLargeInt".into(),
             )),
         }
     }
@@ -197,7 +202,7 @@ impl SpaceInnerTritLargeInt {
         macro_rules! sub_build {
             ($b:ident, $B:ty) => {{
                 for s in seeds {
-                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph);
+                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph)?;
                 }
             }};
         }
@@ -228,15 +233,15 @@ impl SpaceInnerTritLargeInt {
 // Family enum
 // ---------------------------------------------------------------------------
 
-pub enum SpaceInnerTrit {
-    Default(SpaceInnerTritDefault),
+pub enum TritBasis {
+    Default(TritBasisDefault),
     #[cfg(feature = "large-int")]
-    LargeInt(SpaceInnerTritLargeInt),
+    LargeInt(TritBasisLargeInt),
 }
 
-impl_family_dispatch_enum!(SpaceInnerTrit);
+impl_family_dispatch_enum!(TritBasis);
 
-impl SpaceInnerTrit {
+impl TritBasis {
     #[inline]
     pub fn add_local(
         &mut self,

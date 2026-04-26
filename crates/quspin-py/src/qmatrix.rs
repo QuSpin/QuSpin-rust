@@ -1,4 +1,3 @@
-use crate::basis::AsSpaceInner;
 use crate::basis::boson::PyBosonBasis;
 use crate::basis::fermion::PyFermionBasis;
 use crate::basis::generic::PyGenericBasis;
@@ -64,16 +63,16 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
-        let space = if let Ok(b) = basis.downcast::<PySpinBasis>() {
-            QMatrixInner::build_hardcore(&op.inner, b.borrow().as_space_inner(), vdtype)
-        } else if let Ok(b) = basis.downcast::<PyFermionBasis>() {
-            QMatrixInner::build_hardcore(&op.inner, b.borrow().as_space_inner(), vdtype)
+        let inner = if let Ok(b) = basis.downcast::<PyFermionBasis>() {
+            QMatrixInner::build_hardcore_bit(&op.inner, &b.borrow().inner.inner, vdtype)
+        } else if let Ok(b) = basis.downcast::<PySpinBasis>() {
+            QMatrixInner::build_hardcore(&op.inner, &b.borrow().inner.inner, vdtype)
         } else {
             return Err(pyo3::exceptions::PyTypeError::new_err(
                 "basis must be SpinBasis or FermionBasis for build_pauli",
             ));
         };
-        Ok(PyQMatrix { inner: space })
+        Ok(PyQMatrix { inner })
     }
 
     /// Build from a `BondOperator` and any basis type.
@@ -86,18 +85,18 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
-        let space = if let Ok(b) = basis.downcast::<PySpinBasis>() {
-            QMatrixInner::build_bond(&op.inner, b.borrow().as_space_inner(), vdtype)
-        } else if let Ok(b) = basis.downcast::<PyFermionBasis>() {
-            QMatrixInner::build_bond(&op.inner, b.borrow().as_space_inner(), vdtype)
+        let inner = if let Ok(b) = basis.downcast::<PyFermionBasis>() {
+            QMatrixInner::build_bond_bit(&op.inner, &b.borrow().inner.inner, vdtype)
+        } else if let Ok(b) = basis.downcast::<PySpinBasis>() {
+            QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner, vdtype)
         } else if let Ok(b) = basis.downcast::<PyBosonBasis>() {
-            QMatrixInner::build_bond(&op.inner, b.borrow().as_space_inner(), vdtype)
+            QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner, vdtype)
         } else {
             return Err(pyo3::exceptions::PyTypeError::new_err(
                 "basis must be SpinBasis, FermionBasis, or BosonBasis for build_bond",
             ));
         };
-        Ok(PyQMatrix { inner: space })
+        Ok(PyQMatrix { inner })
     }
 
     /// Build from a `BosonOperator` and a `BosonBasis`.
@@ -110,11 +109,13 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
-        let inner = QMatrixInner::build_boson(&op.inner, basis.as_space_inner(), vdtype);
+        let inner = QMatrixInner::build_boson(&op.inner, &basis.inner.inner, vdtype);
         Ok(PyQMatrix { inner })
     }
 
-    /// Build from a `FermionOperator` and a `FermionBasis`.
+    /// Build from a `FermionOperator` and a `FermionBasis`. Uses the
+    /// bit-only matrix path so the fermion code never monomorphizes the
+    /// dit families.
     #[staticmethod]
     #[pyo3(signature = (op, basis, dtype))]
     fn build_fermion(
@@ -124,21 +125,34 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
-        let inner = QMatrixInner::build_fermion(&op.inner, basis.as_space_inner(), vdtype);
+        let inner = QMatrixInner::build_fermion_bit(&op.inner, &basis.inner.inner, vdtype);
         Ok(PyQMatrix { inner })
     }
 
-    /// Build from a `MonomialOperator` and a `GenericBasis`.
+    /// Build from a `MonomialOperator` and a basis (any of
+    /// `SpinBasis` / `FermionBasis` / `BosonBasis` / `GenericBasis`).
     #[staticmethod]
     #[pyo3(signature = (op, basis, dtype))]
     fn build_monomial(
         py: Python<'_>,
         op: &PyMonomialOperator,
-        basis: &PyGenericBasis,
+        basis: &Bound<'_, PyAny>,
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
-        let inner = QMatrixInner::build_monomial(&op.inner, basis.as_space_inner(), vdtype);
+        let inner = if let Ok(b) = basis.downcast::<PyFermionBasis>() {
+            QMatrixInner::build_monomial_bit(&op.inner, &b.borrow().inner.inner, vdtype)
+        } else if let Ok(b) = basis.downcast::<PySpinBasis>() {
+            QMatrixInner::build_monomial(&op.inner, &b.borrow().inner.inner, vdtype)
+        } else if let Ok(b) = basis.downcast::<PyBosonBasis>() {
+            QMatrixInner::build_monomial(&op.inner, &b.borrow().inner.inner, vdtype)
+        } else if let Ok(b) = basis.downcast::<PyGenericBasis>() {
+            QMatrixInner::build_monomial(&op.inner, &b.borrow().inner, vdtype)
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "basis must be SpinBasis, FermionBasis, BosonBasis, or GenericBasis",
+            ));
+        };
         Ok(PyQMatrix { inner })
     }
 
@@ -203,15 +217,6 @@ impl PyQMatrix {
     // ------------------------------------------------------------------
 
     /// Materialise as scipy-compatible CSR arrays.
-    ///
-    /// Args:
-    ///     coeff:      1-D complex128 array of length `num_cindices`; the
-    ///                 coefficient for each operator string.
-    ///     drop_zeros: if True, near-zero entries are omitted (default True).
-    ///
-    /// Returns:
-    ///     (indptr, indices, data) — three numpy arrays with dtypes
-    ///     (int64, int64, complex128).
     #[pyo3(signature = (coeff, drop_zeros = true))]
     fn to_csr<'py>(
         &self,
@@ -228,7 +233,6 @@ impl PyQMatrix {
             .inner
             .materialize(&coeff_vec, drop_zeros)
             .map_err(Error::from)?;
-        // materialize returns Vec<Complex<f64>>; Complex64 == Complex<f64> in num-complex
         let indptr_arr = indptr.to_pyarray(py);
         let indices_arr = indices.to_pyarray(py);
         let data_arr = data.to_pyarray(py);
@@ -239,13 +243,6 @@ impl PyQMatrix {
     // Matrix-vector products (2-D batch)
     // ------------------------------------------------------------------
 
-    /// Compute `output += coeff * self @ input` column-wise.
-    ///
-    /// Args:
-    ///     coeff:     1-D complex128 array of length `num_cindices`.
-    ///     input:     2-D complex128 array of shape `(dim, n_vecs)`.
-    ///     output:    2-D complex128 array of shape `(dim, n_vecs)` (in place).
-    ///     overwrite: if True, zero `output` before accumulating.
     fn dot_many<'py>(
         &self,
         coeff: PyReadonlyArray1<'py, Complex64>,
@@ -268,7 +265,6 @@ impl PyQMatrix {
         let in_slice = input
             .as_slice()
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        // Complex64 == Complex<f64>; copy to owned buffer for dispatch
         let in_arr: Vec<Complex<f64>> = in_slice.iter().map(|c| Complex::new(c.re, c.im)).collect();
         let in_view = ndarray::ArrayView2::from_shape((n, n_vecs), &in_arr)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
@@ -281,7 +277,6 @@ impl PyQMatrix {
         self.inner
             .dot_many(overwrite, &coeff_vec, in_view, out_view.view_mut())
             .map_err(Error::from)?;
-        // Write back
         unsafe {
             let mut out_arr = output.as_array_mut();
             for ((r, c), v) in out_arr.indexed_iter_mut() {
@@ -291,7 +286,6 @@ impl PyQMatrix {
         Ok(())
     }
 
-    /// Transpose matrix-vector product (batch).
     fn dot_transpose_many<'py>(
         &self,
         coeff: PyReadonlyArray1<'py, Complex64>,

@@ -6,10 +6,10 @@ use super::QMatrix;
 ///
 /// Naming convention: `QM` prefix, value type abbreviation, cindex type
 /// abbreviation.  For example `QMf64U8` is `QMatrix<f64, i64, u8>`.
-use super::build::build_from_space;
+use super::build::{build_from_bit, build_from_space};
 use crate::qmatrix::matrix::{CIndex, Index};
 use ndarray::{ArrayView2, ArrayViewMut2};
-use quspin_basis::dispatch::SpaceInner;
+use quspin_basis::dispatch::{BitBasis, GenericBasis};
 use quspin_operator::bond::BondOperatorInner;
 use quspin_operator::boson::BosonOperatorInner;
 use quspin_operator::fermion::FermionOperatorInner;
@@ -250,86 +250,122 @@ impl QMatrixInner {
 // Build helpers
 // ---------------------------------------------------------------------------
 
-/// Build a `QMatrixInner` from a concrete `Operator<u8>` and a `SpaceInner`,
-/// selecting the element type from `dtype`.
+/// Build a `QMatrixInner` from a concrete `Operator<u8>` over a basis-space
+/// reference, selecting the element type from `dtype`. `$build` is the
+/// build function — `build_from_space` for a `&GenericBasis` or
+/// `build_from_bit` for a `&BitBasis`.
 macro_rules! dispatch_dtype_u8 {
-    ($h:expr, $space:expr, $dtype:expr) => {
+    ($build:ident, $h:expr, $space:expr, $dtype:expr) => {
         match $dtype {
-            ValueDType::Int8 => QMatrixInner::QMi8U8(build_from_space($h, $space)),
-            ValueDType::Int16 => QMatrixInner::QMi16U8(build_from_space($h, $space)),
-            ValueDType::Float32 => QMatrixInner::QMf32U8(build_from_space($h, $space)),
-            ValueDType::Float64 => QMatrixInner::QMf64U8(build_from_space($h, $space)),
-            ValueDType::Complex64 => QMatrixInner::QMc32U8(build_from_space($h, $space)),
-            ValueDType::Complex128 => QMatrixInner::QMc64U8(build_from_space($h, $space)),
+            ValueDType::Int8 => QMatrixInner::QMi8U8($build($h, $space)),
+            ValueDType::Int16 => QMatrixInner::QMi16U8($build($h, $space)),
+            ValueDType::Float32 => QMatrixInner::QMf32U8($build($h, $space)),
+            ValueDType::Float64 => QMatrixInner::QMf64U8($build($h, $space)),
+            ValueDType::Complex64 => QMatrixInner::QMc32U8($build($h, $space)),
+            ValueDType::Complex128 => QMatrixInner::QMc64U8($build($h, $space)),
         }
     };
 }
 
-/// Build a `QMatrixInner` from a concrete `Operator<u16>` and a `SpaceInner`,
-/// selecting the element type from `dtype`.
 macro_rules! dispatch_dtype_u16 {
-    ($h:expr, $space:expr, $dtype:expr) => {
+    ($build:ident, $h:expr, $space:expr, $dtype:expr) => {
         match $dtype {
-            ValueDType::Int8 => QMatrixInner::QMi8U16(build_from_space($h, $space)),
-            ValueDType::Int16 => QMatrixInner::QMi16U16(build_from_space($h, $space)),
-            ValueDType::Float32 => QMatrixInner::QMf32U16(build_from_space($h, $space)),
-            ValueDType::Float64 => QMatrixInner::QMf64U16(build_from_space($h, $space)),
-            ValueDType::Complex64 => QMatrixInner::QMc32U16(build_from_space($h, $space)),
-            ValueDType::Complex128 => QMatrixInner::QMc64U16(build_from_space($h, $space)),
+            ValueDType::Int8 => QMatrixInner::QMi8U16($build($h, $space)),
+            ValueDType::Int16 => QMatrixInner::QMi16U16($build($h, $space)),
+            ValueDType::Float32 => QMatrixInner::QMf32U16($build($h, $space)),
+            ValueDType::Float64 => QMatrixInner::QMf64U16($build($h, $space)),
+            ValueDType::Complex64 => QMatrixInner::QMc32U16($build($h, $space)),
+            ValueDType::Complex128 => QMatrixInner::QMc64U16($build($h, $space)),
         }
     };
 }
 
 impl QMatrixInner {
-    /// Build from a Pauli/hardcore operator and a basis space.
+    /// Build from a Pauli/hardcore operator and a `GenericBasis`.
     pub fn build_hardcore(
         ham: &HardcoreOperatorInner,
-        space: &SpaceInner,
+        space: &GenericBasis,
         dtype: ValueDType,
     ) -> Self {
         match ham {
-            HardcoreOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
-            HardcoreOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
+            HardcoreOperatorInner::Ham8(h) => dispatch_dtype_u8!(build_from_space, h, space, dtype),
+            HardcoreOperatorInner::Ham16(h) => {
+                dispatch_dtype_u16!(build_from_space, h, space, dtype)
+            }
         }
     }
 
-    /// Build from a bond operator and a basis space.
-    pub fn build_bond(ham: &BondOperatorInner, space: &SpaceInner, dtype: ValueDType) -> Self {
+    /// Build from a Pauli/hardcore operator and a `BitBasis` (FermionBasis path).
+    pub fn build_hardcore_bit(
+        ham: &HardcoreOperatorInner,
+        space: &BitBasis,
+        dtype: ValueDType,
+    ) -> Self {
         match ham {
-            BondOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
-            BondOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
+            HardcoreOperatorInner::Ham8(h) => dispatch_dtype_u8!(build_from_bit, h, space, dtype),
+            HardcoreOperatorInner::Ham16(h) => dispatch_dtype_u16!(build_from_bit, h, space, dtype),
         }
     }
 
-    /// Build from a boson operator and a basis space.
-    pub fn build_boson(ham: &BosonOperatorInner, space: &SpaceInner, dtype: ValueDType) -> Self {
+    /// Build from a bond operator and a `GenericBasis`.
+    pub fn build_bond(ham: &BondOperatorInner, space: &GenericBasis, dtype: ValueDType) -> Self {
         match ham {
-            BosonOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
-            BosonOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
+            BondOperatorInner::Ham8(h) => dispatch_dtype_u8!(build_from_space, h, space, dtype),
+            BondOperatorInner::Ham16(h) => dispatch_dtype_u16!(build_from_space, h, space, dtype),
         }
     }
 
-    /// Build from a fermion operator and a basis space.
-    pub fn build_fermion(
+    /// Build from a bond operator and a `BitBasis`.
+    pub fn build_bond_bit(ham: &BondOperatorInner, space: &BitBasis, dtype: ValueDType) -> Self {
+        match ham {
+            BondOperatorInner::Ham8(h) => dispatch_dtype_u8!(build_from_bit, h, space, dtype),
+            BondOperatorInner::Ham16(h) => dispatch_dtype_u16!(build_from_bit, h, space, dtype),
+        }
+    }
+
+    /// Build from a boson operator and a `GenericBasis`.
+    pub fn build_boson(ham: &BosonOperatorInner, space: &GenericBasis, dtype: ValueDType) -> Self {
+        match ham {
+            BosonOperatorInner::Ham8(h) => dispatch_dtype_u8!(build_from_space, h, space, dtype),
+            BosonOperatorInner::Ham16(h) => dispatch_dtype_u16!(build_from_space, h, space, dtype),
+        }
+    }
+
+    /// Build from a fermion operator and a `BitBasis` (FermionBasis path).
+    pub fn build_fermion_bit(
         ham: &FermionOperatorInner,
-        space: &SpaceInner,
+        space: &BitBasis,
         dtype: ValueDType,
     ) -> Self {
         match ham {
-            FermionOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
-            FermionOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
+            FermionOperatorInner::Ham8(h) => dispatch_dtype_u8!(build_from_bit, h, space, dtype),
+            FermionOperatorInner::Ham16(h) => dispatch_dtype_u16!(build_from_bit, h, space, dtype),
         }
     }
 
-    /// Build from a monomial operator and a `GenericBasis` space.
+    /// Build from a monomial operator and a `GenericBasis`.
     pub fn build_monomial(
         ham: &MonomialOperatorInner,
-        space: &SpaceInner,
+        space: &GenericBasis,
         dtype: ValueDType,
     ) -> Self {
         match ham {
-            MonomialOperatorInner::Ham8(h) => dispatch_dtype_u8!(h, space, dtype),
-            MonomialOperatorInner::Ham16(h) => dispatch_dtype_u16!(h, space, dtype),
+            MonomialOperatorInner::Ham8(h) => dispatch_dtype_u8!(build_from_space, h, space, dtype),
+            MonomialOperatorInner::Ham16(h) => {
+                dispatch_dtype_u16!(build_from_space, h, space, dtype)
+            }
+        }
+    }
+
+    /// Build from a monomial operator and a `BitBasis` (FermionBasis path).
+    pub fn build_monomial_bit(
+        ham: &MonomialOperatorInner,
+        space: &BitBasis,
+        dtype: ValueDType,
+    ) -> Self {
+        match ham {
+            MonomialOperatorInner::Ham8(h) => dispatch_dtype_u8!(build_from_bit, h, space, dtype),
+            MonomialOperatorInner::Ham16(h) => dispatch_dtype_u16!(build_from_bit, h, space, dtype),
         }
     }
 }

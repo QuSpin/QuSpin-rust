@@ -7,6 +7,7 @@ use super::macros::{impl_family_dispatch_enum, impl_inner_dispatch_enum};
 use super::types::{B128, B256};
 #[cfg(feature = "large-int")]
 use super::types::{B512, B1024, B2048, B4096, B8192};
+use super::validate::{validate_locs, validate_perm_vals};
 use crate::space::{FullSpace, Subspace};
 use crate::sym::SymBasis;
 use crate::traits::BasisSpace;
@@ -22,7 +23,7 @@ const LHSS: usize = 4;
 // Default-width inner enum
 // ---------------------------------------------------------------------------
 
-pub enum SpaceInnerQuatDefault {
+pub enum QuatBasisDefault {
     Full32(FullSpace<u32>),
     Full64(FullSpace<u64>),
 
@@ -38,19 +39,21 @@ pub enum SpaceInnerQuatDefault {
 }
 
 impl_inner_dispatch_enum!(
-    SpaceInnerQuatDefault,
+    QuatBasisDefault,
     full = [Full32, Full64],
     sub = [Sub32, Sub64, Sub128, Sub256],
     sym = [Sym32, Sym64, Sym128, Sym256],
 );
 
-impl SpaceInnerQuatDefault {
+impl QuatBasisDefault {
     pub fn add_local(
         &mut self,
         grp_char: Complex<f64>,
         perm_vals: Vec<u8>,
         locs: Vec<usize>,
     ) -> Result<(), QuSpinError> {
+        validate_perm_vals(&perm_vals, LHSS)?;
+        validate_locs(&locs, self.n_sites())?;
         let arr: [u8; LHSS] = perm_vals.try_into().map_err(|v: Vec<u8>| {
             QuSpinError::ValueError(format!(
                 "add_local on Quat family (LHSS=4) requires perm_vals.len()=4, got len={}",
@@ -75,7 +78,7 @@ impl SpaceInnerQuatDefault {
                 SymElement::local(PermDitValues::<4>::new(arr, locs)),
             ),
             _ => Err(QuSpinError::ValueError(
-                "add_local requires a Sym* variant on SpaceInnerQuatDefault".into(),
+                "add_local requires a Sym* variant on QuatBasisDefault".into(),
             )),
         }
     }
@@ -89,7 +92,7 @@ impl SpaceInnerQuatDefault {
         macro_rules! sub_build {
             ($b:ident, $B:ty) => {{
                 for s in seeds {
-                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph);
+                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph)?;
                 }
             }};
         }
@@ -124,7 +127,7 @@ impl SpaceInnerQuatDefault {
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "large-int")]
-pub enum SpaceInnerQuatLargeInt {
+pub enum QuatBasisLargeInt {
     Sub512(Subspace<B512>),
     Sub1024(Subspace<B1024>),
     Sub2048(Subspace<B2048>),
@@ -140,20 +143,22 @@ pub enum SpaceInnerQuatLargeInt {
 
 #[cfg(feature = "large-int")]
 impl_inner_dispatch_enum!(
-    SpaceInnerQuatLargeInt,
+    QuatBasisLargeInt,
     full = [],
     sub = [Sub512, Sub1024, Sub2048, Sub4096, Sub8192],
     sym = [Sym512, Sym1024, Sym2048, Sym4096, Sym8192],
 );
 
 #[cfg(feature = "large-int")]
-impl SpaceInnerQuatLargeInt {
+impl QuatBasisLargeInt {
     pub fn add_local(
         &mut self,
         grp_char: Complex<f64>,
         perm_vals: Vec<u8>,
         locs: Vec<usize>,
     ) -> Result<(), QuSpinError> {
+        validate_perm_vals(&perm_vals, LHSS)?;
+        validate_locs(&locs, self.n_sites())?;
         let arr: [u8; LHSS] = perm_vals.try_into().map_err(|v: Vec<u8>| {
             QuSpinError::ValueError(format!(
                 "add_local on Quat family (LHSS=4) requires perm_vals.len()=4, got len={}",
@@ -182,7 +187,7 @@ impl SpaceInnerQuatLargeInt {
                 SymElement::local(PermDitValues::<4>::new(arr, locs)),
             ),
             _ => Err(QuSpinError::ValueError(
-                "add_local requires a Sym* variant on SpaceInnerQuatLargeInt".into(),
+                "add_local requires a Sym* variant on QuatBasisLargeInt".into(),
             )),
         }
     }
@@ -196,7 +201,7 @@ impl SpaceInnerQuatLargeInt {
         macro_rules! sub_build {
             ($b:ident, $B:ty) => {{
                 for s in seeds {
-                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph);
+                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph)?;
                 }
             }};
         }
@@ -227,15 +232,15 @@ impl SpaceInnerQuatLargeInt {
 // Family enum
 // ---------------------------------------------------------------------------
 
-pub enum SpaceInnerQuat {
-    Default(SpaceInnerQuatDefault),
+pub enum QuatBasis {
+    Default(QuatBasisDefault),
     #[cfg(feature = "large-int")]
-    LargeInt(SpaceInnerQuatLargeInt),
+    LargeInt(QuatBasisLargeInt),
 }
 
-impl_family_dispatch_enum!(SpaceInnerQuat);
+impl_family_dispatch_enum!(QuatBasis);
 
-impl SpaceInnerQuat {
+impl QuatBasis {
     #[inline]
     pub fn add_local(
         &mut self,

@@ -1,5 +1,5 @@
 //! Bosonic basis type [`BosonBasis`].
-use crate::generic::GenericBasis;
+use crate::dispatch::GenericBasis;
 use crate::spin::SpaceKind;
 use num_complex::Complex;
 use quspin_bitbasis::StateTransitions;

@@ -2,11 +2,11 @@
 //!
 //! Three-level dispatch:
 //!
-//! - [`SpaceInnerBit`] — switches `Default` (always) vs `LargeInt`
+//! - [`BitBasis`] — switches `Default` (always) vs `LargeInt`
 //!   (feature-gated whole-type).
-//! - [`SpaceInnerBitDefault`] — concrete variants over `u32`, `u64`,
+//! - [`BitBasisDefault`] — concrete variants over `u32`, `u64`,
 //!   `Uint<128>`, `Uint<256>`.
-//! - [`SpaceInnerBitLargeInt`] — concrete variants over the wide
+//! - [`BitBasisLargeInt`] — concrete variants over the wide
 //!   integer widths gated behind the `large-int` feature; the type
 //!   itself only exists when the feature is on.
 //!
@@ -18,6 +18,7 @@ use super::macros::{impl_family_dispatch_enum, impl_inner_dispatch_enum};
 use super::types::{B128, B256};
 #[cfg(feature = "large-int")]
 use super::types::{B512, B1024, B2048, B4096, B8192};
+use super::validate::{validate_locs, validate_perm_vals};
 use crate::space::{FullSpace, Subspace};
 use crate::sym::SymBasis;
 use crate::traits::BasisSpace;
@@ -50,7 +51,7 @@ fn build_mask<B: BitInt>(locs: &[usize]) -> B {
 // ---------------------------------------------------------------------------
 
 /// Concrete variants over the always-available integer widths.
-pub enum SpaceInnerBitDefault {
+pub enum BitBasisDefault {
     Full32(FullSpace<u32>),
     Full64(FullSpace<u64>),
 
@@ -66,18 +67,20 @@ pub enum SpaceInnerBitDefault {
 }
 
 impl_inner_dispatch_enum!(
-    SpaceInnerBitDefault,
+    BitBasisDefault,
     full = [Full32, Full64],
     sub = [Sub32, Sub64, Sub128, Sub256],
     sym = [Sym32, Sym64, Sym128, Sym256],
 );
 
-impl SpaceInnerBitDefault {
+impl BitBasisDefault {
     /// Add a local bit-flip (LHSS = 2 inversion) at every site in `locs`.
     ///
-    /// Caller is responsible for upstream validation; this only does
-    /// the variant dispatch.
+    /// `locs` is validated against `n_sites` here — this is the level
+    /// where the typed `PermDitMask<B>` is constructed from the user's
+    /// `Vec<usize>`, so it owns the input-shape check.
     pub fn add_inv(&mut self, grp_char: Complex<f64>, locs: &[usize]) -> Result<(), QuSpinError> {
+        validate_locs(locs, self.n_sites())?;
         match self {
             Self::Sym32(b) => b.add_symmetry(
                 grp_char,
@@ -96,7 +99,7 @@ impl SpaceInnerBitDefault {
                 SymElement::local(PermDitMask::new(build_mask::<B256>(locs))),
             ),
             _ => Err(QuSpinError::ValueError(
-                "add_inv requires a Sym* variant on SpaceInnerBitDefault".into(),
+                "add_inv requires a Sym* variant on BitBasisDefault".into(),
             )),
         }
     }
@@ -104,13 +107,14 @@ impl SpaceInnerBitDefault {
     /// Add a local dit-permutation symmetry element. For the Bit family
     /// `perm_vals` must equal `[1, 0]` (the only non-trivial LHSS = 2
     /// permutation); otherwise an error is returned. Internally
-    /// dispatches to [`add_inv`](Self::add_inv).
+    /// dispatches to [`add_inv`](Self::add_inv) which validates `locs`.
     pub fn add_local(
         &mut self,
         grp_char: Complex<f64>,
         perm_vals: Vec<u8>,
         locs: Vec<usize>,
     ) -> Result<(), QuSpinError> {
+        validate_perm_vals(&perm_vals, 2)?;
         if perm_vals != [1, 0] {
             return Err(QuSpinError::ValueError(format!(
                 "add_local on Bit family (LHSS=2) requires perm_vals=[1,0], got {perm_vals:?}"
@@ -120,7 +124,6 @@ impl SpaceInnerBitDefault {
     }
 
     /// Build the basis from `seeds`. Bit-family seeds are bit-encoded.
-    /// Caller validates `is_built`, `space_kind != Full`, etc.
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
         graph: &G,
@@ -129,7 +132,7 @@ impl SpaceInnerBitDefault {
         macro_rules! sub_build {
             ($b:ident, $B:ty) => {{
                 for s in seeds {
-                    $b.build(seed_from_bytes::<$B>(s), graph);
+                    $b.build(seed_from_bytes::<$B>(s), graph)?;
                 }
             }};
         }
@@ -165,7 +168,7 @@ impl SpaceInnerBitDefault {
 
 /// Concrete variants over the `large-int`-gated integer widths.
 #[cfg(feature = "large-int")]
-pub enum SpaceInnerBitLargeInt {
+pub enum BitBasisLargeInt {
     Sub512(Subspace<B512>),
     Sub1024(Subspace<B1024>),
     Sub2048(Subspace<B2048>),
@@ -181,15 +184,16 @@ pub enum SpaceInnerBitLargeInt {
 
 #[cfg(feature = "large-int")]
 impl_inner_dispatch_enum!(
-    SpaceInnerBitLargeInt,
+    BitBasisLargeInt,
     full = [],
     sub = [Sub512, Sub1024, Sub2048, Sub4096, Sub8192],
     sym = [Sym512, Sym1024, Sym2048, Sym4096, Sym8192],
 );
 
 #[cfg(feature = "large-int")]
-impl SpaceInnerBitLargeInt {
+impl BitBasisLargeInt {
     pub fn add_inv(&mut self, grp_char: Complex<f64>, locs: &[usize]) -> Result<(), QuSpinError> {
+        validate_locs(locs, self.n_sites())?;
         match self {
             Self::Sym512(b) => b.add_symmetry(
                 grp_char,
@@ -212,7 +216,7 @@ impl SpaceInnerBitLargeInt {
                 SymElement::local(PermDitMask::new(build_mask::<B8192>(locs))),
             ),
             _ => Err(QuSpinError::ValueError(
-                "add_inv requires a Sym* variant on SpaceInnerBitLargeInt".into(),
+                "add_inv requires a Sym* variant on BitBasisLargeInt".into(),
             )),
         }
     }
@@ -223,6 +227,7 @@ impl SpaceInnerBitLargeInt {
         perm_vals: Vec<u8>,
         locs: Vec<usize>,
     ) -> Result<(), QuSpinError> {
+        validate_perm_vals(&perm_vals, 2)?;
         if perm_vals != [1, 0] {
             return Err(QuSpinError::ValueError(format!(
                 "add_local on Bit family (LHSS=2) requires perm_vals=[1,0], got {perm_vals:?}"
@@ -239,7 +244,7 @@ impl SpaceInnerBitLargeInt {
         macro_rules! sub_build {
             ($b:ident, $B:ty) => {{
                 for s in seeds {
-                    $b.build(seed_from_bytes::<$B>(s), graph);
+                    $b.build(seed_from_bytes::<$B>(s), graph)?;
                 }
             }};
         }
@@ -273,15 +278,15 @@ impl SpaceInnerBitLargeInt {
 /// `Bit` family dispatcher. `LargeInt` arm vanishes when the
 /// `large-int` feature is off — methods on this type never use a
 /// `#[cfg]` match arm.
-pub enum SpaceInnerBit {
-    Default(SpaceInnerBitDefault),
+pub enum BitBasis {
+    Default(BitBasisDefault),
     #[cfg(feature = "large-int")]
-    LargeInt(SpaceInnerBitLargeInt),
+    LargeInt(BitBasisLargeInt),
 }
 
-impl_family_dispatch_enum!(SpaceInnerBit);
+impl_family_dispatch_enum!(BitBasis);
 
-impl SpaceInnerBit {
+impl BitBasis {
     #[inline]
     pub fn add_inv(&mut self, grp_char: Complex<f64>, locs: &[usize]) -> Result<(), QuSpinError> {
         match self {

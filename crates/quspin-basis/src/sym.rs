@@ -4,6 +4,7 @@
 /// with a single flat struct. `N` is an explicit type parameter — the B→N
 /// pairing is encoded in `SpaceInner` variant definitions, not a runtime enum.
 use super::bfs::{AMP_CANCEL_TOL, PARALLEL_FRONTIER_THRESHOLD};
+use super::dispatch::validate::validate_perm;
 use super::lattice::{BenesLatticeElement, CompositeElement, LocalElement};
 use super::traits::BasisSpace;
 use num_complex::Complex;
@@ -164,6 +165,10 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
     /// (both `perm` and `local` absent) are rejected — the identity
     /// must not be added explicitly.
     ///
+    /// The site-permutation component (if present) is validated against
+    /// `self.n_sites` here — every dispatch path through `SymBasis<B,L,N>`
+    /// shares this check, so callers don't need to pre-validate.
+    ///
     /// The walker dispatches each element into one of three typed
     /// storage vectors at insert time based on which components are
     /// present, so the orbit hot loop has zero variant-branching.
@@ -172,7 +177,15 @@ impl<B: BitInt, L, N: NormInt> SymBasis<B, L, N> {
         grp_char: Complex<f64>,
         element: crate::SymElement<L>,
     ) -> Result<(), QuSpinError> {
+        if self.built {
+            return Err(QuSpinError::ValueError(
+                "cannot add symmetry elements after basis is built".into(),
+            ));
+        }
         let (perm, local) = element.into_parts();
+        if let Some(ref p) = perm {
+            validate_perm(p, self.n_sites)?;
+        }
         match (perm, local) {
             (Some(p), None) => {
                 let op = BenesPermDitLocations::<B>::new(self.lhss, &p, self.fermionic);
@@ -441,6 +454,13 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> SymBasis<B, L, N> {
         G: StateTransitions,
         L: Sync,
     {
+        if graph.lhss() != self.lhss {
+            return Err(QuSpinError::ValueError(format!(
+                "graph.lhss()={} does not match basis lhss={}",
+                graph.lhss(),
+                self.lhss,
+            )));
+        }
         if !self.built {
             self.validate_group()?;
         }

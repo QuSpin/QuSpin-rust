@@ -8,6 +8,7 @@ use super::macros::{impl_family_dispatch_enum, impl_inner_dispatch_enum};
 use super::types::{B128, B256};
 #[cfg(feature = "large-int")]
 use super::types::{B512, B1024, B2048, B4096, B8192};
+use super::validate::{validate_locs, validate_perm_vals};
 use crate::space::{FullSpace, Subspace};
 use crate::sym::SymBasis;
 use crate::traits::BasisSpace;
@@ -21,7 +22,7 @@ use quspin_types::QuSpinError;
 // Default-width inner enum
 // ---------------------------------------------------------------------------
 
-pub enum SpaceInnerDitDefault {
+pub enum DynDitBasisDefault {
     Full32(FullSpace<u32>),
     Full64(FullSpace<u64>),
 
@@ -37,13 +38,13 @@ pub enum SpaceInnerDitDefault {
 }
 
 impl_inner_dispatch_enum!(
-    SpaceInnerDitDefault,
+    DynDitBasisDefault,
     full = [Full32, Full64],
     sub = [Sub32, Sub64, Sub128, Sub256],
     sym = [Sym32, Sym64, Sym128, Sym256],
 );
 
-impl SpaceInnerDitDefault {
+impl DynDitBasisDefault {
     pub fn add_local(
         &mut self,
         grp_char: Complex<f64>,
@@ -51,12 +52,8 @@ impl SpaceInnerDitDefault {
         locs: Vec<usize>,
     ) -> Result<(), QuSpinError> {
         let lhss = self.lhss();
-        if perm_vals.len() != lhss {
-            return Err(QuSpinError::ValueError(format!(
-                "add_local on Dit family requires perm_vals.len()=lhss={lhss}, got {}",
-                perm_vals.len()
-            )));
-        }
+        validate_perm_vals(&perm_vals, lhss)?;
+        validate_locs(&locs, self.n_sites())?;
         match self {
             Self::Sym32(b) => b.add_symmetry(
                 grp_char,
@@ -75,7 +72,7 @@ impl SpaceInnerDitDefault {
                 SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
             ),
             _ => Err(QuSpinError::ValueError(
-                "add_local requires a Sym* variant on SpaceInnerDitDefault".into(),
+                "add_local requires a Sym* variant on DynDitBasisDefault".into(),
             )),
         }
     }
@@ -89,7 +86,7 @@ impl SpaceInnerDitDefault {
         macro_rules! sub_build {
             ($b:ident, $B:ty) => {{
                 for s in seeds {
-                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph);
+                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph)?;
                 }
             }};
         }
@@ -124,7 +121,7 @@ impl SpaceInnerDitDefault {
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "large-int")]
-pub enum SpaceInnerDitLargeInt {
+pub enum DynDitBasisLargeInt {
     Sub512(Subspace<B512>),
     Sub1024(Subspace<B1024>),
     Sub2048(Subspace<B2048>),
@@ -140,14 +137,14 @@ pub enum SpaceInnerDitLargeInt {
 
 #[cfg(feature = "large-int")]
 impl_inner_dispatch_enum!(
-    SpaceInnerDitLargeInt,
+    DynDitBasisLargeInt,
     full = [],
     sub = [Sub512, Sub1024, Sub2048, Sub4096, Sub8192],
     sym = [Sym512, Sym1024, Sym2048, Sym4096, Sym8192],
 );
 
 #[cfg(feature = "large-int")]
-impl SpaceInnerDitLargeInt {
+impl DynDitBasisLargeInt {
     pub fn add_local(
         &mut self,
         grp_char: Complex<f64>,
@@ -155,12 +152,8 @@ impl SpaceInnerDitLargeInt {
         locs: Vec<usize>,
     ) -> Result<(), QuSpinError> {
         let lhss = self.lhss();
-        if perm_vals.len() != lhss {
-            return Err(QuSpinError::ValueError(format!(
-                "add_local on Dit family requires perm_vals.len()=lhss={lhss}, got {}",
-                perm_vals.len()
-            )));
-        }
+        validate_perm_vals(&perm_vals, lhss)?;
+        validate_locs(&locs, self.n_sites())?;
         match self {
             Self::Sym512(b) => b.add_symmetry(
                 grp_char,
@@ -183,7 +176,7 @@ impl SpaceInnerDitLargeInt {
                 SymElement::local(DynamicPermDitValues::new(lhss, perm_vals, locs)),
             ),
             _ => Err(QuSpinError::ValueError(
-                "add_local requires a Sym* variant on SpaceInnerDitLargeInt".into(),
+                "add_local requires a Sym* variant on DynDitBasisLargeInt".into(),
             )),
         }
     }
@@ -197,7 +190,7 @@ impl SpaceInnerDitLargeInt {
         macro_rules! sub_build {
             ($b:ident, $B:ty) => {{
                 for s in seeds {
-                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph);
+                    $b.build(dit_seed_from_bytes::<$B>(s, &manip), graph)?;
                 }
             }};
         }
@@ -228,15 +221,15 @@ impl SpaceInnerDitLargeInt {
 // Family enum
 // ---------------------------------------------------------------------------
 
-pub enum SpaceInnerDit {
-    Default(SpaceInnerDitDefault),
+pub enum DynDitBasis {
+    Default(DynDitBasisDefault),
     #[cfg(feature = "large-int")]
-    LargeInt(SpaceInnerDitLargeInt),
+    LargeInt(DynDitBasisLargeInt),
 }
 
-impl_family_dispatch_enum!(SpaceInnerDit);
+impl_family_dispatch_enum!(DynDitBasis);
 
-impl SpaceInnerDit {
+impl DynDitBasis {
     #[inline]
     pub fn add_local(
         &mut self,

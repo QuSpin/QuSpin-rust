@@ -1,5 +1,9 @@
 //! Fermionic basis type [`FermionBasis`].
-use crate::generic::GenericBasis;
+//!
+//! Wraps [`BitBasis`] directly (no [`GenericBasis`](crate::GenericBasis)
+//! layer) so the fermion compile path doesn't pull in the dit-family
+//! enums from [`DitBasis`](crate::DitBasis).
+use crate::dispatch::BitBasis;
 use crate::spin::SpaceKind;
 use num_complex::Complex;
 use quspin_bitbasis::StateTransitions;
@@ -10,7 +14,7 @@ use quspin_types::QuSpinError;
 // ---------------------------------------------------------------------------
 
 /// Fermionic basis. Thin wrapper that pins `fermionic = true, lhss = 2`
-/// on top of [`GenericBasis`]; Jordan-Wigner sign tracking is enabled
+/// on top of [`BitBasis`]; Jordan-Wigner sign tracking is enabled
 /// automatically.
 ///
 /// - [`SpaceKind::Full`]  — full Hilbert space; no build step required.
@@ -19,7 +23,7 @@ use quspin_types::QuSpinError;
 ///   elements with [`add_lattice`](Self::add_lattice) before
 ///   [`build`](Self::build).
 pub struct FermionBasis {
-    pub inner: GenericBasis,
+    pub inner: BitBasis,
 }
 
 impl FermionBasis {
@@ -31,7 +35,7 @@ impl FermionBasis {
     /// - [`SpaceKind::Sub`] / [`SpaceKind::Symm`] with `n_sites > 8192`
     pub fn new(n_sites: usize, space_kind: SpaceKind) -> Result<Self, QuSpinError> {
         Ok(Self {
-            inner: GenericBasis::new(n_sites, 2, space_kind, true)?,
+            inner: BitBasis::new(n_sites, space_kind, true)?,
         })
     }
 
@@ -43,13 +47,13 @@ impl FermionBasis {
 
     /// Add a lattice (site-permutation) symmetry element.
     /// Jordan-Wigner sign tracking is applied automatically by the
-    /// underlying [`GenericBasis`].
+    /// underlying [`BitBasis`].
     pub fn add_lattice(
         &mut self,
         grp_char: Complex<f64>,
         perm: Vec<usize>,
     ) -> Result<(), QuSpinError> {
-        self.inner.add_lattice(grp_char, perm)
+        self.inner.add_lattice(grp_char, &perm)
     }
 
     /// Build the subspace reachable from `seeds` under `graph`.
