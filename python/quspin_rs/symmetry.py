@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import cmath
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from math import gcd, pi
 from typing import TYPE_CHECKING
 
@@ -114,6 +114,51 @@ class SymmetryGroup:
             self._elements.append((g_pow, base_char**a))
             if a + 1 < order:
                 g_pow = _compose(g_pow, generator)
+
+    def close(
+        self,
+        generators: list["SymElement"],
+        char: Callable[["SymElement"], complex],
+    ) -> None:
+        """BFS-close the orbit under composition.
+
+        For each generator and each element discovered so far, compose
+        them and append any new (i.e. previously-unseen) action with the
+        user-supplied character. The user is responsible for supplying a
+        self-consistent 1-D representation; :meth:`validate` catches
+        inconsistencies.
+
+        A no-op when ``generators`` is empty.
+
+        Compositions that produce the identity element are dropped (the
+        identity is implicit in every group).
+        """
+        if not generators:
+            return
+
+        seen: set["SymElement"] = set()
+        frontier: list["SymElement"] = []
+        for g in generators:
+            if g not in seen:
+                seen.add(g)
+                frontier.append(g)
+                self._elements.append((g, complex(char(g))))
+
+        while frontier:
+            next_frontier: list["SymElement"] = []
+            for x in frontier:
+                for g in generators:
+                    try:
+                        composed = _compose(x, g)
+                    except ValueError:
+                        # composition produced identity — skip
+                        continue
+                    if composed in seen:
+                        continue
+                    seen.add(composed)
+                    next_frontier.append(composed)
+                    self._elements.append((composed, complex(char(composed))))
+            frontier = next_frontier
 
     def __len__(self) -> int:
         return len(self._elements)

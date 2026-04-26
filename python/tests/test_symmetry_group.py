@@ -272,3 +272,49 @@ class TestAddCyclic:
         chars = [chi for _, chi in g]
         for got, expected in zip(chars, [z, z**2, z**3]):
             assert abs(got - expected) < 1e-12
+
+
+class TestClose:
+    def test_close_dihedral_d4_trivial_rep(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        T = Lattice([1, 2, 3, 0])
+        P = Lattice([3, 2, 1, 0])
+        g.close(generators=[T, P], char=lambda elem: 1.0)
+        # D_4 has 2*4 = 8 elements; 7 non-identity.
+        assert len(g) == 7
+
+    def test_close_just_T_z4(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        T = Lattice([1, 2, 3, 0])
+        g.close(generators=[T], char=lambda elem: 1.0)
+        assert len(g) == 3  # T, T², T³
+
+    def test_close_empty_generators_no_op(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        g.close(generators=[], char=lambda elem: 1.0)
+        assert len(g) == 0
+
+    def test_close_char_called_per_element(self):
+        from quspin_rs import SymmetryGroup
+
+        g = SymmetryGroup(n_sites=4, lhss=2)
+        seen: list[object] = []
+
+        def tracker(elem):
+            seen.append(elem)
+            return 1.0
+
+        T = Lattice([1, 2, 3, 0])
+        g.close(generators=[T], char=tracker)
+        assert len(seen) == 3  # called for T, T², T³
+        # Each elem in `seen` is a SymElement
+        from quspin_rs import SymElement
+
+        for elem in seen:
+            assert isinstance(elem, SymElement)
