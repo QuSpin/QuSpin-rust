@@ -323,3 +323,103 @@ pub fn composite(
         locs,
     })
 }
+
+// ---------------------------------------------------------------------------
+// Bridge into the Rust dispatch enums (no PyO3 surface).
+//
+// These methods are invoked by the (also crate-private) PyO3 wrappers in
+// `basis/{spin,boson,generic,fermion}.rs` from `*Basis.symmetric(group, ham,
+// seeds)` constructors. They live in a separate `impl` block so they aren't
+// `#[pymethods]`-exposed.
+// ---------------------------------------------------------------------------
+
+// `dead_code` is suppressed here because these bridge methods are wired
+// up by Task 13 (`*Basis.symmetric(group, ham, seeds)` migration). They
+// already have unit-test coverage below.
+#[allow(dead_code)]
+impl PySymElement {
+    /// Ship this element into a `GenericBasis` via `add_symmetry_raw`.
+    /// Used by the spin / boson / generic Python wrappers at
+    /// `*Basis.symmetric(group, ham, seeds)` time.
+    pub(crate) fn add_to_basis(
+        &self,
+        basis: &mut quspin_core::basis::GenericBasis,
+        grp_char: num_complex::Complex<f64>,
+    ) -> Result<(), quspin_core::error::QuSpinError> {
+        basis.add_symmetry_raw(
+            grp_char,
+            self.perm.as_deref(),
+            self.perm_vals.clone(),
+            self.locs.clone(),
+        )
+    }
+
+    /// Ship this element into a `BitBasis` directly. Used by the
+    /// fermion Python wrapper, which holds a `BitBasis` (not a
+    /// `GenericBasis`) to avoid pulling in the dit-family
+    /// monomorphizations.
+    pub(crate) fn add_to_bit_basis(
+        &self,
+        basis: &mut quspin_core::basis::dispatch::BitBasis,
+        grp_char: num_complex::Complex<f64>,
+    ) -> Result<(), quspin_core::error::QuSpinError> {
+        let n_sites = basis.n_sites();
+        let locs = self.locs.clone().unwrap_or_else(|| (0..n_sites).collect());
+        match (&self.perm, &self.perm_vals) {
+            (Some(p), None) => basis.add_lattice(grp_char, p),
+            (None, Some(v)) => basis.add_local(grp_char, v.clone(), locs),
+            (Some(p), Some(v)) => basis.add_composite(grp_char, p, v.clone(), locs),
+            (None, None) => Err(quspin_core::error::QuSpinError::ValueError(
+                "add_to_bit_basis: empty element (identity is implicit)".into(),
+            )),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_to_basis_lattice() {
+        use quspin_core::basis::{GenericBasis, SpaceKind};
+        let mut b = GenericBasis::new(3, 2, SpaceKind::Symm, false).unwrap();
+        let elem = PySymElement {
+            kind: SymElementKind::Lattice,
+            perm: Some(vec![1, 2, 0]),
+            perm_vals: None,
+            locs: None,
+        };
+        elem.add_to_basis(&mut b, num_complex::Complex::new(1.0, 0.0))
+            .unwrap();
+    }
+
+    #[test]
+    fn add_to_bit_basis_composite() {
+        use quspin_core::basis::FermionBasis;
+        use quspin_core::basis::SpaceKind;
+        let mut b = FermionBasis::new(3, SpaceKind::Symm).unwrap();
+        let elem = PySymElement {
+            kind: SymElementKind::Composite,
+            perm: Some(vec![1, 2, 0]),
+            perm_vals: Some(vec![1, 0]),
+            locs: None,
+        };
+        elem.add_to_bit_basis(&mut b.inner, num_complex::Complex::new(-1.0, 0.0))
+            .unwrap();
+    }
+
+    #[test]
+    fn add_to_basis_rejects_identity() {
+        use quspin_core::basis::{GenericBasis, SpaceKind};
+        let mut b = GenericBasis::new(3, 2, SpaceKind::Symm, false).unwrap();
+        let elem = PySymElement {
+            kind: SymElementKind::Lattice, // discriminator value doesn't matter for empty case
+            perm: None,
+            perm_vals: None,
+            locs: None,
+        };
+        let r = elem.add_to_basis(&mut b, num_complex::Complex::new(1.0, 0.0));
+        assert!(r.is_err());
+    }
+}
