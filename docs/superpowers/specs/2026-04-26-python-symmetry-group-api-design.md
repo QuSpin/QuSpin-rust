@@ -85,8 +85,13 @@ basis-construction time.
 | Constructor | Signature | Internals |
 |---|---|---|
 | `Lattice(perm)` | `perm: list[int]` length `n_sites` | `(Some(perm), None, None)` |
-| `Local(perm_vals, locs=None)` | `perm_vals: list[int]` length `lhss`; `locs: list[int] \| None` (default = all sites at consume time) | `(None, Some(perm_vals), locs)` |
+| `Local(perm_vals, locs=None)` | `perm_vals: list[int]` length `lhss`; `locs: list[int] \| None` | `(None, Some(perm_vals), locs)` |
 | `Composite(perm, perm_vals, locs=None)` | both | `(Some(perm), Some(perm_vals), locs)` |
+
+**`locs=None` semantics.** `None` is preserved as `Option::None` all the way
+down to the per-family inner enum's `add_local`, which expands it to the
+"all sites" mask at the point of constructing the typed local op. Python /
+the dispatch layers do not pre-expand it.
 
 The `SymElement` `#[pyclass]` exposes only `__repr__`, `__eq__`, `__hash__`.
 No `__mul__` / field readers.
@@ -132,6 +137,12 @@ class SymmetryGroup:
     # --- Group operations ---
     def product(self, other: "SymmetryGroup") -> "SymmetryGroup":
         """Direct product. Both groups must share (n_sites, lhss).
+
+        Cartesian enumeration: for every (a, χ_A) in self and every
+        (b, χ_B) in other, the result contains (_compose(a, b), χ_A · χ_B).
+        Plus the two factor groups themselves (paired with their
+        characters) since the identity in the other factor is implicit.
+
         Caller asserts the two factor groups commute; validate_group
         catches a non-commuting product at first build."""
 
@@ -316,7 +327,7 @@ the triple and the family:
 | `(perm, perm_vals)` | family | calls |
 |---|---|---|
 | `(Some, None)` | any | inner-enum's macro-generated `add_lattice` |
-| `(None, Some)` | Bit | `BitBasisDefault::add_local` (validates `perm_vals == [1, 0]`) |
+| `(None, Some)` | Bit | `BitBasisDefault::add_local` — Bit is the only family that further restricts `perm_vals`: it must equal `[1, 0]` (the only non-trivial LHSS=2 permutation) and otherwise raises `ValueError`. Trit/Quat/Dyn accept any valid `perm_vals` permutation. |
 | `(None, Some)` | Trit/Quat/Dyn | `*BasisDefault::add_local` |
 | `(Some, Some)` | any | new inner-enum method `add_composite`, mirrors `SymElement::composite` then `b.add_symmetry(...)` |
 | `(None, None)` | any | error (identity element, rejected by `SymBasis::add_symmetry`) |
