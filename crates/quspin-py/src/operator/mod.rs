@@ -10,7 +10,7 @@ pub use fermion::PyFermionOperator;
 pub use monomial::PyMonomialOperator;
 pub use pauli::PyPauliOperator;
 
-use crate::basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis};
+use crate::basis::{AsSpaceInner, PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis};
 use num_complex::Complex;
 use numpy::{Complex64, PyArray1, PyArrayMethods};
 use pyo3::prelude::*;
@@ -25,13 +25,13 @@ where
     F: FnOnce(&SpaceInner) -> R,
 {
     if let Ok(b) = basis.downcast::<PySpinBasis>() {
-        Ok(f(&b.borrow().inner.inner.inner))
+        Ok(f(b.borrow().as_space_inner()))
     } else if let Ok(b) = basis.downcast::<PyFermionBasis>() {
-        Ok(f(&b.borrow().inner.inner.inner))
+        Ok(f(b.borrow().as_space_inner()))
     } else if let Ok(b) = basis.downcast::<PyBosonBasis>() {
-        Ok(f(&b.borrow().inner.inner.inner))
+        Ok(f(b.borrow().as_space_inner()))
     } else if let Ok(b) = basis.downcast::<PyGenericBasis>() {
-        Ok(f(&b.borrow().inner.inner))
+        Ok(f(b.borrow().as_space_inner()))
     } else {
         Err(pyo3::exceptions::PyTypeError::new_err(
             "basis must be SpinBasis, FermionBasis, BosonBasis, or GenericBasis",

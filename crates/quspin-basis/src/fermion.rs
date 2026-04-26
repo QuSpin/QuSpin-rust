@@ -79,22 +79,22 @@ mod tests {
     #[test]
     fn fermion_basis_new_full_ok() {
         let basis = FermionBasis::new(4, SpaceKind::Full).unwrap();
-        assert_eq!(basis.inner.inner.size(), 16);
-        assert!(basis.inner.inner.is_built());
+        assert_eq!(basis.inner.size(), 16);
+        assert!(basis.inner.is_built());
     }
 
     #[test]
     fn fermion_basis_new_sub_ok() {
         let basis = FermionBasis::new(4, SpaceKind::Sub).unwrap();
-        assert!(!basis.inner.inner.is_built());
-        assert_eq!(basis.inner.inner.n_sites(), 4);
+        assert!(!basis.inner.is_built());
+        assert_eq!(basis.inner.n_sites(), 4);
     }
 
     #[test]
     fn fermion_basis_new_symm_ok() {
         let basis = FermionBasis::new(4, SpaceKind::Symm).unwrap();
-        assert!(!basis.inner.inner.is_built());
-        assert_eq!(basis.inner.inner.n_sites(), 4);
+        assert!(!basis.inner.is_built());
+        assert_eq!(basis.inner.n_sites(), 4);
     }
 
     #[test]

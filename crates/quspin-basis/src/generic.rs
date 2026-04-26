@@ -24,8 +24,17 @@ use crate::space::{FullSpace, Subspace};
 use crate::spin::SpaceKind;
 use crate::sym::SymBasis;
 use num_complex::Complex;
+use quspin_bitbasis::manip::BITS_TABLE;
 use quspin_bitbasis::{DynamicPermDitValues, PermDitMask, PermDitValues, StateTransitions};
 use quspin_types::QuSpinError;
+
+/// Number of bits required to encode `n_sites` dits with `lhss`
+/// possible values per site. Mirrors `BITS_TABLE[lhss]`'s
+/// `bits_for_lhss` rule (clamped to 1 for `lhss <= 2`).
+#[inline]
+fn n_bits_for(n_sites: usize, lhss: usize) -> usize {
+    n_sites * BITS_TABLE[lhss]
+}
 
 // ---------------------------------------------------------------------------
 // GenericBasis
@@ -65,13 +74,7 @@ impl GenericBasis {
                 "fermionic=true requires lhss=2, got lhss={lhss}"
             )));
         }
-        let bits_per_dit = if lhss <= 2 {
-            1
-        } else {
-            (usize::BITS - (lhss - 1).leading_zeros()) as usize
-        };
-        let n_bits = n_sites * bits_per_dit;
-        let inner = build_space_inner(n_sites, lhss, space_kind, fermionic, n_bits)?;
+        let inner = build_space_inner(n_sites, lhss, space_kind, fermionic)?;
         Ok(Self { inner })
     }
 
@@ -316,21 +319,16 @@ fn build_space_inner(
     lhss: usize,
     space_kind: SpaceKind,
     fermionic: bool,
-    n_bits: usize,
 ) -> Result<SpaceInner, QuSpinError> {
     match space_kind {
-        SpaceKind::Full => build_full(n_sites, lhss, fermionic, n_bits),
-        SpaceKind::Sub => build_sub(n_sites, lhss, fermionic, n_bits),
-        SpaceKind::Symm => build_symm(n_sites, lhss, fermionic, n_bits),
+        SpaceKind::Full => build_full(n_sites, lhss, fermionic),
+        SpaceKind::Sub => build_sub(n_sites, lhss, fermionic),
+        SpaceKind::Symm => build_symm(n_sites, lhss, fermionic),
     }
 }
 
-fn build_full(
-    n_sites: usize,
-    lhss: usize,
-    fermionic: bool,
-    n_bits: usize,
-) -> Result<SpaceInner, QuSpinError> {
+fn build_full(n_sites: usize, lhss: usize, fermionic: bool) -> Result<SpaceInner, QuSpinError> {
+    let n_bits = n_bits_for(n_sites, lhss);
     if n_bits > 64 {
         return Err(QuSpinError::ValueError(format!(
             "Full basis requires n_bits <= 64, but n_sites={n_sites} with \
@@ -385,12 +383,8 @@ fn family_for(lhss: usize) -> Family {
     }
 }
 
-fn build_sub(
-    n_sites: usize,
-    lhss: usize,
-    fermionic: bool,
-    n_bits: usize,
-) -> Result<SpaceInner, QuSpinError> {
+fn build_sub(n_sites: usize, lhss: usize, fermionic: bool) -> Result<SpaceInner, QuSpinError> {
+    let n_bits = n_bits_for(n_sites, lhss);
     macro_rules! sub_default {
         ($variant:ident, $B:ty, $family_ty:ident, $default_ty:ident, $outer:ident) => {{
             let s = Subspace::<$B>::new_empty(lhss, n_sites, fermionic);
@@ -655,26 +649,21 @@ fn build_sub(
     Ok(inner)
 }
 
-fn build_symm(
-    n_sites: usize,
-    lhss: usize,
-    fermionic: bool,
-    n_bits: usize,
-) -> Result<SpaceInner, QuSpinError> {
+fn build_symm(n_sites: usize, lhss: usize, fermionic: bool) -> Result<SpaceInner, QuSpinError> {
     // Each family knows its L type, so the construction differs per
     // family. We use a small helper macro per family to avoid spelling
     // out every (width × variant) combination by hand.
     match family_for(lhss) {
-        Family::Bit => build_symm_bit(n_sites, lhss, fermionic, n_bits),
-        Family::Trit => build_symm_trit(n_sites, lhss, fermionic, n_bits),
-        Family::Quat => build_symm_quat(n_sites, lhss, fermionic, n_bits),
-        Family::Dit => build_symm_dit(n_sites, lhss, fermionic, n_bits),
+        Family::Bit => build_symm_bit(n_sites, lhss, fermionic),
+        Family::Trit => build_symm_trit(n_sites, lhss, fermionic),
+        Family::Quat => build_symm_quat(n_sites, lhss, fermionic),
+        Family::Dit => build_symm_dit(n_sites, lhss, fermionic),
     }
 }
 
 macro_rules! mk_symm {
     (
-        $n_sites:expr, $lhss:expr, $fermionic:expr, $n_bits:expr,
+        $n_sites:expr, $lhss:expr, $fermionic:expr,
         $L:ty,
         $family_variant:ident,
         $family_ty:ident,
@@ -685,7 +674,7 @@ macro_rules! mk_symm {
         let n_sites = $n_sites;
         let lhss = $lhss;
         let fermionic = $fermionic;
-        let n_bits = $n_bits;
+        let n_bits = n_bits_for(n_sites, lhss);
         match n_bits {
             0..=32 => {
                 let s = SymBasis::<u32, $L, _>::new_empty(lhss, n_sites, fermionic);
@@ -759,16 +748,12 @@ macro_rules! mk_symm {
     }};
 }
 
-fn build_symm_bit(
-    n_sites: usize,
-    lhss: usize,
-    fermionic: bool,
-    n_bits: usize,
-) -> Result<SpaceInner, QuSpinError> {
+fn build_symm_bit(n_sites: usize, lhss: usize, fermionic: bool) -> Result<SpaceInner, QuSpinError> {
     type L<B> = PermDitMask<B>;
     // The macro can't carry a generic-over-B local-op type; Bit's
     // `PermDitMask<B>` needs the per-width substitution. Inline the
     // dispatch directly instead of using `mk_symm!`.
+    let n_bits = n_bits_for(n_sites, lhss);
     match n_bits {
         0..=32 => {
             let s = SymBasis::<u32, L<u32>, _>::new_empty(lhss, n_sites, fermionic);
@@ -844,13 +829,11 @@ fn build_symm_trit(
     n_sites: usize,
     lhss: usize,
     fermionic: bool,
-    n_bits: usize,
 ) -> Result<SpaceInner, QuSpinError> {
     mk_symm!(
         n_sites,
         lhss,
         fermionic,
-        n_bits,
         PermDitValues<3>,
         Trit,
         SpaceInnerTrit,
@@ -863,13 +846,11 @@ fn build_symm_quat(
     n_sites: usize,
     lhss: usize,
     fermionic: bool,
-    n_bits: usize,
 ) -> Result<SpaceInner, QuSpinError> {
     mk_symm!(
         n_sites,
         lhss,
         fermionic,
-        n_bits,
         PermDitValues<4>,
         Quat,
         SpaceInnerQuat,
@@ -878,17 +859,11 @@ fn build_symm_quat(
     )
 }
 
-fn build_symm_dit(
-    n_sites: usize,
-    lhss: usize,
-    fermionic: bool,
-    n_bits: usize,
-) -> Result<SpaceInner, QuSpinError> {
+fn build_symm_dit(n_sites: usize, lhss: usize, fermionic: bool) -> Result<SpaceInner, QuSpinError> {
     mk_symm!(
         n_sites,
         lhss,
         fermionic,
-        n_bits,
         DynamicPermDitValues,
         Dit,
         SpaceInnerDit,
@@ -927,6 +902,63 @@ mod tests {
     fn generic_basis_add_lattice_on_non_symm_errors() {
         let mut basis = GenericBasis::new(4, 2, SpaceKind::Sub, false).unwrap();
         let result = basis.add_lattice(Complex::new(1.0, 0.0), vec![1, 2, 3, 0]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn generic_basis_build_lhss2_bit_seeds() {
+        // LHSS=2: seeds are bit-encoded ([1, 0, 0, 0] = state 0b0001 = 1).
+        // X-on-all-sites graph reaches every state from any seed, so the
+        // full subspace has size 2^4 = 16.
+        let n_sites = 4;
+        let mut basis = GenericBasis::new(n_sites, 2, SpaceKind::Sub, false).unwrap();
+        let graph = quspin_bitbasis::test_graphs::XAllSites::new(n_sites as u32);
+        let seed = vec![0u8, 0, 0, 0];
+        basis.build(&graph, &[seed]).unwrap();
+        assert!(basis.is_built());
+        assert_eq!(basis.size(), 1 << n_sites);
+    }
+
+    #[test]
+    fn generic_basis_build_lhss3_dit_seeds() {
+        // LHSS=3 (Trit family): seeds are dit-encoded. We exercise the
+        // dit-family seed-decoder path with a stub `StateTransitions`
+        // that advertises `lhss == 3` and has no neighbours, so the
+        // BFS terminates with the seed alone in the subspace.
+        use num_complex::Complex;
+        use quspin_bitbasis::{BitInt, StateTransitions};
+
+        struct NoNeighborsLhss3;
+        impl StateTransitions for NoNeighborsLhss3 {
+            fn lhss(&self) -> usize {
+                3
+            }
+            fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, _state: B, _visit: F) {}
+        }
+
+        let n_sites = 3;
+        let mut basis = GenericBasis::new(n_sites, 3, SpaceKind::Sub, false).unwrap();
+        // Seed `[0, 0, 0]` (dit-encoded) is the zero state.
+        let seed = vec![0u8, 0, 0];
+        basis.build(&NoNeighborsLhss3, &[seed]).unwrap();
+        assert!(basis.is_built());
+        assert_eq!(basis.size(), 1);
+    }
+
+    #[test]
+    fn generic_basis_build_full_errors() {
+        let mut basis = GenericBasis::new(2, 3, SpaceKind::Full, false).unwrap();
+        let graph = quspin_bitbasis::test_graphs::XAllSites::new(4);
+        let result = basis.build(&graph, &[vec![0u8, 0]]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn generic_basis_double_build_errors() {
+        let mut basis = GenericBasis::new(3, 2, SpaceKind::Sub, false).unwrap();
+        let graph = quspin_bitbasis::test_graphs::XAllSites::new(3);
+        basis.build(&graph, &[vec![0u8, 0, 0]]).unwrap();
+        let result = basis.build(&graph, &[vec![0u8, 0, 0]]);
         assert!(result.is_err());
     }
 }

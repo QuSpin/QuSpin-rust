@@ -15,8 +15,48 @@ pub use spin::PySpinBasis;
 use crate::error::Error;
 use num_complex::Complex;
 use pyo3::prelude::*;
+use quspin_core::basis::dispatch::SpaceInner;
 use quspin_core::basis::seed::{dit_seed_from_str, seed_from_str};
 use quspin_core::error::QuSpinError;
+
+/// Single accessor that exposes the underlying [`SpaceInner`] from any
+/// of the PyO3 basis wrappers.
+///
+/// Avoids hard-coding the wrapper-internal nesting depth at every call
+/// site (`b.inner.inner.inner` etc.) — the operator/qmatrix layer just
+/// asks for `&SpaceInner` via this trait. Future wrapper restructuring
+/// (e.g. another nesting level) is contained to one impl per wrapper.
+pub(crate) trait AsSpaceInner {
+    fn as_space_inner(&self) -> &SpaceInner;
+}
+
+impl AsSpaceInner for PySpinBasis {
+    #[inline]
+    fn as_space_inner(&self) -> &SpaceInner {
+        &self.inner.inner.inner
+    }
+}
+
+impl AsSpaceInner for PyBosonBasis {
+    #[inline]
+    fn as_space_inner(&self) -> &SpaceInner {
+        &self.inner.inner.inner
+    }
+}
+
+impl AsSpaceInner for PyFermionBasis {
+    #[inline]
+    fn as_space_inner(&self) -> &SpaceInner {
+        &self.inner.inner.inner
+    }
+}
+
+impl AsSpaceInner for PyGenericBasis {
+    #[inline]
+    fn as_space_inner(&self) -> &SpaceInner {
+        &self.inner.inner
+    }
+}
 
 /// Parse seed strings into byte vectors.
 ///

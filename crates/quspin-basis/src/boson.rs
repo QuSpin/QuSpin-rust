@@ -82,32 +82,32 @@ mod tests {
     #[test]
     fn boson_basis_new_full_lhss2_ok() {
         let basis = BosonBasis::new(4, 2, SpaceKind::Full).unwrap();
-        assert_eq!(basis.inner.inner.size(), 16);
-        assert!(basis.inner.inner.is_built());
+        assert_eq!(basis.inner.size(), 16);
+        assert!(basis.inner.is_built());
     }
 
     #[test]
     fn boson_basis_new_sub_ok() {
         let basis = BosonBasis::new(4, 3, SpaceKind::Sub).unwrap();
-        assert!(!basis.inner.inner.is_built());
-        assert_eq!(basis.inner.inner.n_sites(), 4);
-        assert_eq!(basis.inner.inner.lhss(), 3);
+        assert!(!basis.inner.is_built());
+        assert_eq!(basis.inner.n_sites(), 4);
+        assert_eq!(basis.inner.lhss(), 3);
     }
 
     #[test]
     fn boson_basis_new_symm_lhss2_ok() {
         let basis = BosonBasis::new(4, 2, SpaceKind::Symm).unwrap();
-        assert!(!basis.inner.inner.is_built());
-        assert_eq!(basis.inner.inner.lhss(), 2);
-        assert_eq!(basis.inner.inner.n_sites(), 4);
+        assert!(!basis.inner.is_built());
+        assert_eq!(basis.inner.lhss(), 2);
+        assert_eq!(basis.inner.n_sites(), 4);
     }
 
     #[test]
     fn boson_basis_new_symm_lhss3_ok() {
         let basis = BosonBasis::new(4, 3, SpaceKind::Symm).unwrap();
-        assert!(!basis.inner.inner.is_built());
-        assert_eq!(basis.inner.inner.lhss(), 3);
-        assert_eq!(basis.inner.inner.n_sites(), 4);
+        assert!(!basis.inner.is_built());
+        assert_eq!(basis.inner.lhss(), 3);
+        assert_eq!(basis.inner.n_sites(), 4);
     }
 
     #[test]

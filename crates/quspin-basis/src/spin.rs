@@ -73,8 +73,8 @@ impl SpinBasis {
     ///
     /// `locs = None` applies the operation to all sites.
     pub fn add_inv(&mut self, locs: Option<Vec<u32>>) -> Result<(), QuSpinError> {
-        let n_sites = self.inner.inner.n_sites();
-        let lhss = self.inner.inner.lhss();
+        let n_sites = self.inner.n_sites();
+        let lhss = self.inner.lhss();
         let locs_u32 = locs.unwrap_or_else(|| (0..n_sites as u32).collect());
         let locs_usize: Vec<usize> = locs_u32.iter().map(|&v| v as usize).collect();
         let char = Complex::new(-1.0, 0.0);
@@ -113,29 +113,29 @@ mod tests {
     #[test]
     fn spin_basis_new_full_ok() {
         let basis = SpinBasis::new(4, 2, SpaceKind::Full).unwrap();
-        assert_eq!(basis.inner.inner.size(), 16);
-        assert!(basis.inner.inner.is_built());
+        assert_eq!(basis.inner.size(), 16);
+        assert!(basis.inner.is_built());
     }
 
     #[test]
     fn spin_basis_new_sub_ok() {
         let basis = SpinBasis::new(4, 2, SpaceKind::Sub).unwrap();
-        assert!(!basis.inner.inner.is_built());
+        assert!(!basis.inner.is_built());
     }
 
     #[test]
     fn spin_basis_new_symm_lhss2_ok() {
         let basis = SpinBasis::new(4, 2, SpaceKind::Symm).unwrap();
-        assert!(!basis.inner.inner.is_built());
-        assert_eq!(basis.inner.inner.lhss(), 2);
-        assert_eq!(basis.inner.inner.n_sites(), 4);
+        assert!(!basis.inner.is_built());
+        assert_eq!(basis.inner.lhss(), 2);
+        assert_eq!(basis.inner.n_sites(), 4);
     }
 
     #[test]
     fn spin_basis_new_symm_lhss3_ok() {
         let basis = SpinBasis::new(4, 3, SpaceKind::Symm).unwrap();
-        assert!(!basis.inner.inner.is_built());
-        assert_eq!(basis.inner.inner.lhss(), 3);
+        assert!(!basis.inner.is_built());
+        assert_eq!(basis.inner.lhss(), 3);
     }
 
     #[test]

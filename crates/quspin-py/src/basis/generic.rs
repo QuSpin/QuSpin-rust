@@ -164,22 +164,22 @@ impl PyGenericBasis {
 
     #[getter]
     fn n_sites(&self) -> usize {
-        self.inner.inner.n_sites()
+        self.inner.n_sites()
     }
 
     #[getter]
     fn lhss(&self) -> usize {
-        self.inner.inner.lhss()
+        self.inner.lhss()
     }
 
     #[getter]
     fn size(&self) -> usize {
-        self.inner.inner.size()
+        self.inner.size()
     }
 
     #[getter]
     fn is_built(&self) -> bool {
-        self.inner.inner.is_built()
+        self.inner.is_built()
     }
 
     // ------------------------------------------------------------------
@@ -188,32 +188,32 @@ impl PyGenericBasis {
 
     /// Return the `i`-th basis state as a string of site occupations.
     fn state_at(&self, i: usize) -> PyResult<String> {
-        if i >= self.inner.inner.size() {
+        if i >= self.inner.size() {
             return Err(pyo3::exceptions::PyIndexError::new_err(format!(
                 "index {i} out of range for basis of size {}",
-                self.inner.inner.size()
+                self.inner.size()
             )));
         }
-        Ok(self.inner.inner.state_at_str(i))
+        Ok(self.inner.state_at_str(i))
     }
 
     /// Return the index of `state_str`, or `None` if absent.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = parse_state_str(state_str, self.inner.inner.lhss())?;
-        Ok(self.inner.inner.index_of_bytes(&bytes))
+        let bytes = parse_state_str(state_str, self.inner.lhss())?;
+        Ok(self.inner.index_of_bytes(&bytes))
     }
 
     fn __str__(&self) -> String {
-        format!("{}", self.inner.inner)
+        format!("{}", self.inner)
     }
 
     fn __repr__(&self) -> String {
         format!(
             "GenericBasis(n_sites={}, lhss={}, size={}, kind={})",
-            self.inner.inner.n_sites(),
-            self.inner.inner.lhss(),
-            self.inner.inner.size(),
-            self.inner.inner.kind(),
+            self.inner.n_sites(),
+            self.inner.lhss(),
+            self.inner.size(),
+            self.inner.kind(),
         )
     }
 }
