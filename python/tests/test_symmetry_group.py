@@ -423,3 +423,51 @@ class TestValidate:
         # Trivial group (only implicit identity) should validate.
         g = SymmetryGroup(n_sites=4, lhss=2)
         g.validate()
+
+
+class TestBasisSymmetricEndToEnd:
+    def test_spin_symmetric_translation(self):
+        from quspin_rs import PauliOperator, SpinBasis, SymmetryGroup
+
+        n_sites = 4
+        # XX chain with periodic boundary conditions.
+        bonds = [[1.0, i, (i + 1) % n_sites] for i in range(n_sites)]
+        H = PauliOperator([("XX", bonds)])
+
+        group = SymmetryGroup(n_sites=n_sites, lhss=2)
+        group.add_cyclic(Lattice(list(range(1, n_sites)) + [0]), k=0)
+
+        basis = SpinBasis.symmetric(group, H, ["0000"])
+        assert basis.is_built
+        assert basis.size > 0
+
+    def test_fermion_symmetric_rejects_lhss_neq_2(self):
+        from quspin_rs import FermionBasis, FermionOperator, SymmetryGroup
+
+        # Fermions are always lhss=2; a SymmetryGroup with lhss=3 must raise.
+        group = SymmetryGroup(n_sites=4, lhss=3)
+        H = FermionOperator([("+", [[1.0, 0]])])
+        with pytest.raises(TypeError, match="lhss"):
+            FermionBasis.symmetric(group, H, ["0000"])
+
+    def test_generic_symmetric_with_local(self):
+        import numpy as np
+
+        from quspin_rs import SymmetryGroup
+        from quspin_rs._rs import GenericBasis, MonomialOperator
+
+        n_sites = 3
+        lhss = 3
+        # Identity-like Hamiltonian: perm = identity, amp = 0 everywhere
+        # so BFS reaches just the seed.
+        dim = lhss * lhss
+        perm = np.arange(dim, dtype=np.intp)
+        amp = np.zeros(dim, dtype=complex)
+        H = MonomialOperator(lhss, (perm, amp, [(0, 1)]))
+
+        group = SymmetryGroup(n_sites=n_sites, lhss=lhss)
+        # cyclic Z_3 local symmetry (per-site value-permutation [1, 2, 0]).
+        group.add_cyclic(Local([1, 2, 0]), k=0)
+
+        basis = GenericBasis.symmetric(group, H, ["000"])
+        assert basis.is_built

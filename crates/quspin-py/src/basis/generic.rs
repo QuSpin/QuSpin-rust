@@ -1,4 +1,4 @@
-use crate::basis::{apply_symmetries, parse_seeds, parse_state_str};
+use crate::basis::{group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic};
 use crate::error::Error;
 use crate::operator::monomial::PyMonomialOperator;
 use num_complex::Complex;
@@ -20,6 +20,11 @@ pub struct PyGenericBasis {
 /// `(perm, (re, im), mask)`.
 ///
 /// `perm` is a list/array of integer values in `0..lhss`.
+//
+// `#[allow(dead_code)]`: scheduled for deletion in Task 14 alongside
+// `apply_symmetries` once Task 15 retires the last call sites that
+// pass `local_symmetries=` to `*Basis.symmetric`.
+#[allow(dead_code)]
 fn apply_local_symmetries(
     py: Python<'_>,
     basis: &mut GenericBasis,
@@ -129,31 +134,24 @@ impl PyGenericBasis {
     /// Symmetry-reduced subspace.
     ///
     /// Args:
-    ///     n_sites:           number of lattice sites.
-    ///     lhss:              on-site state count (≥ 2).
-    ///     ham:               `MonomialOperator` used for BFS.
-    ///     seeds:             list of seed state strings.
-    ///     symmetries:        list of ``(perm, (re, im))`` lattice symmetry tuples.
-    ///     local_symmetries:  list of 2- or 3-tuples:
-    ///         - ``(perm, (re, im))``         — applies to all sites
-    ///         - ``(perm, (re, im), mask)``   — applies to sites in ``mask``
+    ///     group: a :class:`SymmetryGroup` describing the symmetry group;
+    ///            `n_sites` and `lhss` are read from `group.n_sites` /
+    ///            `group.lhss`.
+    ///     ham:   `MonomialOperator` used for BFS.
+    ///     seeds: list of seed state strings.
     #[classmethod]
-    #[pyo3(signature = (n_sites, lhss, ham, seeds, symmetries, local_symmetries = vec![]))]
+    #[pyo3(signature = (group, ham, seeds))]
     fn symmetric(
         _cls: &Bound<'_, PyType>,
-        n_sites: usize,
-        lhss: usize,
+        group: &Bound<'_, PyAny>,
         ham: &PyMonomialOperator,
         seeds: Vec<String>,
-        symmetries: Vec<(Vec<usize>, (f64, f64))>,
-        local_symmetries: Vec<PyObject>,
     ) -> PyResult<Self> {
-        let py = _cls.py();
+        let (n_sites, lhss) = group_n_sites_lhss(group)?;
         let byte_seeds = parse_seeds(&seeds, lhss)?;
         let mut basis =
             GenericBasis::new(n_sites, lhss, SpaceKind::Symm, false).map_err(Error::from)?;
-        apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
-        apply_local_symmetries(py, &mut basis, &local_symmetries)?;
+        replay_group_into_generic(group, &mut basis)?;
         basis.build(&ham.inner, &byte_seeds).map_err(Error::from)?;
         Ok(PyGenericBasis { inner: basis })
     }

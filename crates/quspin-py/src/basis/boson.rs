@@ -1,4 +1,4 @@
-use crate::basis::{apply_symmetries, parse_seeds, parse_state_str};
+use crate::basis::{group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic};
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::boson::PyBosonOperator;
@@ -72,23 +72,23 @@ impl PyBosonBasis {
     /// Symmetry-reduced subspace.
     ///
     /// Args:
-    ///     n_sites:     number of lattice sites.
-    ///     lhss:        on-site Fock-state count (≥ 2).
-    ///     ham:         `BosonOperator` or `BondOperator` used for BFS.
-    ///     seeds:       list of seed state strings.
-    ///     symmetries:  list of `(perm, (re, im))` lattice symmetry tuples.
+    ///     group: a :class:`SymmetryGroup` describing the symmetry group;
+    ///            `n_sites` and `lhss` are read from `group.n_sites` /
+    ///            `group.lhss`.
+    ///     ham:   `BosonOperator` or `BondOperator` used for BFS.
+    ///     seeds: list of seed state strings.
     #[classmethod]
+    #[pyo3(signature = (group, ham, seeds))]
     fn symmetric(
         _cls: &Bound<'_, PyType>,
-        n_sites: usize,
-        lhss: usize,
+        group: &Bound<'_, PyAny>,
         ham: &Bound<'_, PyAny>,
         seeds: Vec<String>,
-        symmetries: Vec<(Vec<usize>, (f64, f64))>,
     ) -> PyResult<Self> {
+        let (n_sites, lhss) = group_n_sites_lhss(group)?;
         let byte_seeds = parse_seeds(&seeds, lhss)?;
         let mut basis = BosonBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
-        apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
+        replay_group_into_generic(group, &mut basis.inner)?;
         build_boson_basis(&mut basis, ham, &byte_seeds)?;
         Ok(PyBosonBasis { inner: basis })
     }

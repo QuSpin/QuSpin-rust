@@ -186,7 +186,7 @@ class TestGenericBasisSymmetric:
             4,
             2,
             op,
-            ["0000"],
+            ["0000"],  # pyright: ignore[reportCallIssue]
             symmetries=self.TRANSLATION_4,
         )
         assert basis.size > 0
@@ -197,7 +197,7 @@ class TestGenericBasisSymmetric:
             4,
             3,
             op,
-            ["0000"],
+            ["0000"],  # pyright: ignore[reportCallIssue]
             symmetries=self.TRANSLATION_4,
         )
         assert basis.size > 0
@@ -210,7 +210,7 @@ class TestGenericBasisSymmetric:
             4,
             3,
             op,
-            ["0000"],
+            ["0000"],  # pyright: ignore[reportCallIssue]
             symmetries=[],
             local_symmetries=[
                 ([1, 2, 0], (1.0, 0.0)),
@@ -227,7 +227,7 @@ class TestGenericBasisSymmetric:
             4,
             3,
             op,
-            ["0000"],
+            ["0000"],  # pyright: ignore[reportCallIssue]
             symmetries=[],
             local_symmetries=[
                 ([1, 2, 0], (1.0, 0.0), [0, 2]),
@@ -243,7 +243,7 @@ class TestGenericBasisSymmetric:
             4,
             2,
             op,
-            ["0000"],
+            ["0000"],  # pyright: ignore[reportCallIssue]
             symmetries=self.TRANSLATION_4,
         )
         assert sym.size <= full.size

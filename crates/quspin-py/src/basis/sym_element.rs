@@ -362,10 +362,6 @@ pub fn composite(
 // `#[pymethods]`-exposed.
 // ---------------------------------------------------------------------------
 
-// `dead_code` is suppressed here because these bridge methods are wired
-// up by Task 13 (`*Basis.symmetric(group, ham, seeds)` migration). They
-// already have unit-test coverage below.
-#[allow(dead_code)]
 impl PySymElement {
     /// Ship this element into a `GenericBasis` via `add_symmetry_raw`.
     /// Used by the spin / boson / generic Python wrappers at

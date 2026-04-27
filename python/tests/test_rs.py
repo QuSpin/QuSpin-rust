@@ -571,7 +571,9 @@ class TestSymmetricBasisTranslation:
         op = _make_pbc_hopping_op(L)
         seed = "1" + "0" * (L - 1)
         symmetries = _translation_group(L)
-        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        basis = SpinBasis.symmetric(
+            L, op, [seed], symmetries  # pyright: ignore[reportCallIssue]
+        )
         assert basis.size == 1
 
     @pytest.mark.slow
@@ -581,7 +583,9 @@ class TestSymmetricBasisTranslation:
         op = _make_pbc_hopping_op(L)
         seed = "1" + "0" * (L - 1)
         symmetries = _translation_group(L)
-        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        basis = SpinBasis.symmetric(
+            L, op, [seed], symmetries  # pyright: ignore[reportCallIssue]
+        )
         assert basis.size == 1
 
     @pytest.mark.slow
@@ -591,7 +595,9 @@ class TestSymmetricBasisTranslation:
         op = _make_pbc_hopping_op(L)
         seed = "1" + "0" * (L - 1)
         symmetries = _translation_group(L)
-        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        basis = SpinBasis.symmetric(
+            L, op, [seed], symmetries  # pyright: ignore[reportCallIssue]
+        )
         assert basis.size == 1
 
     @pytest.mark.parametrize(
@@ -603,7 +609,9 @@ class TestSymmetricBasisTranslation:
         op = _make_pbc_hopping_op(L)
         seed = "1" + "0" * (L - 1)
         symmetries = _translation_group(L, k)
-        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        basis = SpinBasis.symmetric(
+            L, op, [seed], symmetries  # pyright: ignore[reportCallIssue]
+        )
         assert basis.size == 1
 
     @pytest.mark.parametrize("L", [4, 6, 8])

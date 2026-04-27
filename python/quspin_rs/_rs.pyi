@@ -42,17 +42,17 @@ class SpinBasis:
     @classmethod
     def symmetric(
         cls,
-        n_sites: int,
+        group: Any,
         ham: PauliOperator | BondOperator,
         seeds: list[str],
-        symmetries: list[tuple[list[int], tuple[float, float]]],
-        lhss: int = 2,
     ) -> SpinBasis:
         """Symmetry-projected subspace.
 
         Args:
-            symmetries: List of ``(perm, (re, im))`` tuples where ``perm`` is
-                a site-permutation and ``(re, im)`` is the character.
+            group: a ``SymmetryGroup``; ``n_sites`` and ``lhss`` are
+                read from ``group.n_sites`` / ``group.lhss``.
+            ham:   ``PauliOperator`` (LHSS=2) or ``BondOperator`` for BFS.
+            seeds: list of seed state strings.
         """
         ...
 
@@ -89,10 +89,9 @@ class FermionBasis:
     @classmethod
     def symmetric(
         cls,
-        n_sites: int,
+        group: Any,
         ham: FermionOperator | BondOperator,
         seeds: list[str],
-        symmetries: list[tuple[list[int], tuple[float, float]]],
     ) -> FermionBasis: ...
     @property
     def n_sites(self) -> int: ...
@@ -122,11 +121,9 @@ class BosonBasis:
     @classmethod
     def symmetric(
         cls,
-        n_sites: int,
-        lhss: int,
+        group: Any,
         ham: BosonOperator | BondOperator,
         seeds: list[str],
-        symmetries: list[tuple[list[int], tuple[float, float]]],
     ) -> BosonBasis: ...
     @property
     def n_sites(self) -> int: ...
@@ -170,28 +167,17 @@ class GenericBasis:
     @classmethod
     def symmetric(
         cls,
-        n_sites: int,
-        lhss: int,
+        group: Any,
         ham: MonomialOperator,
         seeds: list[str],
-        symmetries: list[tuple[list[int], tuple[float, float]]],
-        local_symmetries: list[
-            tuple[list[int], tuple[float, float]]
-            | tuple[list[int], tuple[float, float], list[int]]
-        ] = ...,
     ) -> GenericBasis:
         """Symmetry-reduced subspace.
 
         Args:
-            symmetries:       List of ``(perm, (re, im))`` lattice symmetry tuples.
-            local_symmetries: List of 2- or 3-tuples for local (dit-permutation)
-                symmetries.  Each entry is either:
-
-                - ``(perm, (re, im))`` — applies to **all** sites, or
-                - ``(perm, (re, im), mask)`` — applies only to sites in ``mask``.
-
-                ``perm`` is a list of ``lhss`` integers permuting the local
-                Hilbert-space states ``0 … lhss-1``.
+            group: a ``SymmetryGroup``; ``n_sites`` and ``lhss`` are
+                read from ``group.n_sites`` / ``group.lhss``.
+            ham:   ``MonomialOperator`` for BFS.
+            seeds: list of seed state strings.
         """
         ...
 
