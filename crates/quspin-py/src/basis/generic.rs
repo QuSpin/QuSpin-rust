@@ -1,7 +1,6 @@
 use crate::basis::{group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic};
 use crate::error::Error;
 use crate::operator::monomial::PyMonomialOperator;
-use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 use quspin_core::basis::{GenericBasis, SpaceKind};
@@ -13,86 +12,6 @@ use quspin_core::basis::{GenericBasis, SpaceKind};
 #[pyclass(name = "GenericBasis", module = "quspin._rs")]
 pub struct PyGenericBasis {
     pub inner: GenericBasis,
-}
-
-/// Parse a `local_symmetries` entry.  Each entry is either a 2-tuple
-/// `(perm, (re, im))` (mask = all sites) or a 3-tuple
-/// `(perm, (re, im), mask)`.
-///
-/// `perm` is a list/array of integer values in `0..lhss`.
-//
-// `#[allow(dead_code)]`: scheduled for deletion in Task 14 alongside
-// `apply_symmetries` once Task 15 retires the last call sites that
-// pass `local_symmetries=` to `*Basis.symmetric`.
-#[allow(dead_code)]
-fn apply_local_symmetries(
-    py: Python<'_>,
-    basis: &mut GenericBasis,
-    local_symmetries: &[PyObject],
-) -> PyResult<()> {
-    let n_sites = basis.n_sites();
-    let lhss = basis.lhss();
-
-    for (i, sym_obj) in local_symmetries.iter().enumerate() {
-        let sym = sym_obj.bind(py);
-        let tuple = sym.downcast::<pyo3::types::PyTuple>().map_err(|_| {
-            pyo3::exceptions::PyTypeError::new_err(format!(
-                "local_symmetries[{i}]: expected a 2- or 3-tuple"
-            ))
-        })?;
-
-        if tuple.len() < 2 || tuple.len() > 3 {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "local_symmetries[{i}]: expected a 2- or 3-tuple, got {}-tuple",
-                tuple.len()
-            )));
-        }
-
-        // First element: perm as list of ints (0..lhss).
-        let perm_vals: Vec<u8> = tuple
-            .get_item(0)?
-            .extract::<Vec<u64>>()
-            .map_err(|_| {
-                pyo3::exceptions::PyTypeError::new_err(format!(
-                    "local_symmetries[{i}]: perm must be a list of non-negative integers"
-                ))
-            })?
-            .into_iter()
-            .map(|v| v as u8)
-            .collect();
-
-        if perm_vals.len() != lhss {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "local_symmetries[{i}]: perm length {} != lhss {}",
-                perm_vals.len(),
-                lhss
-            )));
-        }
-
-        // Second element: complex character as (re, im) float pair.
-        let (re, im): (f64, f64) = tuple.get_item(1)?.extract().map_err(|_| {
-            pyo3::exceptions::PyValueError::new_err(format!(
-                "local_symmetries[{i}]: expected (re, im) float pair for character"
-            ))
-        })?;
-        let grp_char = Complex::new(re, im);
-
-        // Optional third element: mask of site indices.  Default: all sites.
-        let locs: Vec<usize> = if tuple.len() == 3 {
-            tuple.get_item(2)?.extract::<Vec<usize>>().map_err(|_| {
-                pyo3::exceptions::PyTypeError::new_err(format!(
-                    "local_symmetries[{i}]: mask must be a list of site indices"
-                ))
-            })?
-        } else {
-            (0..n_sites).collect()
-        };
-
-        basis
-            .add_local(grp_char, perm_vals, locs)
-            .map_err(Error::from)?;
-    }
-    Ok(())
 }
 
 #[pymethods]

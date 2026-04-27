@@ -18,7 +18,6 @@ use crate::error::Error;
 use num_complex::Complex;
 use pyo3::prelude::*;
 use quspin_core::basis::seed::{dit_seed_from_str, seed_from_str};
-use quspin_core::error::QuSpinError;
 
 /// Parse seed strings into byte vectors.
 ///
@@ -39,25 +38,6 @@ pub(crate) fn parse_seeds(seeds: &[String], lhss: usize) -> PyResult<Vec<Vec<u8>
         .collect()
 }
 
-/// Apply lattice symmetry generators via an `add_lattice` callback.
-//
-// `#[allow(dead_code)]`: scheduled for deletion in Task 14 once the
-// last call sites that pass `symmetries=` to `*Basis.symmetric` are
-// migrated in Task 15. Kept as a separate task to keep diffs focused.
-#[allow(dead_code)]
-pub(crate) fn apply_symmetries<F>(
-    symmetries: &[(Vec<usize>, (f64, f64))],
-    mut add_lattice: F,
-) -> PyResult<()>
-where
-    F: FnMut(Complex<f64>, Vec<usize>) -> Result<(), QuSpinError>,
-{
-    for (perm, (re, im)) in symmetries {
-        add_lattice(Complex::new(*re, *im), perm.clone()).map_err(Error::from)?;
-    }
-    Ok(())
-}
-
 /// Read `(n_sites, lhss)` from a `SymmetryGroup`-like Python object via
 /// attribute access. Used by all four `*Basis.symmetric(group, ...)`
 /// constructors so they don't have to take `n_sites` / `lhss` as
@@ -68,6 +48,25 @@ pub(crate) fn group_n_sites_lhss(group: &Bound<'_, PyAny>) -> PyResult<(usize, u
     Ok((n_sites, lhss))
 }
 
+/// Iterate `(element, character)` pairs from a `SymmetryGroup`-like Python
+/// iterable, downcast each tuple, and forward the borrowed [`PySymElement`]
+/// and complex character to `f`. Shared by [`replay_group_into_generic`] and
+/// [`replay_group_into_bit`].
+fn replay_group<F>(group: &Bound<'_, PyAny>, mut f: F) -> PyResult<()>
+where
+    F: FnMut(&crate::basis::sym_element::PySymElement, Complex<f64>) -> PyResult<()>,
+{
+    for item in group.try_iter()? {
+        let item = item?;
+        let tup = item.downcast::<pyo3::types::PyTuple>()?;
+        let elem_obj = tup.get_item(0)?;
+        let elem = elem_obj.downcast::<crate::basis::sym_element::PySymElement>()?;
+        let chi: Complex<f64> = tup.get_item(1)?.extract()?;
+        f(&elem.borrow(), chi)?;
+    }
+    Ok(())
+}
+
 /// Replay each `(element, character)` pair from a `SymmetryGroup`-like
 /// Python iterable into a [`GenericBasis`](quspin_core::basis::GenericBasis)
 /// via [`PySymElement::add_to_basis`](crate::basis::sym_element::PySymElement::add_to_basis).
@@ -76,17 +75,10 @@ pub(crate) fn replay_group_into_generic(
     group: &Bound<'_, PyAny>,
     basis: &mut quspin_core::basis::GenericBasis,
 ) -> PyResult<()> {
-    for item in group.try_iter()? {
-        let item = item?;
-        let tup = item.downcast::<pyo3::types::PyTuple>()?;
-        let elem_obj = tup.get_item(0)?;
-        let elem = elem_obj.downcast::<crate::basis::sym_element::PySymElement>()?;
-        let chi: Complex<f64> = tup.get_item(1)?.extract()?;
-        elem.borrow()
-            .add_to_basis(basis, chi)
-            .map_err(Error::from)?;
-    }
-    Ok(())
+    replay_group(group, |elem, chi| {
+        elem.add_to_basis(basis, chi).map_err(Error::from)?;
+        Ok(())
+    })
 }
 
 /// Replay each `(element, character)` pair from a `SymmetryGroup`-like
@@ -97,17 +89,10 @@ pub(crate) fn replay_group_into_bit(
     group: &Bound<'_, PyAny>,
     basis: &mut quspin_core::basis::dispatch::BitBasis,
 ) -> PyResult<()> {
-    for item in group.try_iter()? {
-        let item = item?;
-        let tup = item.downcast::<pyo3::types::PyTuple>()?;
-        let elem_obj = tup.get_item(0)?;
-        let elem = elem_obj.downcast::<crate::basis::sym_element::PySymElement>()?;
-        let chi: Complex<f64> = tup.get_item(1)?.extract()?;
-        elem.borrow()
-            .add_to_bit_basis(basis, chi)
-            .map_err(Error::from)?;
-    }
-    Ok(())
+    replay_group(group, |elem, chi| {
+        elem.add_to_bit_basis(basis, chi).map_err(Error::from)?;
+        Ok(())
+    })
 }
 
 /// Parse a state string to bytes, handling LHSS=2 (binary) and LHSS>2 (dit).
