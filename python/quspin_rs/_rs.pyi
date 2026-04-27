@@ -202,6 +202,14 @@ class GenericBasis:
 # ---------------------------------------------------------------------------
 # Symmetry-element handle
 # ---------------------------------------------------------------------------
+#
+# Note on ``*Basis.symmetric(group, ...)`` above: the ``group`` parameter is
+# typed ``Any`` rather than ``SymmetryGroup`` because ``SymmetryGroup`` lives
+# in ``quspin_rs.symmetry`` (pure Python) and ``quspin_rs/__init__.py``
+# already imports from ``_rs``; importing ``SymmetryGroup`` into this stub
+# would create a backwards type-stub dependency from the extension-module
+# stub onto a higher-level Python module.  Static type info for
+# ``SymmetryGroup`` is provided by ``quspin_rs/symmetry.py`` directly.
 
 class SymElement:
     """Opaque handle for a single symmetry-group element.
