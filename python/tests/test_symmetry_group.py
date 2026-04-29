@@ -83,6 +83,22 @@ class TestSymElementConstructors:
         assert "Some(" not in sb
         assert "locs=None" in sb
 
+    def test_lattice_rejects_out_of_range(self):
+        with pytest.raises(ValueError, match="out of range"):
+            Lattice([5, 0, 1, 2])
+
+    def test_local_rejects_out_of_range(self):
+        with pytest.raises(ValueError, match="out of range"):
+            Local([3, 0])  # value 3 exceeds perm_vals.len()=2
+
+    def test_composite_rejects_out_of_range_perm(self):
+        with pytest.raises(ValueError, match="out of range"):
+            Composite([5, 0, 1, 2], [1, 0])
+
+    def test_composite_rejects_out_of_range_perm_vals(self):
+        with pytest.raises(ValueError, match="out of range"):
+            Composite([1, 0, 2], [3, 0])
+
 
 class TestOrder:
     def test_lattice_4cycle(self):
@@ -139,13 +155,21 @@ class TestCompose:
         c = _compose(a, b)
         assert c == Lattice([2, 0, 1])  # (a∘b)[s] = a[b[s]]
 
-    def test_local_local_stays_local(self):
+    def test_local_local_identity_errors(self):
         from quspin_rs._rs import _compose
 
-        a = Local([1, 0])
-        b = Local([1, 0])
+        # Involution squared yields identity perm_vals → must error per
+        # the "no identity in the group" contract.
+        with pytest.raises(ValueError, match="produced identity"):
+            _compose(Local([1, 0]), Local([1, 0]))
+
+    def test_local_local_non_identity(self):
+        from quspin_rs._rs import _compose
+
+        a = Local([1, 2, 0])  # 3-cycle
+        b = Local([1, 2, 0])
         c = _compose(a, b)
-        assert c == Local([0, 1])  # involution squared = identity perm_vals
+        assert c == Local([2, 0, 1])  # 3-cycle squared
 
     def test_lattice_local_promotes_to_composite(self):
         from quspin_rs._rs import _compose
@@ -168,12 +192,24 @@ class TestCompose:
     def test_local_same_locs_carries_through(self):
         from quspin_rs._rs import _compose
 
-        a = Local([2, 0, 1], locs=[0, 2])
+        # Self-compose a 3-cycle: result is the inverse 3-cycle (non-identity)
+        # with the explicit locs preserved.
+        a = Local([1, 2, 0], locs=[0, 2])
         b = Local([1, 2, 0], locs=[0, 2])
         c = _compose(a, b)
-        # composition: [2,0,1] ∘ [1,2,0] -> a[b[0]]=a[1]=0, a[b[1]]=a[2]=1, a[b[2]]=a[0]=2
-        # → identity perm_vals, but with explicit locs preserved.
-        assert c == Local([0, 1, 2], locs=[0, 2])
+        # composition: [1,2,0] ∘ [1,2,0] -> a[b[0]]=a[1]=2, a[b[1]]=a[2]=0, a[b[2]]=a[0]=1
+        assert c == Local([2, 0, 1], locs=[0, 2])
+
+    def test_local_same_locs_identity_errors(self):
+        from quspin_rs._rs import _compose
+
+        # Identity result on the perm_vals axis should error even with
+        # explicit locs (locs annotate where the local op acts; an
+        # identity perm_vals is still the identity element).
+        a = Local([2, 0, 1], locs=[0, 2])
+        b = Local([1, 2, 0], locs=[0, 2])
+        with pytest.raises(ValueError, match="produced identity"):
+            _compose(a, b)
 
     def test_mixed_none_explicit_locs_errors(self):
         from quspin_rs._rs import _compose
@@ -208,8 +244,18 @@ class TestCompose:
         c = _compose(a, b)
         # perm: a∘b = [a[b[0]], a[b[1]], a[b[2]]] = [a[1], a[0], a[2]] = [1, 2, 0]
         # perm_vals: [1,0] ∘ [1,0] = [0, 1] (identity perm_vals)
-        # But the resulting element still has perm + perm_vals → Composite.
+        # But the resulting element still has a non-trivial perm → Composite.
         assert c == Composite([1, 2, 0], [0, 1])
+
+    def test_composite_full_identity_errors(self):
+        from quspin_rs._rs import _compose
+
+        # Both components are involutions; their product is full identity
+        # on both axes. Must error.
+        a = Composite([1, 0], [1, 0])
+        b = Composite([1, 0], [1, 0])
+        with pytest.raises(ValueError, match="produced identity"):
+            _compose(a, b)
 
 
 class TestAddCyclic:

@@ -80,6 +80,14 @@ pub fn lattice(perm: Vec<i64>) -> PyResult<PySymElement> {
              Composite(perm, perm_vals=[1, 0]) instead.",
         ));
     }
+    let n = perm.len();
+    for (idx, &v) in perm.iter().enumerate() {
+        if (v as usize) >= n {
+            return Err(PyValueError::new_err(format!(
+                "Lattice perm[{idx}]={v} is out of range 0..{n}"
+            )));
+        }
+    }
     let perm: Vec<usize> = perm.into_iter().map(|v| v as usize).collect();
     Ok(PySymElement {
         kind: SymElementKind::Lattice,
@@ -103,6 +111,14 @@ pub fn local(perm_vals: Vec<u64>, locs: Option<Vec<usize>>) -> PyResult<PySymEle
             u8::try_from(v).map_err(|_| PyValueError::new_err("perm_vals values must fit in u8"))
         })
         .collect::<PyResult<_>>()?;
+    let n = perm_vals.len();
+    for (idx, &v) in perm_vals.iter().enumerate() {
+        if (v as usize) >= n {
+            return Err(PyValueError::new_err(format!(
+                "Local perm_vals[{idx}]={v} is out of range 0..{n}"
+            )));
+        }
+    }
     Ok(PySymElement {
         kind: SymElementKind::Local,
         perm: None,
@@ -190,6 +206,16 @@ fn compose_perm_vals(a: &[u8], b: &[u8]) -> Vec<u8> {
     (0..b.len()).map(|s| a[b[s] as usize]).collect()
 }
 
+/// True iff `p[i] == i` for all i (identity site permutation).
+fn is_identity_perm(p: &[usize]) -> bool {
+    p.iter().enumerate().all(|(i, &v)| v == i)
+}
+
+/// True iff `v[i] == i` for all i (identity per-site value permutation).
+fn is_identity_perm_vals(v: &[u8]) -> bool {
+    v.iter().enumerate().all(|(i, &x)| x as usize == i)
+}
+
 /// Compose two `SymElement`s. Mirrors `SymElement::compose` for the
 /// untyped triple — applied as `(a ∘ b)(state) = a(b(state))`.
 ///
@@ -267,15 +293,36 @@ pub fn _compose(a: &PySymElement, b: &PySymElement) -> PyResult<PySymElement> {
         (true, false) => {
             // Pure-lattice: error if the composed perm is the identity.
             let p = perm.as_ref().unwrap();
-            if p.iter().enumerate().all(|(i, &v)| i == v) {
+            if is_identity_perm(p) {
                 return Err(PyValueError::new_err(
                     "_compose produced identity (perm is identity, no perm_vals)",
                 ));
             }
             SymElementKind::Lattice
         }
-        (false, true) => SymElementKind::Local,
-        (true, true) => SymElementKind::Composite,
+        (false, true) => {
+            // Pure-local: error if the composed perm_vals is the identity.
+            let v = perm_vals.as_ref().unwrap();
+            if is_identity_perm_vals(v) {
+                return Err(PyValueError::new_err(
+                    "_compose produced identity (perm_vals is identity, no perm)",
+                ));
+            }
+            SymElementKind::Local
+        }
+        (true, true) => {
+            // Composite: error only if BOTH components are identity. A
+            // single identity component still leaves a non-trivial action
+            // on the other axis.
+            let p = perm.as_ref().unwrap();
+            let v = perm_vals.as_ref().unwrap();
+            if is_identity_perm(p) && is_identity_perm_vals(v) {
+                return Err(PyValueError::new_err(
+                    "_compose produced identity (perm and perm_vals both identity)",
+                ));
+            }
+            SymElementKind::Composite
+        }
         (false, false) => {
             return Err(PyValueError::new_err(
                 "_compose produced identity (both components empty)",
@@ -338,6 +385,14 @@ pub fn composite(
              use perm_vals to encode local-op action.",
         ));
     }
+    let n_perm = perm.len();
+    for (idx, &v) in perm.iter().enumerate() {
+        if (v as usize) >= n_perm {
+            return Err(PyValueError::new_err(format!(
+                "Composite perm[{idx}]={v} is out of range 0..{n_perm}"
+            )));
+        }
+    }
     let perm: Vec<usize> = perm.into_iter().map(|v| v as usize).collect();
     let perm_vals: Vec<u8> = perm_vals
         .into_iter()
@@ -345,6 +400,14 @@ pub fn composite(
             u8::try_from(v).map_err(|_| PyValueError::new_err("perm_vals values must fit in u8"))
         })
         .collect::<PyResult<_>>()?;
+    let n_pv = perm_vals.len();
+    for (idx, &v) in perm_vals.iter().enumerate() {
+        if (v as usize) >= n_pv {
+            return Err(PyValueError::new_err(format!(
+                "Composite perm_vals[{idx}]={v} is out of range 0..{n_pv}"
+            )));
+        }
+    }
     Ok(PySymElement {
         kind: SymElementKind::Composite,
         perm: Some(perm),
