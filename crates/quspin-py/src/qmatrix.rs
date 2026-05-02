@@ -63,9 +63,9 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
-        let inner = if let Ok(b) = basis.downcast::<PyFermionBasis>() {
+        let inner = if let Ok(b) = basis.cast::<PyFermionBasis>() {
             QMatrixInner::build_hardcore_bit(&op.inner, &b.borrow().inner.inner, vdtype)
-        } else if let Ok(b) = basis.downcast::<PySpinBasis>() {
+        } else if let Ok(b) = basis.cast::<PySpinBasis>() {
             QMatrixInner::build_hardcore(&op.inner, &b.borrow().inner.inner, vdtype)
         } else {
             return Err(pyo3::exceptions::PyTypeError::new_err(
@@ -85,11 +85,11 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
-        let inner = if let Ok(b) = basis.downcast::<PyFermionBasis>() {
+        let inner = if let Ok(b) = basis.cast::<PyFermionBasis>() {
             QMatrixInner::build_bond_bit(&op.inner, &b.borrow().inner.inner, vdtype)
-        } else if let Ok(b) = basis.downcast::<PySpinBasis>() {
+        } else if let Ok(b) = basis.cast::<PySpinBasis>() {
             QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner, vdtype)
-        } else if let Ok(b) = basis.downcast::<PyBosonBasis>() {
+        } else if let Ok(b) = basis.cast::<PyBosonBasis>() {
             QMatrixInner::build_bond(&op.inner, &b.borrow().inner.inner, vdtype)
         } else {
             return Err(pyo3::exceptions::PyTypeError::new_err(
@@ -140,13 +140,13 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
-        let inner = if let Ok(b) = basis.downcast::<PyFermionBasis>() {
+        let inner = if let Ok(b) = basis.cast::<PyFermionBasis>() {
             QMatrixInner::build_monomial_bit(&op.inner, &b.borrow().inner.inner, vdtype)
-        } else if let Ok(b) = basis.downcast::<PySpinBasis>() {
+        } else if let Ok(b) = basis.cast::<PySpinBasis>() {
             QMatrixInner::build_monomial(&op.inner, &b.borrow().inner.inner, vdtype)
-        } else if let Ok(b) = basis.downcast::<PyBosonBasis>() {
+        } else if let Ok(b) = basis.cast::<PyBosonBasis>() {
             QMatrixInner::build_monomial(&op.inner, &b.borrow().inner.inner, vdtype)
-        } else if let Ok(b) = basis.downcast::<PyGenericBasis>() {
+        } else if let Ok(b) = basis.cast::<PyGenericBasis>() {
             QMatrixInner::build_monomial(&op.inner, &b.borrow().inner, vdtype)
         } else {
             return Err(pyo3::exceptions::PyTypeError::new_err(

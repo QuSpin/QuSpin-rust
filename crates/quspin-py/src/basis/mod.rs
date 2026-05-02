@@ -58,9 +58,9 @@ where
 {
     for item in group.try_iter()? {
         let item = item?;
-        let tup = item.downcast::<pyo3::types::PyTuple>()?;
+        let tup = item.cast::<pyo3::types::PyTuple>()?;
         let elem_obj = tup.get_item(0)?;
-        let elem = elem_obj.downcast::<crate::basis::sym_element::PySymElement>()?;
+        let elem = elem_obj.cast::<crate::basis::sym_element::PySymElement>()?;
         let chi: Complex<f64> = tup.get_item(1)?.extract()?;
         f(&elem.borrow(), chi)?;
     }

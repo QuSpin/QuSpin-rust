@@ -19,11 +19,11 @@ fn build_boson_basis(
     ham: &Bound<'_, PyAny>,
     byte_seeds: &[Vec<u8>],
 ) -> PyResult<()> {
-    if let Ok(op) = ham.downcast::<PyBosonOperator>() {
+    if let Ok(op) = ham.cast::<PyBosonOperator>() {
         basis
             .build(&op.borrow().inner, byte_seeds)
             .map_err(Error::from)?;
-    } else if let Ok(op) = ham.downcast::<PyBondOperator>() {
+    } else if let Ok(op) = ham.cast::<PyBondOperator>() {
         basis
             .build(&op.borrow().inner, byte_seeds)
             .map_err(Error::from)?;

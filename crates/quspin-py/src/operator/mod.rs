@@ -41,16 +41,16 @@ pub(crate) fn dispatch_apply<OP>(
 where
     OP: OperatorDispatch,
 {
-    if let Ok(b) = basis.downcast::<PyFermionBasis>() {
+    if let Ok(b) = basis.cast::<PyFermionBasis>() {
         op.apply_bit(&b.borrow().inner.inner, coeffs, input, output, overwrite)
             .map_err(Error::from)?;
-    } else if let Ok(b) = basis.downcast::<PySpinBasis>() {
+    } else if let Ok(b) = basis.cast::<PySpinBasis>() {
         op.apply(&b.borrow().inner.inner, coeffs, input, output, overwrite)
             .map_err(Error::from)?;
-    } else if let Ok(b) = basis.downcast::<PyBosonBasis>() {
+    } else if let Ok(b) = basis.cast::<PyBosonBasis>() {
         op.apply(&b.borrow().inner.inner, coeffs, input, output, overwrite)
             .map_err(Error::from)?;
-    } else if let Ok(b) = basis.downcast::<PyGenericBasis>() {
+    } else if let Ok(b) = basis.cast::<PyGenericBasis>() {
         op.apply(&b.borrow().inner, coeffs, input, output, overwrite)
             .map_err(Error::from)?;
     } else {
@@ -88,8 +88,8 @@ where
     }
 
     if in_is_fermion {
-        let in_b = input_basis.downcast::<PyFermionBasis>()?.borrow();
-        let out_b = output_basis.downcast::<PyFermionBasis>()?.borrow();
+        let in_b = input_basis.cast::<PyFermionBasis>()?.borrow();
+        let out_b = output_basis.cast::<PyFermionBasis>()?.borrow();
         op.apply_and_project_to_bit(
             &in_b.inner.inner,
             &out_b.inner.inner,
@@ -102,16 +102,10 @@ where
     } else {
         // Both bases must resolve to GenericBasis. Hold both PyRefs so the
         // borrows live as long as the call.
-        let in_spin = input_basis
-            .downcast::<PySpinBasis>()
-            .ok()
-            .map(|b| b.borrow());
-        let in_boson = input_basis
-            .downcast::<PyBosonBasis>()
-            .ok()
-            .map(|b| b.borrow());
+        let in_spin = input_basis.cast::<PySpinBasis>().ok().map(|b| b.borrow());
+        let in_boson = input_basis.cast::<PyBosonBasis>().ok().map(|b| b.borrow());
         let in_generic = input_basis
-            .downcast::<PyGenericBasis>()
+            .cast::<PyGenericBasis>()
             .ok()
             .map(|b| b.borrow());
         let in_space = pick_generic_basis(
@@ -120,16 +114,10 @@ where
             in_boson.as_deref(),
             in_generic.as_deref(),
         )?;
-        let out_spin = output_basis
-            .downcast::<PySpinBasis>()
-            .ok()
-            .map(|b| b.borrow());
-        let out_boson = output_basis
-            .downcast::<PyBosonBasis>()
-            .ok()
-            .map(|b| b.borrow());
+        let out_spin = output_basis.cast::<PySpinBasis>().ok().map(|b| b.borrow());
+        let out_boson = output_basis.cast::<PyBosonBasis>().ok().map(|b| b.borrow());
         let out_generic = output_basis
-            .downcast::<PyGenericBasis>()
+            .cast::<PyGenericBasis>()
             .ok()
             .map(|b| b.borrow());
         let out_space = pick_generic_basis(
@@ -197,7 +185,7 @@ pub(crate) unsafe fn write_c64_back(arr: &Bound<'_, PyArray1<Complex64>>, data: 
 // ---------------------------------------------------------------------------
 
 /// A single term: a list of `(op_str, bonds)` pairs sharing one cindex.
-pub(crate) type Term = Vec<(String, Vec<Vec<PyObject>>)>;
+pub(crate) type Term = Vec<(String, Vec<Vec<Py<PyAny>>>)>;
 /// All terms passed to a constructor (one per cindex).
 pub(crate) type Terms = Vec<Term>;
 
@@ -219,7 +207,7 @@ pub(crate) fn max_site_from_terms(py: Python<'_>, terms: &[Term]) -> PyResult<us
 }
 
 /// Extract a complex coefficient from a Python scalar (int, float, or complex).
-pub(crate) fn extract_coeff(py: Python<'_>, obj: &PyObject) -> PyResult<Complex<f64>> {
+pub(crate) fn extract_coeff(py: Python<'_>, obj: &Py<PyAny>) -> PyResult<Complex<f64>> {
     let bound = obj.bind(py);
     if let Ok(z) = bound.extract::<Complex<f64>>() {
         return Ok(z);

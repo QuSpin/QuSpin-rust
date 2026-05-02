@@ -14,7 +14,7 @@ pub(crate) enum SymElementKind {
     Composite,
 }
 
-#[pyclass(name = "SymElement", module = "quspin_rs._rs", frozen)]
+#[pyclass(name = "SymElement", module = "quspin_rs._rs", frozen, from_py_object)]
 #[derive(Clone)]
 pub struct PySymElement {
     pub(crate) kind: SymElementKind,

@@ -49,7 +49,7 @@ impl PyMonomialOperator {
     ///         - ``bonds`` — list of k-tuples of site indices (``int``)
     #[new]
     #[pyo3(signature = (lhss, *terms))]
-    fn new(py: Python<'_>, lhss: usize, terms: Vec<PyObject>) -> PyResult<Self> {
+    fn new(py: Python<'_>, lhss: usize, terms: Vec<Py<PyAny>>) -> PyResult<Self> {
         if lhss < 2 {
             return Err(pyo3::exceptions::PyValueError::new_err("lhss must be >= 2"));
         }
@@ -187,13 +187,13 @@ type ParsedTerm = (Vec<usize>, Vec<Complex<f64>>, Vec<SmallVec<[u32; 4]>>);
 /// - `perm`: any array-like convertible to 1-D usize array
 /// - `amp`:  any array-like convertible to 1-D complex128 array
 /// - `bonds`: list of k-tuples of u32 site indices
-fn parse_terms(py: Python<'_>, terms: &[PyObject], lhss: usize) -> PyResult<Vec<ParsedTerm>> {
+fn parse_terms(py: Python<'_>, terms: &[Py<PyAny>], lhss: usize) -> PyResult<Vec<ParsedTerm>> {
     let mut out = Vec::with_capacity(terms.len());
     for (term_idx, term_obj) in terms.iter().enumerate() {
         let term = term_obj.bind(py);
 
         // Each term must be a 3-tuple (perm, amp, bonds).
-        let tuple = term.downcast::<pyo3::types::PyTuple>().map_err(|_| {
+        let tuple = term.cast::<pyo3::types::PyTuple>().map_err(|_| {
             pyo3::exceptions::PyTypeError::new_err(format!(
                 "term {term_idx}: expected a 3-tuple (perm, amp, bonds)"
             ))

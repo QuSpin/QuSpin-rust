@@ -18,13 +18,13 @@ edition = "2024"
 
 [workspace.dependencies]
 num-complex = { version = "0.4", features = ["bytemuck"] }
-ndarray = "0.16"
+ndarray = "0.17"
 rayon = "1"
 ruint = "1"
 smallvec = { version = "1", features = ["union"] }
 thiserror = "2"
-pyo3 = "0.23"
-numpy = "0.23"
+pyo3 = "0.28"
+numpy = "0.28"
 paste = "1"
 nalgebra = "0.33"
 bytemuck = "1"

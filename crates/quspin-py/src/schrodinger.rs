@@ -20,7 +20,7 @@ type DenseOutput<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray2<Complex6
 /// State `y` is stored as interleaved real/imaginary floats so that
 /// `DVector<f64>` can be used directly.  `HamiltonianInner::dot` is called
 /// without holding the GIL; Python coefficient callables re-acquire it
-/// via `Python::with_gil` (re-entrant) as needed.
+/// via `Python::attach` (re-entrant) as needed.
 struct SchrodingerSystem {
     inner: Arc<HamiltonianInner>,
 }
@@ -53,7 +53,7 @@ impl System<f64, DVector<f64>> for SchrodingerSystem {
 /// Shares the `Arc<HamiltonianInner>` from the `Hamiltonian` that was passed
 /// to the constructor — no data is copied.  The GIL is released for the
 /// entire duration of the ODE solve; Python coefficient callbacks re-acquire
-/// it briefly per evaluation step via `Python::with_gil`.
+/// it briefly per evaluation step via `Python::attach`.
 #[pyclass(name = "SchrodingerEq", module = "quspin._rs")]
 pub struct PySchrodingerEq {
     inner: Arc<HamiltonianInner>,
@@ -133,7 +133,7 @@ impl PySchrodingerEq {
         let inner = Arc::clone(&self.inner);
 
         // Release the GIL for the entire ODE solve.
-        let yf_flat = py.allow_threads(move || -> Result<Vec<f64>, String> {
+        let yf_flat = py.detach(move || -> Result<Vec<f64>, String> {
             let system = SchrodingerSystem { inner };
             let h0 = (t_end - t0).abs() * 1e-4;
             let mut stepper =
@@ -193,7 +193,7 @@ impl PySchrodingerEq {
         let inner = Arc::clone(&self.inner);
 
         // (times: Vec<f64>, states_flat: Vec<f64>) — flat row-major (n_steps × 2n)
-        let result = py.allow_threads(move || -> Result<(Vec<f64>, Vec<f64>), String> {
+        let result = py.detach(move || -> Result<(Vec<f64>, Vec<f64>), String> {
             let system = SchrodingerSystem { inner };
             let h0 = (t_end - t0).abs() * 1e-4;
             let mut stepper =
