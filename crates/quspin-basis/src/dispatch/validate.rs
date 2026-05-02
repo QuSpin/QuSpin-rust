@@ -5,9 +5,9 @@
 //!   [`SymBasis::add_symmetry`](crate::sym::SymBasis::add_symmetry)
 //!   on the site-permutation component of every group element.
 //! - [`validate_perm_vals`] and [`validate_locs`] are called by the
-//!   per-family inner enums' `add_local` / `add_inv` methods, where
-//!   the typed local op is constructed from the user-supplied
-//!   `perm_vals` / `locs`.
+//!   per-family inner enums' `add_local` / `add_inv` / `add_composite`
+//!   methods, where the typed local op is constructed from the
+//!   user-supplied `perm_vals` / `locs`.
 //!
 //! The umbrella dispatch enums ([`GenericBasis`](super::GenericBasis),
 //! [`DitBasis`](super::DitBasis), and the family enums) do no

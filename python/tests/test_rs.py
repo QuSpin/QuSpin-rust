@@ -6,6 +6,7 @@ import math
 import numpy as np
 import pytest
 
+from quspin_rs import Lattice, SymmetryGroup
 from quspin_rs._rs import (
     BosonBasis,
     BosonOperator,
@@ -543,21 +544,16 @@ def _make_pbc_hopping_op(L: int) -> PauliOperator:
     return PauliOperator([("XX", xx_bonds)], [("YY", yy_bonds)])
 
 
-def _translation_group(
-    L: int, k: int = 0
-) -> list[tuple[list[int], tuple[float, float]]]:
-    """Non-identity elements of the cyclic translation group on L sites.
+def _translation_group(L: int, k: int = 0) -> SymmetryGroup:
+    """Cyclic translation group on L sites at momentum sector k.
 
-    Each element is (perm, (re, im)) where perm = T^n and the character is
-    exp(2*pi*i*k*n/L) for momentum sector k. The identity (T^0) is implicit
-    in `SymBasis` and is not included.
+    Builds T = [1, 2, ..., L-1, 0] and adds it as a cyclic generator with
+    character exp(-2*pi*i*k/L). The identity is implicit in `SymBasis`.
     """
-    elements = []
-    for power in range(1, L):
-        perm = [(i + power) % L for i in range(L)]
-        angle = 2 * math.pi * k * power / L
-        elements.append((perm, (math.cos(angle), math.sin(angle))))
-    return elements
+    group = SymmetryGroup(n_sites=L, lhss=2)
+    perm = [(i + 1) % L for i in range(L)]
+    group.add_cyclic(Lattice(perm), k=k)
+    return group
 
 
 class TestSymmetricBasisTranslation:
@@ -570,8 +566,8 @@ class TestSymmetricBasisTranslation:
     def test_single_particle_k0_small(self, L):
         op = _make_pbc_hopping_op(L)
         seed = "1" + "0" * (L - 1)
-        symmetries = _translation_group(L)
-        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        group = _translation_group(L)
+        basis = SpinBasis.symmetric(group, op, [seed])
         assert basis.size == 1
 
     @pytest.mark.slow
@@ -580,8 +576,8 @@ class TestSymmetricBasisTranslation:
         """L > 32 forces u64 bit representation."""
         op = _make_pbc_hopping_op(L)
         seed = "1" + "0" * (L - 1)
-        symmetries = _translation_group(L)
-        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        group = _translation_group(L)
+        basis = SpinBasis.symmetric(group, op, [seed])
         assert basis.size == 1
 
     @pytest.mark.slow
@@ -590,8 +586,8 @@ class TestSymmetricBasisTranslation:
         """L > 64 forces multi-word integer representation (ruint)."""
         op = _make_pbc_hopping_op(L)
         seed = "1" + "0" * (L - 1)
-        symmetries = _translation_group(L)
-        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        group = _translation_group(L)
+        basis = SpinBasis.symmetric(group, op, [seed])
         assert basis.size == 1
 
     @pytest.mark.parametrize(
@@ -602,8 +598,8 @@ class TestSymmetricBasisTranslation:
         """Every momentum sector has exactly 1 state for a single particle."""
         op = _make_pbc_hopping_op(L)
         seed = "1" + "0" * (L - 1)
-        symmetries = _translation_group(L, k)
-        basis = SpinBasis.symmetric(L, op, [seed], symmetries)
+        group = _translation_group(L, k)
+        basis = SpinBasis.symmetric(group, op, [seed])
         assert basis.size == 1
 
     @pytest.mark.parametrize("L", [4, 6, 8])

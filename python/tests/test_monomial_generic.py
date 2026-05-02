@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from quspin_rs import Lattice, Local, SymmetryGroup
 from quspin_rs._rs import GenericBasis, MonomialOperator, QMatrix
 
 # ---------------------------------------------------------------------------
@@ -171,81 +172,48 @@ class TestGenericBasisSubspace:
 
 
 class TestGenericBasisSymmetric:
-    # Non-identity powers of the 4-site translation generator T = [1,2,3,0].
-    # Identity (T^0) is implicit in SymBasis, so the user supplies only
-    # {T, T^2, T^3}.
-    TRANSLATION_4 = [
-        ([1, 2, 3, 0], (1.0, 0.0)),
-        ([2, 3, 0, 1], (1.0, 0.0)),
-        ([3, 0, 1, 2], (1.0, 0.0)),
-    ]
+    # 4-site translation generator T = [1,2,3,0]. The identity (T^0) is
+    # implicit in `SymBasis`; `add_cyclic` adds the remaining {T, T², T³}.
+    TRANSLATION_GEN = [1, 2, 3, 0]
 
     def test_translation_lhss2(self):
         op = swap_op(2, 4)
-        basis = GenericBasis.symmetric(
-            4,
-            2,
-            op,
-            ["0000"],
-            symmetries=self.TRANSLATION_4,
-        )
+        group = SymmetryGroup(n_sites=4, lhss=2)
+        group.add_cyclic(Lattice(self.TRANSLATION_GEN), k=0)
+        basis = GenericBasis.symmetric(group, op, ["0000"])
         assert basis.size > 0
 
     def test_translation_lhss3(self):
         op = cyclic_op(3, 4)
-        basis = GenericBasis.symmetric(
-            4,
-            3,
-            op,
-            ["0000"],
-            symmetries=self.TRANSLATION_4,
-        )
+        group = SymmetryGroup(n_sites=4, lhss=3)
+        group.add_cyclic(Lattice(self.TRANSLATION_GEN), k=0)
+        basis = GenericBasis.symmetric(group, op, ["0000"])
         assert basis.size > 0
 
     def test_local_symmetry_all_sites(self):
         op = cyclic_op(3, 4)
         # Z_3 local symmetry: cyclic shift of dit values. The identity shift
-        # [0,1,2] is implicit; supply only the two non-identity powers.
-        basis = GenericBasis.symmetric(
-            4,
-            3,
-            op,
-            ["0000"],
-            symmetries=[],
-            local_symmetries=[
-                ([1, 2, 0], (1.0, 0.0)),
-                ([2, 0, 1], (1.0, 0.0)),
-            ],
-        )
+        # [0,1,2] is implicit; `add_cyclic` adds the two non-identity powers.
+        group = SymmetryGroup(n_sites=4, lhss=3)
+        group.add_cyclic(Local([1, 2, 0]), k=0)
+        basis = GenericBasis.symmetric(group, op, ["0000"])
         assert basis.size >= 0  # just check it doesn't crash
 
     def test_local_symmetry_masked(self):
         op = cyclic_op(3, 4)
-        # Apply local symmetry only to sites 0 and 2; supply both non-identity
-        # powers of the Z_3 cyclic dit shift.
-        basis = GenericBasis.symmetric(
-            4,
-            3,
-            op,
-            ["0000"],
-            symmetries=[],
-            local_symmetries=[
-                ([1, 2, 0], (1.0, 0.0), [0, 2]),
-                ([2, 0, 1], (1.0, 0.0), [0, 2]),
-            ],
-        )
+        # Apply local symmetry only to sites 0 and 2; `add_cyclic` adds both
+        # non-identity powers of the Z_3 cyclic dit shift.
+        group = SymmetryGroup(n_sites=4, lhss=3)
+        group.add_cyclic(Local([1, 2, 0], locs=[0, 2]), k=0)
+        basis = GenericBasis.symmetric(group, op, ["0000"])
         assert basis.size >= 0
 
     def test_symmetric_smaller_than_full(self):
         op = swap_op(2, 4)
         full = GenericBasis.full(4, 2)
-        sym = GenericBasis.symmetric(
-            4,
-            2,
-            op,
-            ["0000"],
-            symmetries=self.TRANSLATION_4,
-        )
+        group = SymmetryGroup(n_sites=4, lhss=2)
+        group.add_cyclic(Lattice(self.TRANSLATION_GEN), k=0)
+        sym = GenericBasis.symmetric(group, op, ["0000"])
         assert sym.size <= full.size
 
 

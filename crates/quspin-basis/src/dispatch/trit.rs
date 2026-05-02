@@ -84,6 +84,46 @@ impl TritBasisDefault {
         }
     }
 
+    /// Add a composite (lattice + local) element. `perm_vals` must be a
+    /// length-3 bijection on `0..3`; `locs` is validated against `n_sites`.
+    pub fn add_composite(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+        perm_vals: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        validate_perm_vals(&perm_vals, LHSS)?;
+        validate_locs(&locs, self.n_sites())?;
+        let arr: [u8; LHSS] = perm_vals.try_into().map_err(|v: Vec<u8>| {
+            QuSpinError::ValueError(format!(
+                "add_composite on Trit family (LHSS=3) requires perm_vals.len()=3, got len={}",
+                v.len()
+            ))
+        })?;
+        match self {
+            Self::Sym32(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitValues::<3>::new(arr, locs)),
+            ),
+            Self::Sym64(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitValues::<3>::new(arr, locs)),
+            ),
+            Self::Sym128(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitValues::<3>::new(arr, locs)),
+            ),
+            Self::Sym256(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitValues::<3>::new(arr, locs)),
+            ),
+            _ => Err(QuSpinError::ValueError(
+                "add_composite requires a Sym* variant on TritBasisDefault".into(),
+            )),
+        }
+    }
+
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
         graph: &G,
@@ -193,6 +233,50 @@ impl TritBasisLargeInt {
         }
     }
 
+    /// Add a composite (lattice + local) element. `perm_vals` must be a
+    /// length-3 bijection on `0..3`; `locs` is validated against `n_sites`.
+    pub fn add_composite(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+        perm_vals: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        validate_perm_vals(&perm_vals, LHSS)?;
+        validate_locs(&locs, self.n_sites())?;
+        let arr: [u8; LHSS] = perm_vals.try_into().map_err(|v: Vec<u8>| {
+            QuSpinError::ValueError(format!(
+                "add_composite on Trit family (LHSS=3) requires perm_vals.len()=3, got len={}",
+                v.len()
+            ))
+        })?;
+        match self {
+            Self::Sym512(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitValues::<3>::new(arr, locs)),
+            ),
+            Self::Sym1024(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitValues::<3>::new(arr, locs)),
+            ),
+            Self::Sym2048(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitValues::<3>::new(arr, locs)),
+            ),
+            Self::Sym4096(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitValues::<3>::new(arr, locs)),
+            ),
+            Self::Sym8192(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitValues::<3>::new(arr, locs)),
+            ),
+            _ => Err(QuSpinError::ValueError(
+                "add_composite requires a Sym* variant on TritBasisLargeInt".into(),
+            )),
+        }
+    }
+
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
         graph: &G,
@@ -257,6 +341,21 @@ impl TritBasis {
     }
 
     #[inline]
+    pub fn add_composite(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+        perm_vals: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        match self {
+            Self::Default(inner) => inner.add_composite(grp_char, perm, perm_vals, locs),
+            #[cfg(feature = "large-int")]
+            Self::LargeInt(inner) => inner.add_composite(grp_char, perm, perm_vals, locs),
+        }
+    }
+
+    #[inline]
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
         graph: &G,
@@ -266,6 +365,44 @@ impl TritBasis {
             Self::Default(inner) => inner.build_seeds(graph, seeds),
             #[cfg(feature = "large-int")]
             Self::LargeInt(inner) => inner.build_seeds(graph, seeds),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn add_composite_3site_lhss3() {
+        use crate::SpaceKind;
+        let mut basis = crate::dispatch::DitBasis::new(3, 3, SpaceKind::Symm).unwrap();
+        if let crate::dispatch::DitBasis::Trit(ref mut t) = basis {
+            // perm cycles 3 sites; perm_vals swaps states 0<->1, leaves 2.
+            t.add_composite(
+                num_complex::Complex::new(1.0, 0.0),
+                &[1, 2, 0],
+                vec![1, 0, 2],
+                vec![0, 1, 2],
+            )
+            .unwrap();
+        } else {
+            panic!("expected Trit variant");
+        }
+    }
+
+    #[test]
+    fn add_composite_rejects_non_sym_variant_trit() {
+        use crate::SpaceKind;
+        let mut basis = crate::dispatch::DitBasis::new(3, 3, SpaceKind::Sub).unwrap();
+        if let crate::dispatch::DitBasis::Trit(ref mut t) = basis {
+            let r = t.add_composite(
+                num_complex::Complex::new(1.0, 0.0),
+                &[1, 2, 0],
+                vec![1, 0, 2],
+                vec![0, 1, 2],
+            );
+            assert!(r.is_err());
+        } else {
+            panic!("expected Trit variant");
         }
     }
 }

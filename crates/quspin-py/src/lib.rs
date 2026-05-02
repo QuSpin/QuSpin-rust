@@ -7,13 +7,15 @@ pub mod operator;
 pub mod qmatrix;
 pub mod schrodinger;
 
-use basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis};
+use basis::sym_element::{_compose, _order, _validate_group, composite, lattice, local};
+use basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis, PySymElement};
 use hamiltonian::{PyHamiltonian, PyStatic};
 use krylov::{PyEigSolver, PyFTLM, PyFTLMDynamic, PyLTLM};
 use operator::{
     PyBondOperator, PyBosonOperator, PyFermionOperator, PyMonomialOperator, PyPauliOperator,
 };
 use pyo3::prelude::*;
+use pyo3::wrap_pyfunction;
 use qmatrix::PyQMatrix;
 use schrodinger::PySchrodingerEq;
 
@@ -24,6 +26,14 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyFermionBasis>()?;
     m.add_class::<PyBosonBasis>()?;
     m.add_class::<PyGenericBasis>()?;
+    // Symmetry-element handle + constructors
+    m.add_class::<PySymElement>()?;
+    m.add_function(wrap_pyfunction!(lattice, m)?)?;
+    m.add_function(wrap_pyfunction!(local, m)?)?;
+    m.add_function(wrap_pyfunction!(composite, m)?)?;
+    m.add_function(wrap_pyfunction!(_order, m)?)?;
+    m.add_function(wrap_pyfunction!(_compose, m)?)?;
+    m.add_function(wrap_pyfunction!(_validate_group, m)?)?;
     // Operator types
     m.add_class::<PyPauliOperator>()?;
     m.add_class::<PyBondOperator>()?;

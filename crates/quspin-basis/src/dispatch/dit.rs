@@ -77,6 +77,42 @@ impl DynDitBasisDefault {
         }
     }
 
+    /// Add a composite (lattice + local) element. `perm_vals` must be a
+    /// length-`lhss` bijection on `0..lhss`; `locs` is validated against
+    /// `n_sites`.
+    pub fn add_composite(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+        perm_vals: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        let lhss = self.lhss();
+        validate_perm_vals(&perm_vals, lhss)?;
+        validate_locs(&locs, self.n_sites())?;
+        match self {
+            Self::Sym32(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, DynamicPermDitValues::new(lhss, perm_vals, locs)),
+            ),
+            Self::Sym64(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, DynamicPermDitValues::new(lhss, perm_vals, locs)),
+            ),
+            Self::Sym128(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, DynamicPermDitValues::new(lhss, perm_vals, locs)),
+            ),
+            Self::Sym256(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, DynamicPermDitValues::new(lhss, perm_vals, locs)),
+            ),
+            _ => Err(QuSpinError::ValueError(
+                "add_composite requires a Sym* variant on DynDitBasisDefault".into(),
+            )),
+        }
+    }
+
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
         graph: &G,
@@ -181,6 +217,46 @@ impl DynDitBasisLargeInt {
         }
     }
 
+    /// Add a composite (lattice + local) element. `perm_vals` must be a
+    /// length-`lhss` bijection on `0..lhss`; `locs` is validated against
+    /// `n_sites`.
+    pub fn add_composite(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+        perm_vals: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        let lhss = self.lhss();
+        validate_perm_vals(&perm_vals, lhss)?;
+        validate_locs(&locs, self.n_sites())?;
+        match self {
+            Self::Sym512(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, DynamicPermDitValues::new(lhss, perm_vals, locs)),
+            ),
+            Self::Sym1024(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, DynamicPermDitValues::new(lhss, perm_vals, locs)),
+            ),
+            Self::Sym2048(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, DynamicPermDitValues::new(lhss, perm_vals, locs)),
+            ),
+            Self::Sym4096(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, DynamicPermDitValues::new(lhss, perm_vals, locs)),
+            ),
+            Self::Sym8192(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, DynamicPermDitValues::new(lhss, perm_vals, locs)),
+            ),
+            _ => Err(QuSpinError::ValueError(
+                "add_composite requires a Sym* variant on DynDitBasisLargeInt".into(),
+            )),
+        }
+    }
+
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
         graph: &G,
@@ -245,6 +321,21 @@ impl DynDitBasis {
     }
 
     #[inline]
+    pub fn add_composite(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+        perm_vals: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        match self {
+            Self::Default(inner) => inner.add_composite(grp_char, perm, perm_vals, locs),
+            #[cfg(feature = "large-int")]
+            Self::LargeInt(inner) => inner.add_composite(grp_char, perm, perm_vals, locs),
+        }
+    }
+
+    #[inline]
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
         graph: &G,
@@ -254,6 +345,44 @@ impl DynDitBasis {
             Self::Default(inner) => inner.build_seeds(graph, seeds),
             #[cfg(feature = "large-int")]
             Self::LargeInt(inner) => inner.build_seeds(graph, seeds),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn add_composite_3site_lhss5() {
+        use crate::SpaceKind;
+        let mut basis = crate::dispatch::DitBasis::new(3, 5, SpaceKind::Symm).unwrap();
+        if let crate::dispatch::DitBasis::Dyn(ref mut d) = basis {
+            // perm cycles 3 sites; perm_vals swaps states 0<->1, leaves rest.
+            d.add_composite(
+                num_complex::Complex::new(1.0, 0.0),
+                &[1, 2, 0],
+                vec![1, 0, 2, 3, 4],
+                vec![0, 1, 2],
+            )
+            .unwrap();
+        } else {
+            panic!("expected Dyn variant");
+        }
+    }
+
+    #[test]
+    fn add_composite_rejects_non_sym_variant_dyn() {
+        use crate::SpaceKind;
+        let mut basis = crate::dispatch::DitBasis::new(3, 5, SpaceKind::Sub).unwrap();
+        if let crate::dispatch::DitBasis::Dyn(ref mut d) = basis {
+            let r = d.add_composite(
+                num_complex::Complex::new(1.0, 0.0),
+                &[1, 2, 0],
+                vec![1, 0, 2, 3, 4],
+                vec![0, 1, 2],
+            );
+            assert!(r.is_err());
+        } else {
+            panic!("expected Dyn variant");
         }
     }
 }

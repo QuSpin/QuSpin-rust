@@ -42,17 +42,17 @@ class SpinBasis:
     @classmethod
     def symmetric(
         cls,
-        n_sites: int,
+        group: Any,
         ham: PauliOperator | BondOperator,
         seeds: list[str],
-        symmetries: list[tuple[list[int], tuple[float, float]]],
-        lhss: int = 2,
     ) -> SpinBasis:
         """Symmetry-projected subspace.
 
         Args:
-            symmetries: List of ``(perm, (re, im))`` tuples where ``perm`` is
-                a site-permutation and ``(re, im)`` is the character.
+            group: a ``SymmetryGroup``; ``n_sites`` and ``lhss`` are
+                read from ``group.n_sites`` / ``group.lhss``.
+            ham:   ``PauliOperator`` (LHSS=2) or ``BondOperator`` for BFS.
+            seeds: list of seed state strings.
         """
         ...
 
@@ -89,10 +89,9 @@ class FermionBasis:
     @classmethod
     def symmetric(
         cls,
-        n_sites: int,
+        group: Any,
         ham: FermionOperator | BondOperator,
         seeds: list[str],
-        symmetries: list[tuple[list[int], tuple[float, float]]],
     ) -> FermionBasis: ...
     @property
     def n_sites(self) -> int: ...
@@ -122,11 +121,9 @@ class BosonBasis:
     @classmethod
     def symmetric(
         cls,
-        n_sites: int,
-        lhss: int,
+        group: Any,
         ham: BosonOperator | BondOperator,
         seeds: list[str],
-        symmetries: list[tuple[list[int], tuple[float, float]]],
     ) -> BosonBasis: ...
     @property
     def n_sites(self) -> int: ...
@@ -170,28 +167,17 @@ class GenericBasis:
     @classmethod
     def symmetric(
         cls,
-        n_sites: int,
-        lhss: int,
+        group: Any,
         ham: MonomialOperator,
         seeds: list[str],
-        symmetries: list[tuple[list[int], tuple[float, float]]],
-        local_symmetries: list[
-            tuple[list[int], tuple[float, float]]
-            | tuple[list[int], tuple[float, float], list[int]]
-        ] = ...,
     ) -> GenericBasis:
         """Symmetry-reduced subspace.
 
         Args:
-            symmetries:       List of ``(perm, (re, im))`` lattice symmetry tuples.
-            local_symmetries: List of 2- or 3-tuples for local (dit-permutation)
-                symmetries.  Each entry is either:
-
-                - ``(perm, (re, im))`` — applies to **all** sites, or
-                - ``(perm, (re, im), mask)`` — applies only to sites in ``mask``.
-
-                ``perm`` is a list of ``lhss`` integers permuting the local
-                Hilbert-space states ``0 … lhss-1``.
+            group: a ``SymmetryGroup``; ``n_sites`` and ``lhss`` are
+                read from ``group.n_sites`` / ``group.lhss``.
+            ham:   ``MonomialOperator`` for BFS.
+            seeds: list of seed state strings.
         """
         ...
 
@@ -212,6 +198,92 @@ class GenericBasis:
         ...
 
     def __repr__(self) -> str: ...
+
+# ---------------------------------------------------------------------------
+# Symmetry-element handle
+# ---------------------------------------------------------------------------
+#
+# Note on ``*Basis.symmetric(group, ...)`` above: the ``group`` parameter is
+# typed ``Any`` rather than ``SymmetryGroup`` because ``SymmetryGroup`` lives
+# in ``quspin_rs.symmetry`` (pure Python) and ``quspin_rs/__init__.py``
+# already imports from ``_rs``; importing ``SymmetryGroup`` into this stub
+# would create a backwards type-stub dependency from the extension-module
+# stub onto a higher-level Python module.  Static type info for
+# ``SymmetryGroup`` is provided by ``quspin_rs/symmetry.py`` directly.
+
+class SymElement:
+    """Opaque handle for a single symmetry-group element.
+
+    Construct via the ``Lattice``, ``Local``, or ``Composite`` factory
+    functions.  LHSS-agnostic — the actual lattice / local / composite
+    decomposition is materialised when the element is added to a basis.
+    """
+
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __repr__(self) -> str: ...
+
+def Lattice(perm: list[int]) -> SymElement:
+    """Pure site-permutation symmetry element.
+
+    Args:
+        perm: Site permutation (non-negative integers).
+
+    Raises:
+        ValueError: If ``perm`` contains a negative integer.  In old QuSpin
+            negatives encoded a spin-flip combined with a permutation; that
+            should now be expressed via ``Composite(perm, perm_vals=[1, 0])``.
+    """
+    ...
+
+def Local(perm_vals: list[int], locs: list[int] | None = None) -> SymElement:
+    """Pure on-site (dit-permutation) symmetry element.
+
+    Args:
+        perm_vals: Permutation of the local Hilbert-space states
+            ``0 … lhss-1`` (each value must fit in ``u8``).
+        locs:      Optional list of sites the local action applies to.
+            ``None`` means all sites.
+    """
+    ...
+
+def Composite(
+    perm: list[int],
+    perm_vals: list[int],
+    locs: list[int] | None = None,
+) -> SymElement:
+    """Combined site-permutation + local-permutation symmetry element.
+
+    Args:
+        perm:      Site permutation (non-negative integers).
+        perm_vals: Permutation of the local Hilbert-space states
+            ``0 … lhss-1`` (each value must fit in ``u8``).
+        locs:      Optional list of sites the local action applies to.
+            ``None`` means all sites.
+
+    Raises:
+        ValueError: If ``perm`` contains a negative integer.
+    """
+    ...
+
+def _order(elem: SymElement, n_sites: int, lhss: int) -> int:
+    """Order of the cyclic group generated by ``elem`` (LCM of perm
+    and perm_vals cycle orders); returns 1 for the identity element."""
+    ...
+
+def _compose(a: SymElement, b: SymElement) -> SymElement:
+    """Compose two SymElements: (a ∘ b)(state) = a(b(state)).
+    Raises ValueError on length mismatch or identity result."""
+    ...
+
+def _validate_group(
+    elements: list[tuple[SymElement, tuple[float, float]]],
+    n_sites: int,
+    lhss: int,
+) -> None:
+    """Eager closure + 1-D character validation. Raises ValueError on
+    non-closure, character inconsistency, or duplicate-action elements."""
+    ...
 
 # ---------------------------------------------------------------------------
 # Operator types

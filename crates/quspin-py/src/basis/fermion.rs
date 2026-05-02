@@ -1,4 +1,4 @@
-use crate::basis::{apply_symmetries, parse_seeds, parse_state_str};
+use crate::basis::{group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_bit};
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::fermion::PyFermionOperator;
@@ -69,21 +69,28 @@ impl PyFermionBasis {
     /// Symmetry-reduced subspace.
     ///
     /// Args:
-    ///     n_sites:     number of orbitals / lattice sites.
-    ///     ham:         `FermionOperator` or `BondOperator` used for BFS.
-    ///     seeds:       list of seed state strings.
-    ///     symmetries:  list of `(perm, (re, im))` lattice symmetry tuples.
+    ///     group: a :class:`SymmetryGroup` describing the symmetry group.
+    ///            Must have `lhss == 2` (fermions are always two-state).
+    ///            `n_sites` is read from `group.n_sites`.
+    ///     ham:   `FermionOperator` or `BondOperator` used for BFS.
+    ///     seeds: list of seed state strings.
     #[classmethod]
+    #[pyo3(signature = (group, ham, seeds))]
     fn symmetric(
         _cls: &Bound<'_, PyType>,
-        n_sites: usize,
+        group: &Bound<'_, PyAny>,
         ham: &Bound<'_, PyAny>,
         seeds: Vec<String>,
-        symmetries: Vec<(Vec<usize>, (f64, f64))>,
     ) -> PyResult<Self> {
+        let (n_sites, lhss) = group_n_sites_lhss(group)?;
+        if lhss != 2 {
+            return Err(pyo3::exceptions::PyTypeError::new_err(format!(
+                "FermionBasis requires SymmetryGroup with lhss=2, got lhss={lhss}"
+            )));
+        }
         let byte_seeds = parse_seeds(&seeds, 2)?;
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Symm).map_err(Error::from)?;
-        apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
+        replay_group_into_bit(group, &mut basis.inner)?;
         build_fermion_basis(&mut basis, ham, &byte_seeds)?;
         Ok(PyFermionBasis { inner: basis })
     }

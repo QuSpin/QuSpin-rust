@@ -124,6 +124,46 @@ impl BitBasisDefault {
         self.add_inv(grp_char, &locs)
     }
 
+    /// Add a composite (lattice + local) element. `perm_vals` must be `[1, 0]`
+    /// (Bit family LHSS=2). `locs` is validated against `n_sites`.
+    pub fn add_composite(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+        perm_vals: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        validate_perm_vals(&perm_vals, 2)?;
+        if perm_vals != [1, 0] {
+            return Err(QuSpinError::ValueError(format!(
+                "add_composite on Bit family requires perm_vals=[1,0], got {perm_vals:?}"
+            )));
+        }
+        validate_locs(&locs, self.n_sites())?;
+        // perm validation runs inside SymBasis::add_symmetry on the perm component.
+        match self {
+            Self::Sym32(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitMask::new(build_mask::<u32>(&locs))),
+            ),
+            Self::Sym64(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitMask::new(build_mask::<u64>(&locs))),
+            ),
+            Self::Sym128(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitMask::new(build_mask::<B128>(&locs))),
+            ),
+            Self::Sym256(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitMask::new(build_mask::<B256>(&locs))),
+            ),
+            _ => Err(QuSpinError::ValueError(
+                "add_composite requires a Sym* variant on BitBasisDefault".into(),
+            )),
+        }
+    }
+
     /// Build the basis from `seeds`. Bit-family seeds are bit-encoded.
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
@@ -237,6 +277,49 @@ impl BitBasisLargeInt {
         self.add_inv(grp_char, &locs)
     }
 
+    /// Add a composite (lattice + local) element. `perm_vals` must be `[1, 0]`
+    /// (Bit family LHSS=2). `locs` is validated against `n_sites`.
+    pub fn add_composite(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+        perm_vals: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        validate_perm_vals(&perm_vals, 2)?;
+        if perm_vals != [1, 0] {
+            return Err(QuSpinError::ValueError(format!(
+                "add_composite on Bit family requires perm_vals=[1,0], got {perm_vals:?}"
+            )));
+        }
+        validate_locs(&locs, self.n_sites())?;
+        match self {
+            Self::Sym512(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitMask::new(build_mask::<B512>(&locs))),
+            ),
+            Self::Sym1024(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitMask::new(build_mask::<B1024>(&locs))),
+            ),
+            Self::Sym2048(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitMask::new(build_mask::<B2048>(&locs))),
+            ),
+            Self::Sym4096(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitMask::new(build_mask::<B4096>(&locs))),
+            ),
+            Self::Sym8192(b) => b.add_symmetry(
+                grp_char,
+                SymElement::composite(perm, PermDitMask::new(build_mask::<B8192>(&locs))),
+            ),
+            _ => Err(QuSpinError::ValueError(
+                "add_composite requires a Sym* variant on BitBasisLargeInt".into(),
+            )),
+        }
+    }
+
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
         graph: &G,
@@ -312,6 +395,21 @@ impl BitBasis {
     }
 
     #[inline]
+    pub fn add_composite(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+        perm_vals: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        match self {
+            Self::Default(inner) => inner.add_composite(grp_char, perm, perm_vals, locs),
+            #[cfg(feature = "large-int")]
+            Self::LargeInt(inner) => inner.add_composite(grp_char, perm, perm_vals, locs),
+        }
+    }
+
+    #[inline]
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
         graph: &G,
@@ -322,5 +420,36 @@ impl BitBasis {
             #[cfg(feature = "large-int")]
             Self::LargeInt(inner) => inner.build_seeds(graph, seeds),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn add_composite_pz_4_sites() {
+        use crate::SpaceKind;
+        let mut basis = crate::dispatch::BitBasis::new(4, SpaceKind::Symm, false).unwrap();
+        // PZ on 4 sites: perm=[3,2,1,0], perm_vals=[1,0]
+        basis
+            .add_composite(
+                num_complex::Complex::new(-1.0, 0.0),
+                &[3, 2, 1, 0],
+                vec![1, 0],
+                vec![0, 1, 2, 3],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn add_composite_rejects_non_sym_variant() {
+        use crate::SpaceKind;
+        let mut basis = crate::dispatch::BitBasis::new(4, SpaceKind::Sub, false).unwrap();
+        let r = basis.add_composite(
+            num_complex::Complex::new(1.0, 0.0),
+            &[1, 0, 3, 2],
+            vec![1, 0],
+            vec![0, 1, 2, 3],
+        );
+        assert!(r.is_err());
     }
 }

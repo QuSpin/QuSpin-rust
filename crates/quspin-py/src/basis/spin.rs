@@ -1,4 +1,4 @@
-use crate::basis::{apply_symmetries, parse_seeds, parse_state_str};
+use crate::basis::{group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic};
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::pauli::PyPauliOperator;
@@ -78,26 +78,23 @@ impl PySpinBasis {
     /// Symmetry-reduced subspace.
     ///
     /// Args:
-    ///     n_sites:     number of lattice sites.
-    ///     ham:         `PauliOperator` (LHSS=2) or `BondOperator` used for BFS.
-    ///     seeds:       list of seed state strings.
-    ///     symmetries:  list of `(perm, (re, im))` tuples, where `perm` is a
-    ///                  site permutation (list of ints) and `(re, im)` is the
-    ///                  group character (complex number as a float pair).
-    ///     lhss:        local Hilbert-space size (default 2).
+    ///     group: a :class:`SymmetryGroup` describing the symmetry group;
+    ///            `n_sites` and `lhss` are read from `group.n_sites` /
+    ///            `group.lhss`.
+    ///     ham:   `PauliOperator` (LHSS=2) or `BondOperator` used for BFS.
+    ///     seeds: list of seed state strings.
     #[classmethod]
-    #[pyo3(signature = (n_sites, ham, seeds, symmetries, lhss = 2))]
+    #[pyo3(signature = (group, ham, seeds))]
     fn symmetric(
         _cls: &Bound<'_, PyType>,
-        n_sites: usize,
+        group: &Bound<'_, PyAny>,
         ham: &Bound<'_, PyAny>,
         seeds: Vec<String>,
-        symmetries: Vec<(Vec<usize>, (f64, f64))>,
-        lhss: usize,
     ) -> PyResult<Self> {
+        let (n_sites, lhss) = group_n_sites_lhss(group)?;
         let byte_seeds = parse_seeds(&seeds, lhss)?;
         let mut basis = SpinBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
-        apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
+        replay_group_into_generic(group, &mut basis.inner)?;
         build_spin_basis(&mut basis, ham, &byte_seeds)?;
         Ok(PySpinBasis { inner: basis })
     }

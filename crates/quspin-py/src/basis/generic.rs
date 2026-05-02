@@ -1,7 +1,6 @@
-use crate::basis::{apply_symmetries, parse_seeds, parse_state_str};
+use crate::basis::{group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic};
 use crate::error::Error;
 use crate::operator::monomial::PyMonomialOperator;
-use num_complex::Complex;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 use quspin_core::basis::{GenericBasis, SpaceKind};
@@ -13,81 +12,6 @@ use quspin_core::basis::{GenericBasis, SpaceKind};
 #[pyclass(name = "GenericBasis", module = "quspin._rs")]
 pub struct PyGenericBasis {
     pub inner: GenericBasis,
-}
-
-/// Parse a `local_symmetries` entry.  Each entry is either a 2-tuple
-/// `(perm, (re, im))` (mask = all sites) or a 3-tuple
-/// `(perm, (re, im), mask)`.
-///
-/// `perm` is a list/array of integer values in `0..lhss`.
-fn apply_local_symmetries(
-    py: Python<'_>,
-    basis: &mut GenericBasis,
-    local_symmetries: &[PyObject],
-) -> PyResult<()> {
-    let n_sites = basis.n_sites();
-    let lhss = basis.lhss();
-
-    for (i, sym_obj) in local_symmetries.iter().enumerate() {
-        let sym = sym_obj.bind(py);
-        let tuple = sym.downcast::<pyo3::types::PyTuple>().map_err(|_| {
-            pyo3::exceptions::PyTypeError::new_err(format!(
-                "local_symmetries[{i}]: expected a 2- or 3-tuple"
-            ))
-        })?;
-
-        if tuple.len() < 2 || tuple.len() > 3 {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "local_symmetries[{i}]: expected a 2- or 3-tuple, got {}-tuple",
-                tuple.len()
-            )));
-        }
-
-        // First element: perm as list of ints (0..lhss).
-        let perm_vals: Vec<u8> = tuple
-            .get_item(0)?
-            .extract::<Vec<u64>>()
-            .map_err(|_| {
-                pyo3::exceptions::PyTypeError::new_err(format!(
-                    "local_symmetries[{i}]: perm must be a list of non-negative integers"
-                ))
-            })?
-            .into_iter()
-            .map(|v| v as u8)
-            .collect();
-
-        if perm_vals.len() != lhss {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "local_symmetries[{i}]: perm length {} != lhss {}",
-                perm_vals.len(),
-                lhss
-            )));
-        }
-
-        // Second element: complex character as (re, im) float pair.
-        let (re, im): (f64, f64) = tuple.get_item(1)?.extract().map_err(|_| {
-            pyo3::exceptions::PyValueError::new_err(format!(
-                "local_symmetries[{i}]: expected (re, im) float pair for character"
-            ))
-        })?;
-        let grp_char = Complex::new(re, im);
-
-        // Optional third element: mask of site indices.  Default: all sites.
-        let locs: Vec<usize> = if tuple.len() == 3 {
-            tuple.get_item(2)?.extract::<Vec<usize>>().map_err(|_| {
-                pyo3::exceptions::PyTypeError::new_err(format!(
-                    "local_symmetries[{i}]: mask must be a list of site indices"
-                ))
-            })?
-        } else {
-            (0..n_sites).collect()
-        };
-
-        basis
-            .add_local(grp_char, perm_vals, locs)
-            .map_err(Error::from)?;
-    }
-    Ok(())
 }
 
 #[pymethods]
@@ -129,31 +53,24 @@ impl PyGenericBasis {
     /// Symmetry-reduced subspace.
     ///
     /// Args:
-    ///     n_sites:           number of lattice sites.
-    ///     lhss:              on-site state count (≥ 2).
-    ///     ham:               `MonomialOperator` used for BFS.
-    ///     seeds:             list of seed state strings.
-    ///     symmetries:        list of ``(perm, (re, im))`` lattice symmetry tuples.
-    ///     local_symmetries:  list of 2- or 3-tuples:
-    ///         - ``(perm, (re, im))``         — applies to all sites
-    ///         - ``(perm, (re, im), mask)``   — applies to sites in ``mask``
+    ///     group: a :class:`SymmetryGroup` describing the symmetry group;
+    ///            `n_sites` and `lhss` are read from `group.n_sites` /
+    ///            `group.lhss`.
+    ///     ham:   `MonomialOperator` used for BFS.
+    ///     seeds: list of seed state strings.
     #[classmethod]
-    #[pyo3(signature = (n_sites, lhss, ham, seeds, symmetries, local_symmetries = vec![]))]
+    #[pyo3(signature = (group, ham, seeds))]
     fn symmetric(
         _cls: &Bound<'_, PyType>,
-        n_sites: usize,
-        lhss: usize,
+        group: &Bound<'_, PyAny>,
         ham: &PyMonomialOperator,
         seeds: Vec<String>,
-        symmetries: Vec<(Vec<usize>, (f64, f64))>,
-        local_symmetries: Vec<PyObject>,
     ) -> PyResult<Self> {
-        let py = _cls.py();
+        let (n_sites, lhss) = group_n_sites_lhss(group)?;
         let byte_seeds = parse_seeds(&seeds, lhss)?;
         let mut basis =
             GenericBasis::new(n_sites, lhss, SpaceKind::Symm, false).map_err(Error::from)?;
-        apply_symmetries(&symmetries, |c, p| basis.add_lattice(c, p))?;
-        apply_local_symmetries(py, &mut basis, &local_symmetries)?;
+        replay_group_into_generic(group, &mut basis)?;
         basis.build(&ham.inner, &byte_seeds).map_err(Error::from)?;
         Ok(PyGenericBasis { inner: basis })
     }

@@ -280,6 +280,57 @@ impl DitBasis {
         }
     }
 
+    /// Add a composite (lattice + local) symmetry element. Routes to the
+    /// per-family inner enum's `add_composite`. Validation lives in the
+    /// concrete impl downstream.
+    pub fn add_composite(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: &[usize],
+        perm_vals: Vec<u8>,
+        locs: Vec<usize>,
+    ) -> Result<(), QuSpinError> {
+        match self {
+            Self::Trit(b) => b.add_composite(grp_char, perm, perm_vals, locs),
+            Self::Quat(b) => b.add_composite(grp_char, perm, perm_vals, locs),
+            Self::Dyn(b) => b.add_composite(grp_char, perm, perm_vals, locs),
+        }
+    }
+
+    /// Add a symmetry element by its untyped triple. Routes to add_lattice /
+    /// add_local / add_composite per the (perm, perm_vals) shape; identity
+    /// (both None) returns an error.
+    ///
+    /// `locs = None` defaults to all sites at the inner-enum layer.
+    pub fn add_symmetry_raw(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: Option<&[usize]>,
+        perm_vals: Option<Vec<u8>>,
+        locs: Option<Vec<usize>>,
+    ) -> Result<(), QuSpinError> {
+        match (perm, perm_vals) {
+            (Some(p), None) => self.add_lattice(grp_char, p),
+            (None, Some(v)) => {
+                let locs = locs.unwrap_or_else(|| (0..self.n_sites()).collect());
+                self.add_local(grp_char, v, locs)
+            }
+            (Some(p), Some(v)) => {
+                let locs = locs.unwrap_or_else(|| (0..self.n_sites()).collect());
+                match self {
+                    Self::Trit(b) => b.add_composite(grp_char, p, v, locs),
+                    Self::Quat(b) => b.add_composite(grp_char, p, v, locs),
+                    Self::Dyn(b) => b.add_composite(grp_char, p, v, locs),
+                }
+            }
+            (None, None) => Err(QuSpinError::ValueError(
+                "add_symmetry_raw requires at least one of `perm` or `perm_vals`; \
+                 the identity element is implicit and must not be added explicitly"
+                    .into(),
+            )),
+        }
+    }
+
     /// Build the basis subspace from `seeds` under `graph`.
     pub fn build_seeds<G: StateTransitions>(
         &mut self,
@@ -290,6 +341,16 @@ impl DitBasis {
             Self::Trit(b) => b.build_seeds(graph, seeds),
             Self::Quat(b) => b.build_seeds(graph, seeds),
             Self::Dyn(b) => b.build_seeds(graph, seeds),
+        }
+    }
+
+    /// Eagerly run [`SymBasis::validate_group`] on the inner `Sym*`
+    /// variant. No-op (returns `Ok(())`) on `Full*` / `Sub*` variants.
+    pub fn validate_group(&self) -> Result<(), QuSpinError> {
+        match self {
+            Self::Trit(b) => b.validate_group(),
+            Self::Quat(b) => b.validate_group(),
+            Self::Dyn(b) => b.validate_group(),
         }
     }
 }
@@ -476,6 +537,39 @@ impl GenericBasis {
         }
     }
 
+    /// Add a symmetry element by its untyped triple. Routes to add_lattice /
+    /// add_local / add_composite per the (perm, perm_vals) shape; identity
+    /// (both None) returns an error.
+    ///
+    /// `locs = None` defaults to all sites at the inner-enum layer.
+    pub fn add_symmetry_raw(
+        &mut self,
+        grp_char: Complex<f64>,
+        perm: Option<&[usize]>,
+        perm_vals: Option<Vec<u8>>,
+        locs: Option<Vec<usize>>,
+    ) -> Result<(), QuSpinError> {
+        match (perm, perm_vals) {
+            (Some(p), None) => self.add_lattice(grp_char, p.to_vec()),
+            (None, Some(v)) => {
+                let locs = locs.unwrap_or_else(|| (0..self.n_sites()).collect());
+                self.add_local(grp_char, v, locs)
+            }
+            (Some(p), Some(v)) => {
+                let locs = locs.unwrap_or_else(|| (0..self.n_sites()).collect());
+                match self {
+                    Self::Bit(b) => b.add_composite(grp_char, p, v, locs),
+                    Self::Dit(b) => b.add_composite(grp_char, p, v, locs),
+                }
+            }
+            (None, None) => Err(QuSpinError::ValueError(
+                "add_symmetry_raw requires at least one of `perm` or `perm_vals`; \
+                 the identity element is implicit and must not be added explicitly"
+                    .into(),
+            )),
+        }
+    }
+
     /// Build the basis subspace from `seeds` under the connectivity
     /// described by `graph`. Validation (already-built, graph LHSS
     /// mismatch, `Full` variant) happens in the concrete `build_seeds`
@@ -488,6 +582,19 @@ impl GenericBasis {
         match self {
             Self::Bit(b) => b.build(graph, seeds),
             Self::Dit(b) => b.build(graph, seeds),
+        }
+    }
+
+    /// Eagerly run [`SymBasis::validate_group`] on the inner `Sym*`
+    /// variant. No-op (returns `Ok(())`) on `Full*` / `Sub*` variants.
+    /// Lets callers (e.g. `SymmetryGroup.validate` in the Python
+    /// bindings) surface closure / character / duplicate-action errors
+    /// without having to call `build` (which is otherwise the only
+    /// trigger for `validate_group`, and only on the first invocation).
+    pub fn validate_group(&self) -> Result<(), QuSpinError> {
+        match self {
+            Self::Bit(b) => b.validate_group(),
+            Self::Dit(b) => b.validate_group(),
         }
     }
 }
@@ -1376,5 +1483,123 @@ mod tests {
         let size = basis.size();
         basis.build(&graph, &[vec![0u8, 0, 0]]).unwrap();
         assert_eq!(basis.size(), size);
+    }
+
+    #[test]
+    fn add_symmetry_raw_routes_lattice() {
+        let mut basis = GenericBasis::new(3, 2, SpaceKind::Symm, false).unwrap();
+        basis
+            .add_symmetry_raw(
+                Complex::new(1.0, 0.0),
+                Some(&[1, 2, 0][..]), // perm
+                None,
+                None, // no local op
+            )
+            .unwrap();
+        // 3 sites, lhss=2 → 3 bits → Sym32. Lattice-only element must land
+        // in `lattice_only`, leaving `local_only` and `composite` empty.
+        match &basis {
+            GenericBasis::Bit(BitBasis::Default(BitBasisDefault::Sym32(b))) => {
+                assert_eq!(b.lattice_only.len(), 1);
+                assert_eq!(b.local_only.len(), 0);
+                assert_eq!(b.composite.len(), 0);
+            }
+            _ => panic!("expected Bit/Default/Sym32 inner"),
+        }
+    }
+
+    #[test]
+    fn add_symmetry_raw_routes_local_bit() {
+        let mut basis = GenericBasis::new(3, 2, SpaceKind::Symm, false).unwrap();
+        basis
+            .add_symmetry_raw(
+                Complex::new(-1.0, 0.0),
+                None,
+                Some(vec![1, 0]),
+                Some(vec![0, 1, 2]),
+            )
+            .unwrap();
+        // perm=None, perm_vals=Some → must route to add_local.
+        match &basis {
+            GenericBasis::Bit(BitBasis::Default(BitBasisDefault::Sym32(b))) => {
+                assert_eq!(b.lattice_only.len(), 0);
+                assert_eq!(b.local_only.len(), 1);
+                assert_eq!(b.composite.len(), 0);
+            }
+            _ => panic!("expected Bit/Default/Sym32 inner"),
+        }
+    }
+
+    #[test]
+    fn add_symmetry_raw_routes_composite_bit() {
+        let mut basis = GenericBasis::new(3, 2, SpaceKind::Symm, false).unwrap();
+        basis
+            .add_symmetry_raw(
+                Complex::new(-1.0, 0.0),
+                Some(&[1, 2, 0][..]),
+                Some(vec![1, 0]),
+                Some(vec![0, 1, 2]),
+            )
+            .unwrap();
+        // perm=Some, perm_vals=Some → must route to add_composite.
+        match &basis {
+            GenericBasis::Bit(BitBasis::Default(BitBasisDefault::Sym32(b))) => {
+                assert_eq!(b.lattice_only.len(), 0);
+                assert_eq!(b.local_only.len(), 0);
+                assert_eq!(b.composite.len(), 1);
+            }
+            _ => panic!("expected Bit/Default/Sym32 inner"),
+        }
+    }
+
+    #[test]
+    fn add_symmetry_raw_rejects_identity() {
+        let mut basis = GenericBasis::new(3, 2, SpaceKind::Symm, false).unwrap();
+        let r = basis.add_symmetry_raw(Complex::new(1.0, 0.0), None, None, None);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn add_symmetry_raw_routes_dit_local() {
+        let mut basis = GenericBasis::new(3, 3, SpaceKind::Symm, false).unwrap();
+        basis
+            .add_symmetry_raw(
+                Complex::new(1.0, 0.0),
+                None,
+                Some(vec![1, 0, 2]),
+                Some(vec![0, 1, 2]),
+            )
+            .unwrap();
+        // 3 sites, lhss=3 → 6 bits → Sym32 in TritBasisDefault.
+        match &basis {
+            GenericBasis::Dit(DitBasis::Trit(TritBasis::Default(TritBasisDefault::Sym32(b)))) => {
+                assert_eq!(b.lattice_only.len(), 0);
+                assert_eq!(b.local_only.len(), 1);
+                assert_eq!(b.composite.len(), 0);
+            }
+            _ => panic!("expected Dit/Trit/Default/Sym32 inner"),
+        }
+    }
+
+    #[test]
+    fn add_symmetry_raw_dit_basis_composite() {
+        // Drive `DitBasis::add_symmetry_raw` directly (not via GenericBasis).
+        let mut basis = DitBasis::new(3, 3, SpaceKind::Symm).unwrap();
+        basis
+            .add_symmetry_raw(
+                Complex::new(1.0, 0.0),
+                Some(&[1, 2, 0][..]),
+                Some(vec![1, 0, 2]),
+                Some(vec![0, 1, 2]),
+            )
+            .unwrap();
+        match &basis {
+            DitBasis::Trit(TritBasis::Default(TritBasisDefault::Sym32(b))) => {
+                assert_eq!(b.lattice_only.len(), 0);
+                assert_eq!(b.local_only.len(), 0);
+                assert_eq!(b.composite.len(), 1);
+            }
+            _ => panic!("expected Trit/Default/Sym32 inner"),
+        }
     }
 }
