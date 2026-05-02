@@ -11,12 +11,16 @@
 pub mod algorithm;
 pub mod norm_est;
 pub mod params;
+mod shifted_op;
 
-pub use algorithm::{PAR_THRESHOLD, expm_multiply, expm_multiply_many, expm_multiply_par};
+pub use algorithm::PAR_THRESHOLD;
 pub use params::{LazyNormInfo, fragment_3_1};
+
+use algorithm::{expm_multiply, expm_multiply_many};
 pub use quspin_types::{
     AtomicAccum, DynLinearOperator, ExpmComputation, FnLinearOperator, LinearOperator,
 };
+use shifted_op::{ShiftedOp, TaylorParams};
 
 use ndarray::{Array2, ArrayViewMut1, ArrayViewMut2};
 
@@ -84,7 +88,9 @@ where
         )));
     }
     let (m_star, s, mu_v, tol) = compute_expm_params(op, a)?;
-    expm_multiply(op, a, mu_v, s, m_star, tol, f, work)
+    let b = ShiftedOp::new(op, a, mu_v);
+    let params = TaylorParams::new(s, m_star, tol);
+    expm_multiply(&b, &params, f, work)
 }
 
 /// Allocate work internally and call [`expm_multiply_auto_into`].
@@ -117,7 +123,9 @@ where
         )));
     }
     let (m_star, s, mu_v, tol) = compute_expm_params(op, a)?;
-    expm_multiply_many(op, a, mu_v, s, m_star, tol, f, work)
+    let b = ShiftedOp::new(op, a, mu_v);
+    let params = TaylorParams::new(s, m_star, tol);
+    expm_multiply_many(&b, &params, f, work)
 }
 
 /// Allocate work internally and call [`expm_multiply_many_auto_into`].

@@ -17,8 +17,8 @@ pub use quspin_types::{compute, dtype, error, primitive};
 pub use quspin_basis::*;
 pub use quspin_bitbasis::*;
 pub use quspin_expm::{
-    expm_multiply, expm_multiply_auto, expm_multiply_auto_into, expm_multiply_many,
-    expm_multiply_many_auto, expm_multiply_many_auto_into, expm_multiply_par,
+    expm_multiply_auto, expm_multiply_auto_into, expm_multiply_many_auto,
+    expm_multiply_many_auto_into,
 };
 pub use quspin_krylov::*;
 pub use quspin_matrix::{
