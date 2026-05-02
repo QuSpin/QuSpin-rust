@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use super::norm_est::onenorm_matrix_power_nnm;
+use super::shifted_op::ShiftedOp;
 use quspin_types::ExpmComputation;
 use quspin_types::LinearOperator;
 
@@ -151,7 +152,8 @@ where
         if let Some(&cached) = self.d_cache.get(&p) {
             return cached;
         }
-        let est = onenorm_matrix_power_nnm(self.op, self.a, self.mu, p, self.ell);
+        let b = ShiftedOp::new(self.op, self.a, self.mu);
+        let est = onenorm_matrix_power_nnm(&b, p, self.ell);
         // Convert V::Real → f64 via round-trip through Complex<f64>.
         let est_f64 = V::from_real(est).to_complex().re;
         // d(p) = ||B^p||_1^(1/p)

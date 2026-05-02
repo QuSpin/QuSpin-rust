@@ -14,10 +14,12 @@ use quspin_types::QuSpinError;
 use quspin_types::ExpmComputation;
 use quspin_types::LinearOperator;
 
+use crate::shifted_op::{ShiftedOp, TaylorParams};
+
 /// Minimum dimension for the persistent-thread parallel path.
 ///
-/// Matrices smaller than this are handled by [`expm_multiply`] to avoid
-/// thread-pool wake-up overhead dominating the matvec cost.
+/// Matrices smaller than this are handled by the sequential `expm_multiply`
+/// kernel to avoid thread-pool wake-up overhead dominating the matvec cost.
 pub const PAR_THRESHOLD: usize = 256;
 
 // ---------------------------------------------------------------------------
@@ -31,6 +33,7 @@ pub const PAR_THRESHOLD: usize = 256;
 /// - Write accesses from different threads target **disjoint** index ranges.
 /// - `Barrier::wait()` separates every write from any subsequent read by
 ///   another thread (provides the required memory ordering).
+#[allow(dead_code)] // used only by `expm_multiply_par`, which is not yet wired in
 struct RawSlice<T> {
     ptr: *mut T,
     len: usize,
@@ -49,6 +52,7 @@ impl<T> Clone for RawSlice<T> {
     }
 }
 
+#[allow(dead_code)] // see RawSlice doc — unwired pending par dispatch
 impl<T> RawSlice<T> {
     fn new(s: &mut [T]) -> Self {
         Self {
@@ -115,25 +119,16 @@ impl<T> RawSlice<T> {
 /// ```
 ///
 /// # Arguments
-/// - `op`      — linear operator implementing `A · x`
-/// - `a`       — global scalar factor
-/// - `mu`      — diagonal shift μ (usually `trace(A)/n`)
-/// - `s`       — partition count (scaling factor)
-/// - `m_star`  — Taylor truncation order per partition
-/// - `tol`     — convergence tolerance (typically `V::machine_eps()`)
-/// - `f`       — input/output vector, length = `op.dim()`
-/// - `work`    — scratch buffer, length ≥ `2 * op.dim()`
+/// - `b`      — shifted operator `B = a·(A − μI)`
+/// - `params` — Taylor partition parameters `(s, m_star, tol)`
+/// - `f`      — input/output vector, length = `b.dim()`
+/// - `work`   — scratch buffer, length ≥ `2 * b.dim()`
 ///
 /// # Errors
 /// Returns `ValueError` if buffer lengths are inconsistent.
-#[allow(clippy::too_many_arguments)]
-pub fn expm_multiply<V, Op>(
-    op: &Op,
-    a: V,
-    mu: V,
-    s: usize,
-    m_star: usize,
-    tol: V::Real,
+pub(crate) fn expm_multiply<V, Op>(
+    b: &ShiftedOp<'_, V, Op>,
+    params: &TaylorParams<V::Real>,
     mut f: ArrayViewMut1<'_, V>,
     work: &mut [V],
 ) -> Result<(), QuSpinError>
@@ -141,7 +136,8 @@ where
     V: ExpmComputation,
     Op: LinearOperator<V>,
 {
-    let n = op.dim();
+    let n = b.dim();
+    let s = params.s;
 
     if f.len() != n {
         return Err(QuSpinError::ValueError(format!(
@@ -165,25 +161,22 @@ where
     // Split scratch buffer: b1 = current Taylor term, tmp = matvec output.
     let (b1, tmp) = work[..2 * n].split_at_mut(n);
 
-    // η = exp(a·μ / s) — applied once per outer partition.
-    let inv_s = V::real_from_f64(1.0 / s as f64);
-    let eta = (a * mu * V::from_real(inv_s)).exp_val();
+    let eta = b.eta(s);
 
     // B = F = f  (initial: Taylor term B1 = accumulated sum F)
-    for (b, &fk) in b1.iter_mut().zip(f.iter()) {
-        *b = fk;
+    for (slot, &fk) in b1.iter_mut().zip(f.iter()) {
+        *slot = fk;
     }
 
     for _i in 0..s {
         // c1 = ‖B‖_∞  (inf-norm of the current Taylor term / starting vector)
         let mut c1 = inf_norm(b1);
 
-        'taylor: for j in 1..=m_star {
+        'taylor: for j in 1..=params.m_star {
             // tmp = A · B  (overwrite=true zeros tmp first)
-            op.dot(true, b1, tmp)?;
+            b.op.dot(true, b1, tmp)?;
 
-            // scale = a / (j · s)
-            let scale = a * V::from_real(V::real_from_f64(1.0 / (j * s) as f64));
+            let scale = b.taylor_scale(j, s);
 
             let mut c2 = V::Real::default();
             let mut c3 = V::Real::default();
@@ -191,7 +184,7 @@ where
             // tmp[k] = scale · (tmp[k] − μ · B[k])      (new Taylor term)
             // f[k]  += tmp[k]
             for k in 0..n {
-                tmp[k] = scale * (tmp[k] - mu * b1[k]);
+                tmp[k] = scale * (tmp[k] - b.mu * b1[k]);
                 f[k] += tmp[k];
                 let abs_tmp = tmp[k].abs_val();
                 let abs_f = f[k].abs_val();
@@ -204,7 +197,7 @@ where
             }
 
             // Convergence: latest term negligible relative to accumulated sum.
-            if c1 + c2 <= tol * c3 {
+            if c1 + c2 <= params.tol * c3 {
                 break 'taylor;
             }
 
@@ -217,8 +210,8 @@ where
         for fk in f.iter_mut() {
             *fk *= eta;
         }
-        for (b, &fk) in b1.iter_mut().zip(f.iter()) {
-            *b = fk;
+        for (slot, &fk) in b1.iter_mut().zip(f.iter()) {
+            *slot = fk;
         }
     }
 
@@ -255,14 +248,10 @@ where
 /// # Panics
 /// Panics if an internal `dot_chunk` call fails (only possible on dimension
 /// mismatch, which is validated before threads are spawned).
-#[allow(clippy::too_many_arguments)]
-pub fn expm_multiply_par<V, Op>(
-    op: &Op,
-    a: V,
-    mu: V,
-    s: usize,
-    m_star: usize,
-    tol: V::Real,
+#[allow(dead_code)] // not yet routed by the auto-dispatch entry points
+pub(crate) fn expm_multiply_par<V, Op>(
+    b: &ShiftedOp<'_, V, Op>,
+    params: &TaylorParams<V::Real>,
     f: ArrayViewMut1<'_, V>,
     work: &mut [V],
 ) -> Result<(), QuSpinError>
@@ -270,7 +259,10 @@ where
     V: ExpmComputation,
     Op: LinearOperator<V>,
 {
-    let n = op.dim();
+    let n = b.dim();
+    let s = params.s;
+    let m_star = params.m_star;
+    let tol = params.tol;
 
     if f.len() != n {
         return Err(QuSpinError::ValueError(format!(
@@ -295,12 +287,11 @@ where
     let (b1_buf, tmp_buf) = work[..2 * n].split_at_mut(n);
 
     // b1 = f  (initialise the Taylor accumulator from the input)
-    for (b, &fk) in b1_buf.iter_mut().zip(f.iter()) {
-        *b = fk;
+    for (slot, &fk) in b1_buf.iter_mut().zip(f.iter()) {
+        *slot = fk;
     }
 
-    let inv_s = V::real_from_f64(1.0 / s as f64);
-    let eta = (a * mu * V::from_real(inv_s)).exp_val();
+    let eta = b.eta(s);
 
     // Clamp thread count to n so every thread gets at least one row.
     let n_threads = std::thread::available_parallelism()
@@ -401,20 +392,20 @@ where
                         barrier.wait();
                         {
                             let b1 = unsafe { raw_b1.as_slice() };
-                            op.dot_chunk(true, b1, tmp_chunk, begin)
+                            b.op.dot_chunk(true, b1, tmp_chunk, begin)
                                 .expect("expm_multiply_par: dot_chunk failed");
                         }
 
                         // Phase 2: element-wise update + local norm accumulation.
                         // barrier ensures all tmp_chunk writes are visible.
                         barrier.wait();
-                        let scale = a * V::from_real(V::real_from_f64(1.0 / (j * s) as f64));
+                        let scale = b.taylor_scale(j, s);
                         let mut lc2 = V::Real::default();
                         let mut lc3 = V::Real::default();
                         {
                             let b1 = unsafe { raw_b1.as_slice() };
                             for k_local in 0..n_local {
-                                let t = scale * (tmp_chunk[k_local] - mu * b1[begin + k_local]);
+                                let t = scale * (tmp_chunk[k_local] - b.mu * b1[begin + k_local]);
                                 tmp_chunk[k_local] = t;
                                 f_chunk[k_local] += t;
                                 let at = t.abs_val();
@@ -472,8 +463,8 @@ where
                     barrier.wait();
                     {
                         let b1_chunk = unsafe { raw_b1.subslice_mut(begin..begin + n_local) };
-                        for (b, &fk) in b1_chunk.iter_mut().zip(f_chunk.iter()) {
-                            *b = fk;
+                        for (slot, &fk) in b1_chunk.iter_mut().zip(f_chunk.iter()) {
+                            *slot = fk;
                         }
                     }
 
@@ -510,22 +501,17 @@ where
 
 /// Compute `exp(a·A) · F` in-place for multiple column vectors simultaneously.
 ///
-/// `f` and `work` have shape `(dim, n_vecs)`.  Parameters `a`, `mu`, `s`,
-/// `m_star`, `tol` are the same for all columns; only `f` differs.
+/// `f` and `work` have shape `(dim, n_vecs)`.  All columns share the same
+/// shifted operator and Taylor parameters; only `f` differs.
 ///
 /// The convergence check aggregates norms across **all** columns (joint
 /// termination: the Taylor loop stops only when every column has converged).
 ///
 /// # Errors
 /// Returns `ValueError` if array shapes are inconsistent.
-#[allow(clippy::too_many_arguments)]
-pub fn expm_multiply_many<V, Op>(
-    op: &Op,
-    a: V,
-    mu: V,
-    s: usize,
-    m_star: usize,
-    tol: V::Real,
+pub(crate) fn expm_multiply_many<V, Op>(
+    b: &ShiftedOp<'_, V, Op>,
+    params: &TaylorParams<V::Real>,
     mut f: ArrayViewMut2<'_, V>,
     mut work: ArrayViewMut2<'_, V>,
 ) -> Result<(), QuSpinError>
@@ -533,8 +519,9 @@ where
     V: ExpmComputation,
     Op: LinearOperator<V>,
 {
-    let n = op.dim();
+    let n = b.dim();
     let n_vecs = f.ncols();
+    let s = params.s;
 
     if f.nrows() != n {
         return Err(QuSpinError::ValueError(format!(
@@ -557,8 +544,7 @@ where
         return Ok(());
     }
 
-    let inv_s = V::real_from_f64(1.0 / s as f64);
-    let eta = (a * mu * V::from_real(inv_s)).exp_val();
+    let eta = b.eta(s);
 
     // Views into the work array: b1 = work[0..n, :], tmp = work[n..2n, :]
     let (mut b1_view, mut tmp_view) = work.view_mut().split_at(ndarray::Axis(0), n);
@@ -570,19 +556,19 @@ where
         // c1 = max over all (k, col) of |B[k, col]|
         let mut c1 = inf_norm_2d(b1_view.view());
 
-        'taylor: for j in 1..=m_star {
+        'taylor: for j in 1..=params.m_star {
             // tmp = A · B  (batch matvec)
-            op.dot_many(true, b1_view.view(), tmp_view.view_mut())?;
+            b.op.dot_many(true, b1_view.view(), tmp_view.view_mut())?;
 
-            let scale = a * V::from_real(V::real_from_f64(1.0 / (j * s) as f64));
+            let scale = b.taylor_scale(j, s);
 
             let mut c2 = V::Real::default();
             let mut c3 = V::Real::default();
 
             for k in 0..n {
                 for col in 0..n_vecs {
-                    let b = b1_view[[k, col]];
-                    let t = scale * (tmp_view[[k, col]] - mu * b);
+                    let b1_val = b1_view[[k, col]];
+                    let t = scale * (tmp_view[[k, col]] - b.mu * b1_val);
                     tmp_view[[k, col]] = t;
                     let fval = f[[k, col]] + t;
                     f[[k, col]] = fval;
@@ -597,7 +583,7 @@ where
                 }
             }
 
-            if c1 + c2 <= tol * c3 {
+            if c1 + c2 <= params.tol * c3 {
                 break 'taylor;
             }
 

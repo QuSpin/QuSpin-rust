@@ -1,16 +1,17 @@
 use quspin_types::ExpmComputation;
 use quspin_types::LinearOperator;
 
-/// Estimate `‖(a·(A − μI))^p‖_1` using a randomised block 1-norm estimator.
+use crate::shifted_op::ShiftedOp;
+
+/// Estimate `‖B^p‖_1` for `B = a·(A − μI)` using a randomised block 1-norm estimator.
 ///
 /// Implements a simplified variant of the Higham–Tisseur (2000) block algorithm
-/// that alternates forward (`B = a*(A - μI)`) and backward (`B* = ā*(A* - μ̄I)`)
-/// matrix–vector products to iteratively refine the estimate.
+/// that alternates forward (`B`) and transpose (`B^T`) matrix–vector products
+/// to iteratively refine the estimate.  Pure transpose is correct here for any
+/// complex matrix — the duality is `‖B‖_1 = ‖B^T‖_∞`, no conjugation required.
 ///
 /// # Arguments
-/// - `op`  — linear operator implementing `A · x` and `A^T · x`
-/// - `a`   — global scalar factor in `B = a*(A - μI)`
-/// - `mu`  — diagonal shift (usually `trace(A)/n`)
+/// - `b`   — shifted operator `B = a·(A − μI)`
 /// - `p`   — power to apply
 /// - `ell` — number of probe vectors (typically 2)
 ///
@@ -25,12 +26,16 @@ use quspin_types::LinearOperator;
 /// may be slightly less accurate for `f32` inputs, but this is an acceptable
 /// tradeoff — the norm estimate is only used to choose scaling parameters,
 /// not as a final result.
-pub fn onenorm_matrix_power_nnm<V, Op>(op: &Op, a: V, mu: V, p: usize, ell: usize) -> V::Real
+pub(crate) fn onenorm_matrix_power_nnm<V, Op>(
+    b: &ShiftedOp<'_, V, Op>,
+    p: usize,
+    ell: usize,
+) -> V::Real
 where
     V: ExpmComputation,
     Op: LinearOperator<V>,
 {
-    let n = op.dim();
+    let n = b.dim();
     if n == 0 {
         return V::Real::default();
     }
@@ -39,12 +44,10 @@ where
         return V::real_from_f64(1.0);
     }
 
-    let a_conj = V::from_complex(a.to_complex().conj());
-    let mu_conj = V::from_complex(mu.to_complex().conj());
     let mut est = V::Real::default();
 
     // -----------------------------------------------------------------------
-    // Forward pass: apply B = a*(A - μI) p times to ell probe vectors.
+    // Forward pass: apply B p times to ell probe vectors.
     // Probe vectors use alternating sign patterns (deterministic, no rng dep).
     // -----------------------------------------------------------------------
     let mut ax = vec![V::default(); n];
@@ -58,7 +61,7 @@ where
             })
             .collect();
 
-        apply_bp(op, a, mu, p, &mut x, &mut ax);
+        b.apply_pow_in_place(p, &mut x, &mut ax);
 
         let col_norm: V::Real = x
             .iter()
@@ -89,10 +92,10 @@ where
             })
             .collect();
 
-        // Apply B*^p to s: B* = ā*(A^T - μ̄I)
+        // Apply (B^T)^p to s.
         let mut z = s;
         let mut az = vec![V::default(); n];
-        apply_bp_adj(op, a_conj, mu_conj, p, &mut z, &mut az);
+        b.apply_pow_in_place_transpose(p, &mut z, &mut az);
 
         // Row with the largest |z[i]| gives the best unit-vector starting point.
         let i_star = z
@@ -109,7 +112,7 @@ where
         let mut x_unit = vec![V::default(); n];
         x_unit[i_star] = V::from_real(V::real_from_f64(1.0));
 
-        apply_bp(op, a, mu, p, &mut x_unit, &mut ax);
+        b.apply_pow_in_place(p, &mut x_unit, &mut ax);
 
         let col_norm: V::Real = x_unit
             .iter()
@@ -121,41 +124,4 @@ where
     }
 
     est
-}
-
-// ---------------------------------------------------------------------------
-// Helpers: apply B^p and (B*)^p in-place
-// ---------------------------------------------------------------------------
-
-/// In-place: `x ← (a*(A − μI))^p · x`.  `work` is scratch space of length `n`.
-fn apply_bp<V, Op>(op: &Op, a: V, mu: V, p: usize, x: &mut [V], work: &mut [V])
-where
-    V: ExpmComputation,
-    Op: LinearOperator<V>,
-{
-    for _ in 0..p {
-        op.dot(true, x, work)
-            .expect("onenorm_matrix_power_nnm: dot failed");
-        // work = a * (A·x − μ·x)
-        for k in 0..x.len() {
-            work[k] = a * (work[k] - mu * x[k]);
-        }
-        x.copy_from_slice(work);
-    }
-}
-
-/// In-place: `x ← (ā*(A^T − μ̄I))^p · x`.  `work` is scratch space.
-fn apply_bp_adj<V, Op>(op: &Op, a_conj: V, mu_conj: V, p: usize, x: &mut [V], work: &mut [V])
-where
-    V: ExpmComputation,
-    Op: LinearOperator<V>,
-{
-    for _ in 0..p {
-        op.dot_transpose(true, x, work)
-            .expect("onenorm_matrix_power_nnm: dot_transpose failed");
-        for k in 0..x.len() {
-            work[k] = a_conj * (work[k] - mu_conj * x[k]);
-        }
-        x.copy_from_slice(work);
-    }
 }
