@@ -1,10 +1,11 @@
 //! User-facing matrix-exponential operator: a cached `exp(a·A)` action.
 //!
-//! [`ExpmOp`] bundles a [`ShiftedOp`] with the [`TaylorParams`] that
-//! [`compute_expm_params`] derived for it, so the (m*, s, μ, tol) selection
-//! runs only once per `(op, a)` pair.  Construct it once with
-//! [`ExpmOp::new`], then call [`apply`](ExpmOp::apply) /
-//! [`apply_many`](ExpmOp::apply_many) as many times as needed.
+//! [`ExpmOp`] bundles the shifted operator `B = a·(A − μI)` with the Taylor
+//! partition parameters `(s, m_star, tol)` that the parameter-selection step
+//! derives for it, so the `(m*, s, μ, tol)` computation runs only once per
+//! `(op, a)` pair.  Construct it once with [`ExpmOp::new`], then call
+//! [`apply`](ExpmOp::apply) / [`apply_many`](ExpmOp::apply_many) as many
+//! times as needed.
 //!
 //! `ExpmOp` is *not* a `LinearOperator` — applying it requires running the
 //! Taylor partition algorithm, which doesn't fit the lightweight matvec

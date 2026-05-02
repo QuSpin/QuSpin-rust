@@ -6,8 +6,9 @@ use crate::shifted_op::ShiftedOp;
 /// Estimate `‖B^p‖_1` for `B = a·(A − μI)` using a randomised block 1-norm estimator.
 ///
 /// Implements a simplified variant of the Higham–Tisseur (2000) block algorithm
-/// that alternates forward (`B`) and backward (`B*`) matrix–vector products to
-/// iteratively refine the estimate.
+/// that alternates forward (`B`) and transpose (`B^T`) matrix–vector products
+/// to iteratively refine the estimate.  Pure transpose is correct here for any
+/// complex matrix — the duality is `‖B‖_1 = ‖B^T‖_∞`, no conjugation required.
 ///
 /// # Arguments
 /// - `b`   — shifted operator `B = a·(A − μI)`
@@ -91,10 +92,10 @@ where
             })
             .collect();
 
-        // Apply (B*)^p to s.
+        // Apply (B^T)^p to s.
         let mut z = s;
         let mut az = vec![V::default(); n];
-        b.apply_pow_in_place_adjoint(p, &mut z, &mut az);
+        b.apply_pow_in_place_transpose(p, &mut z, &mut az);
 
         // Row with the largest |z[i]| gives the best unit-vector starting point.
         let i_star = z

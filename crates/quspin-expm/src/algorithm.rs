@@ -18,8 +18,8 @@ use crate::shifted_op::{ShiftedOp, TaylorParams};
 
 /// Minimum dimension for the persistent-thread parallel path.
 ///
-/// Matrices smaller than this are handled by [`expm_multiply`] to avoid
-/// thread-pool wake-up overhead dominating the matvec cost.
+/// Matrices smaller than this are handled by the sequential `expm_multiply`
+/// kernel to avoid thread-pool wake-up overhead dominating the matvec cost.
 pub const PAR_THRESHOLD: usize = 256;
 
 // ---------------------------------------------------------------------------

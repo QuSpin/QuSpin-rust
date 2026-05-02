@@ -42,6 +42,8 @@ where
 
     /// In-place: `x ← B^p · x`. `work` is scratch of length ≥ `dim()`.
     pub fn apply_pow_in_place(&self, p: usize, x: &mut [V], work: &mut [V]) {
+        debug_assert_eq!(x.len(), self.dim());
+        debug_assert!(work.len() >= x.len());
         for _ in 0..p {
             self.op
                 .dot(true, x, work)
@@ -53,16 +55,20 @@ where
         }
     }
 
-    /// In-place: `x ← (B*)^p · x` using `op.dot_transpose` with conjugated scalars.
-    pub fn apply_pow_in_place_adjoint(&self, p: usize, x: &mut [V], work: &mut [V]) {
-        let a_conj = V::from_complex(self.a.to_complex().conj());
-        let mu_conj = V::from_complex(self.mu.to_complex().conj());
+    /// In-place: `x ← (B^T)^p · x`.  Uses `op.dot_transpose` and the same
+    /// scalars as the forward operator — pure transpose, no conjugation.
+    ///
+    /// This is what the Higham–Tisseur 1-norm estimator wants: the duality
+    /// `‖A‖_1 = ‖A^T‖_∞` holds for any complex matrix without conjugation.
+    pub fn apply_pow_in_place_transpose(&self, p: usize, x: &mut [V], work: &mut [V]) {
+        debug_assert_eq!(x.len(), self.dim());
+        debug_assert!(work.len() >= x.len());
         for _ in 0..p {
             self.op
                 .dot_transpose(true, x, work)
-                .expect("ShiftedOp::apply_pow_in_place_adjoint: dot_transpose failed");
+                .expect("ShiftedOp::apply_pow_in_place_transpose: dot_transpose failed");
             for k in 0..x.len() {
-                work[k] = a_conj * (work[k] - mu_conj * x[k]);
+                work[k] = self.a * (work[k] - self.mu * x[k]);
             }
             x.copy_from_slice(work);
         }
