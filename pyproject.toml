@@ -40,6 +40,11 @@ dev = [
     "ruff>=0.7.3",
     "rust-just>=1.36.0",
 ]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.27",
+]
 
 [tool.isort]
 profile = "black"

@@ -1,0 +1,72 @@
+site_name: QuSpin-rs
+site_description: Rust core for the QuSpin quantum many-body library, with Python bindings.
+site_url: https://quspin.github.io/QuSpin-rust/
+repo_url: https://github.com/QuSpin/QuSpin-rust
+repo_name: QuSpin/QuSpin-rust
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+exclude_docs: |
+  plans/
+  superpowers/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+    - content.code.annotate
+    - toc.integrate
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Guide:
+      - Symmetry groups: guide/symmetry.md
+  - API reference:
+      - Basis types: api/basis.md
+      - Symmetry: api/symmetry.md
+      - Operators: api/operators.md
+      - QMatrix & Hamiltonian: api/qmatrix.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [python]
+          options:
+            show_root_heading: true
+            show_root_full_path: false
+            show_source: false
+            members_order: source
+            docstring_style: google
+            heading_level: 3
+            separate_signature: true
+            show_signature_annotations: true
+            merge_init_into_class: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - toc:
+      permalink: true
