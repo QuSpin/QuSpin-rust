@@ -21,11 +21,11 @@ fn build_spin_basis(
     ham: &Bound<'_, PyAny>,
     byte_seeds: &[Vec<u8>],
 ) -> PyResult<()> {
-    if let Ok(op) = ham.downcast::<PyPauliOperator>() {
+    if let Ok(op) = ham.cast::<PyPauliOperator>() {
         basis
             .build(&op.borrow().inner, byte_seeds)
             .map_err(Error::from)?;
-    } else if let Ok(op) = ham.downcast::<PyBondOperator>() {
+    } else if let Ok(op) = ham.cast::<PyBondOperator>() {
         basis
             .build(&op.borrow().inner, byte_seeds)
             .map_err(Error::from)?;

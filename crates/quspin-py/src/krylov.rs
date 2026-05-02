@@ -112,7 +112,7 @@ impl PyEigSolver {
         let which_enum = parse_which(which)?;
 
         let inner = Arc::clone(&self.inner);
-        let result = py.allow_threads(move || {
+        let result = py.detach(move || {
             eig::lanczos_eig(
                 &mut make_matvec(&inner, time),
                 &v0_vec,
@@ -221,7 +221,7 @@ impl PyFTLM {
         let h_inner = Arc::clone(&self.inner);
         let o_inner = Arc::clone(&observable.inner);
 
-        let result = py.allow_threads(move || -> Result<(f64, C64), QuSpinError> {
+        let result = py.detach(move || -> Result<(f64, C64), QuSpinError> {
             if stored {
                 // Stored path: keep all basis vectors, single Lanczos build
                 let basis = LanczosBasis::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
@@ -348,7 +348,7 @@ impl PyLTLM {
         let h_inner = Arc::clone(&self.inner);
         let o_inner = Arc::clone(&observable.inner);
 
-        let result = py.allow_threads(move || -> Result<(f64, C64), QuSpinError> {
+        let result = py.detach(move || -> Result<(f64, C64), QuSpinError> {
             if stored {
                 // Stored path: keep all basis vectors
                 let basis = LanczosBasis::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
@@ -470,7 +470,7 @@ impl PyFTLMDynamic {
         let h_inner = Arc::clone(&self.inner);
         let a_inner = Arc::clone(&operator.inner);
 
-        let result = py.allow_threads(move || -> Result<Vec<f64>, QuSpinError> {
+        let result = py.detach(move || -> Result<Vec<f64>, QuSpinError> {
             // Left Lanczos: build basis from v0 using H
             let left_basis = LanczosBasisIter::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
             let left_eig = eig::solve_tridiagonal(left_basis.alpha(), left_basis.beta());

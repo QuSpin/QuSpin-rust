@@ -40,7 +40,7 @@ impl PyStatic {
 /// `PySchrodingerEq` can share the same allocation without cloning.
 ///
 /// Python coefficient functions are wrapped in closures that call
-/// `Python::with_gil`, making the underlying `HamiltonianInner` fully
+/// `Python::attach`, making the underlying `HamiltonianInner` fully
 /// `Send + Sync`.  This lets the ODE integrator release the GIL for the
 /// bulk of its computation while still calling back into Python per step.
 #[pyclass(name = "Hamiltonian", module = "quspin._rs")]
@@ -63,7 +63,7 @@ impl PyHamiltonian {
     ///                is always 1.0) or a callable `f(t: float) -> complex`.
     #[new]
     #[pyo3(signature = (qmatrix, coeff_fns))]
-    fn new(py: Python<'_>, qmatrix: &PyQMatrix, coeff_fns: Vec<PyObject>) -> PyResult<Self> {
+    fn new(py: Python<'_>, qmatrix: &PyQMatrix, coeff_fns: Vec<Py<PyAny>>) -> PyResult<Self> {
         let expected = qmatrix.inner.num_coeff();
         if coeff_fns.len() != expected {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
@@ -77,11 +77,11 @@ impl PyHamiltonian {
         let rust_fns: Vec<Option<CoeffFn>> = coeff_fns
             .into_iter()
             .map(|obj| {
-                if obj.downcast_bound::<PyStatic>(py).is_ok() {
+                if obj.cast_bound::<PyStatic>(py).is_ok() {
                     None
                 } else {
                     let arc_fn: CoeffFn = Arc::new(move |t: f64| {
-                        Python::with_gil(|py| {
+                        Python::attach(|py| {
                             let result = obj.call1(py, (t,)).expect("coeff_fn call failed");
                             if let Ok(z) = result.extract::<Complex<f64>>(py) {
                                 z
@@ -153,7 +153,7 @@ impl PyHamiltonian {
         drop_zeros: bool,
     ) -> PyResult<CsrArrays<'py>> {
         let inner = Arc::clone(&self.inner);
-        let result = py.allow_threads(move || inner.to_csr(time, drop_zeros));
+        let result = py.detach(move || inner.to_csr(time, drop_zeros));
         let (indptr, indices, data) = result.map_err(Error::from)?;
         Ok((
             indptr.to_pyarray(py),
@@ -176,7 +176,7 @@ impl PyHamiltonian {
     ) -> PyResult<Bound<'py, PyArray2<Complex64>>> {
         let n = self.inner.dim();
         let inner = Arc::clone(&self.inner);
-        let result = py.allow_threads(move || inner.to_dense(time));
+        let result = py.detach(move || inner.to_dense(time));
         let data = result.map_err(Error::from)?;
         let arr_data: Vec<Complex64> = data.iter().map(|c| Complex64::new(c.re, c.im)).collect();
         let arr = ndarray::Array2::from_shape_vec((n, n), arr_data)
@@ -216,7 +216,7 @@ impl PyHamiltonian {
             .collect();
 
         let inner = Arc::clone(&self.inner);
-        let result = py.allow_threads(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
+        let result = py.detach(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
             inner.dot(overwrite, time, &in_vec, &mut out_vec)?;
             Ok(out_vec)
         });
@@ -269,7 +269,7 @@ impl PyHamiltonian {
             .collect();
 
         let inner = Arc::clone(&self.inner);
-        let result = py.allow_threads(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
+        let result = py.detach(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
             let in_view = ndarray::ArrayView2::from_shape((n, n_vecs), &in_arr)
                 .map_err(|e| QuSpinError::ValueError(e.to_string()))?;
             let mut out_view = ndarray::ArrayViewMut2::from_shape((n, n_vecs), &mut out_vec)
@@ -311,7 +311,7 @@ impl PyHamiltonian {
             .map(|c| Complex::new(c.re, c.im))
             .collect();
         let inner = Arc::clone(&self.inner);
-        let result = py.allow_threads(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
+        let result = py.detach(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
             inner.expm_dot(time, a, &mut f_vec)?;
             Ok(f_vec)
         });
@@ -350,7 +350,7 @@ impl PyHamiltonian {
             .map(|c| Complex::new(c.re, c.im))
             .collect();
         let inner = Arc::clone(&self.inner);
-        let result = py.allow_threads(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
+        let result = py.detach(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
             let mut f_view = ndarray::ArrayViewMut2::from_shape((n, n_vecs), &mut f_vec)
                 .map_err(|e| QuSpinError::ValueError(e.to_string()))?;
             inner.expm_dot_many(time, a, f_view.view_mut())?;
@@ -394,7 +394,7 @@ impl PyHamiltonian {
             .collect();
 
         let inner = Arc::clone(&self.inner);
-        let result = py.allow_threads(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
+        let result = py.detach(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
             let in_view = ndarray::ArrayView2::from_shape((n, n_vecs), &in_arr)
                 .map_err(|e| QuSpinError::ValueError(e.to_string()))?;
             let mut out_view = ndarray::ArrayViewMut2::from_shape((n, n_vecs), &mut out_vec)
