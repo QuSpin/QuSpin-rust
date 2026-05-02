@@ -12,7 +12,7 @@ systematic-debugging = { source = "obra/superpowers/skills/systematic-debugging"
 test-driven-development = { source = "obra/superpowers/skills/test-driven-development" }
 using-superpowers = { source = "obra/superpowers/skills/using-superpowers" }
 verification-before-completion = { source = "obra/superpowers/skills/verification-before-completion" }
-writing-plans = { source = "obra/superpowers/skills/writing-plans" }
+writing-plans = { source = "sickn33/antigravity-awesome-skills/skills/writing-plans" }
 writing-skills = { source = "obra/superpowers/skills/writing-skills" }
 
 [options]

@@ -1,97 +1,111 @@
 [[skill]]
 name = "brainstorming"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "brainstorming"
-commit = "8ea39819eed74fe2a0338e71789f06b30e953041"
-checksum = "sha256:08b73a54591a22066297aaf3766716789534750f546d2e647565adc0f6c25e18"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
+checksum = "sha256:1518efecf35139a9a5b9e60906b71de874af08322200fab18a54848cea8c15fe"
 
 [[skill]]
 name = "dispatching-parallel-agents"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/dispatching-parallel-agents"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
 checksum = "sha256:e21044ae7496fc285f1df9ff3fb518a3a20bea6f5216c1f59f4987e12c769a0a"
 
 [[skill]]
 name = "executing-plans"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/executing-plans"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
 checksum = "sha256:2f709d1a2c7564f8ce6a9bb707e7f5451117ba80f8e8e2302662c29bc61246a6"
 
 [[skill]]
 name = "finishing-a-development-branch"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/finishing-a-development-branch"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
 checksum = "sha256:9edba9a38684c060fdc38290f640e1dc0c37de286723ac9be73bacacf7cd6f3d"
 
 [[skill]]
 name = "receiving-code-review"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/receiving-code-review"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
 checksum = "sha256:2760c85d4f4117b0006e7ba755f4bbd61f8f4c185f347999763c97f507274e30"
 
 [[skill]]
 name = "requesting-code-review"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/requesting-code-review"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
 checksum = "sha256:046180bd8519589b176d575e32a720c43cf6834f2e4d182277faf8943fe03564"
 
 [[skill]]
 name = "subagent-driven-development"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/subagent-driven-development"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
 checksum = "sha256:96697eb8dde8631ee7cd5e1cb29c6d7c0b8ef2869c0875dd2eedf07762e5feae"
 
 [[skill]]
 name = "systematic-debugging"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/systematic-debugging"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
 checksum = "sha256:6fddb1f3952f65f1f3a2ef267ae4ab6919ff70a8b36672ea908640ae21a34ea0"
 
 [[skill]]
 name = "test-driven-development"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/test-driven-development"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
 checksum = "sha256:126f1ebf6ccd414f42544f6e83d8cc5adb089e1108eaffb7c400701e37eecd9f"
 
 [[skill]]
 name = "using-git-worktrees"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/using-git-worktrees"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
 checksum = "sha256:52bbb4b6e80918e83e92a1514f3b3757712154c2a8a42de24919e48a794c54fc"
 
 [[skill]]
 name = "using-superpowers"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/using-superpowers"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
-checksum = "sha256:df560ba219fc828fd3e49749dffad1fc4d730538ea2ef81ec18751c5fb16da32"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
+checksum = "sha256:8ae2ec915dd4b5e4b758ee8110190fd792e85eb05d670fece942a76603e31cb8"
 
 [[skill]]
 name = "verification-before-completion"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/verification-before-completion"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
 checksum = "sha256:9b446f0c7fe1cfb560b1d34439523b1a76d5f177290007b2c053a1c749a4a8ba"
 
 [[skill]]
 name = "writing-plans"
-source = "https://github.com/obra/superpowers.git"
+source = "https://github.com/sickn33/antigravity-awesome-skills.git"
+kind = "git"
 path = "skills/writing-plans"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
-checksum = "sha256:51c3a157b6026417aa8005230aafabc17bec820248c7c8b4ca106cf696c31ffd"
+commit = "9d0b37c3bb3c4d17993caa5e31e08720f6cc9c8b"
+checksum = "sha256:a87a54f16f5a95a920efd739db9d12991f0eb724d6def53bc1fb3852136cbe91"
 
 [[skill]]
 name = "writing-skills"
 source = "https://github.com/obra/superpowers.git"
+kind = "git"
 path = "skills/writing-skills"
-commit = "363923f74aa9cd7b470c0aaa73dee629a8bfdc90"
-checksum = "sha256:5cb2cd1d6c3a2d4f598fdaceb852f302de034f57ee7872924ffc1fc2e9ca7745"
+commit = "e7a2d16476bf042e9add4699c9d018a90f86e4a6"
+checksum = "sha256:272ccd701f41b94e1119aaa99455a52cdb8e07283cb6a6aab32a7722d96bef45"

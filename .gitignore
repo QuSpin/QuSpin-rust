@@ -9,6 +9,7 @@
 scratch/
 .venv/
 .env/
+site/
 
 # CMake files
 CMakeLists.txt.user
@@ -66,20 +67,5 @@ __pycache__
 scratch/
 
 # Managed by ion
-.agents/skills/ion-cli
-.agents/skills/receiving-code-review
-.agents/skills/requesting-code-review
-.agents/skills/using-git-worktrees
-.agents/skills/brainstorming
-.agents/skills/dispatching-parallel-agents
-.agents/skills/executing-plans
-.agents/skills/finishing-a-development-branch
-.agents/skills/subagent-driven-development
-.agents/skills/systematic-debugging
-.agents/skills/test-driven-development
-.agents/skills/using-superpowers
-.agents/skills/verification-before-completion
-.agents/skills/writing-plans
-.agents/skills/writing-skills
-.claude/skills/ion-cli
-.claude/skills/brainstorming
+.agents/skills/*
+.claude/skills/*
