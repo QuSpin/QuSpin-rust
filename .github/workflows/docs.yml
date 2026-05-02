@@ -1,0 +1,59 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Pages deploys + PR comments need write tokens.
+permissions:
+  contents: write
+  pull-requests: write
+
+# Allow only one concurrent docs deploy per ref so PR previews don't
+# clobber each other mid-deploy.
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & deploy docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install docs dependencies
+        run: uv sync --group docs --no-install-project
+
+      - name: Build site
+        run: uv run --group docs mkdocs build --strict
+
+      # Production deploy on push to main → gh-pages root.
+      - name: Deploy to GitHub Pages (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: site
+          # Preserve the per-PR preview directories under pr-preview/ that
+          # rossjrw/pr-preview-action manages. Without this, every main
+          # deploy would wipe live PR previews.
+          keep_files: true
+
+      # Per-PR preview deploy → gh-pages/pr-preview/pr-N/.
+      # The action also posts / updates a comment with the preview URL and
+      # cleans up the directory when the PR closes.
+      - name: Deploy PR preview
+        if: github.event_name == 'pull_request'
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./site
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
+          action: auto
