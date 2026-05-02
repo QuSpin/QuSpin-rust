@@ -4,6 +4,7 @@ use crate::basis::generic::PyGenericBasis;
 use crate::basis::spin::PySpinBasis;
 use crate::dtype::FromPyDescr;
 use crate::error::Error;
+use crate::linear_operator::PyQMatrixLinearOperator;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::boson::PyBosonOperator;
 use crate::operator::fermion::PyFermionOperator;
@@ -25,14 +26,18 @@ type CsrArrays<'py> = (
 use pyo3::prelude::*;
 use quspin_core::dtype::ValueDType;
 use quspin_core::qmatrix::QMatrixInner;
+use std::sync::Arc;
 
 /// Python-facing sparse quantum matrix.
 ///
-/// Built from an operator + basis pair; stores a type-erased `QMatrixInner`.
-/// Matrix-vector products, CSR export, and arithmetic are all supported.
+/// Built from an operator + basis pair; stores a type-erased `QMatrixInner`
+/// behind an `Arc` so the same allocation can be cheaply shared with
+/// [`PyQMatrixLinearOperator`].
+///
+/// [`PyQMatrixLinearOperator`]: crate::linear_operator::PyQMatrixLinearOperator
 #[pyclass(name = "QMatrix", module = "quspin._rs")]
 pub struct PyQMatrix {
-    pub inner: QMatrixInner,
+    pub inner: Arc<QMatrixInner>,
 }
 
 // ---------------------------------------------------------------------------
@@ -72,7 +77,9 @@ impl PyQMatrix {
                 "basis must be SpinBasis or FermionBasis for build_pauli",
             ));
         };
-        Ok(PyQMatrix { inner })
+        Ok(PyQMatrix {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Build from a `BondOperator` and any basis type.
@@ -96,7 +103,9 @@ impl PyQMatrix {
                 "basis must be SpinBasis, FermionBasis, or BosonBasis for build_bond",
             ));
         };
-        Ok(PyQMatrix { inner })
+        Ok(PyQMatrix {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Build from a `BosonOperator` and a `BosonBasis`.
@@ -110,7 +119,9 @@ impl PyQMatrix {
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
         let inner = QMatrixInner::build_boson(&op.inner, &basis.inner.inner, vdtype);
-        Ok(PyQMatrix { inner })
+        Ok(PyQMatrix {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Build from a `FermionOperator` and a `FermionBasis`. Uses the
@@ -126,7 +137,9 @@ impl PyQMatrix {
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
         let inner = QMatrixInner::build_fermion_bit(&op.inner, &basis.inner.inner, vdtype);
-        Ok(PyQMatrix { inner })
+        Ok(PyQMatrix {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Build from a `MonomialOperator` and a basis (any of
@@ -153,7 +166,9 @@ impl PyQMatrix {
                 "basis must be SpinBasis, FermionBasis, BosonBasis, or GenericBasis",
             ));
         };
-        Ok(PyQMatrix { inner })
+        Ok(PyQMatrix {
+            inner: Arc::new(inner),
+        })
     }
 
     // ------------------------------------------------------------------
@@ -195,21 +210,50 @@ impl PyQMatrix {
     // ------------------------------------------------------------------
 
     fn __add__(&self, rhs: &PyQMatrix) -> PyResult<PyQMatrix> {
-        let inner = self
-            .inner
+        let inner = (*self.inner)
             .clone()
-            .try_add(rhs.inner.clone())
+            .try_add((*rhs.inner).clone())
             .map_err(Error::from)?;
-        Ok(PyQMatrix { inner })
+        Ok(PyQMatrix {
+            inner: Arc::new(inner),
+        })
     }
 
     fn __sub__(&self, rhs: &PyQMatrix) -> PyResult<PyQMatrix> {
-        let inner = self
-            .inner
+        let inner = (*self.inner)
             .clone()
-            .try_sub(rhs.inner.clone())
+            .try_sub((*rhs.inner).clone())
             .map_err(Error::from)?;
-        Ok(PyQMatrix { inner })
+        Ok(PyQMatrix {
+            inner: Arc::new(inner),
+        })
+    }
+
+    // ------------------------------------------------------------------
+    // LinearOperator snapshot
+    // ------------------------------------------------------------------
+
+    /// Snapshot the matrix with a fully-evaluated coefficient vector.
+    ///
+    /// Args:
+    ///     coeffs: 1-D complex128 array of length ``num_coeff``.
+    ///
+    /// Returns:
+    ///     A `QMatrixLinearOperator` sharing the same matrix allocation.
+    fn as_linearoperator<'py>(
+        &self,
+        coeffs: PyReadonlyArray1<'py, Complex64>,
+    ) -> PyResult<PyQMatrixLinearOperator> {
+        let coeffs_vec: Vec<Complex<f64>> = coeffs
+            .as_array()
+            .iter()
+            .map(|c| Complex::new(c.re, c.im))
+            .collect();
+        let owned = quspin_core::OwnedQMatrixOperator::new(Arc::clone(&self.inner), coeffs_vec)
+            .map_err(Error::from)?;
+        Ok(PyQMatrixLinearOperator {
+            inner: Arc::new(owned),
+        })
     }
 
     // ------------------------------------------------------------------

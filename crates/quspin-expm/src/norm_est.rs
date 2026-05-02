@@ -26,11 +26,7 @@ use crate::shifted_op::ShiftedOp;
 /// may be slightly less accurate for `f32` inputs, but this is an acceptable
 /// tradeoff — the norm estimate is only used to choose scaling parameters,
 /// not as a final result.
-pub(crate) fn onenorm_matrix_power_nnm<V, Op>(
-    b: &ShiftedOp<'_, V, Op>,
-    p: usize,
-    ell: usize,
-) -> V::Real
+pub(crate) fn onenorm_matrix_power_nnm<V, Op>(b: &ShiftedOp<V, Op>, p: usize, ell: usize) -> V::Real
 where
     V: ExpmComputation,
     Op: LinearOperator<V>,

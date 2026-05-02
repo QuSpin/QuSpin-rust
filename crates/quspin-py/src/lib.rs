@@ -1,16 +1,20 @@
 pub mod basis;
 pub mod dtype;
 pub mod error;
+pub mod expm;
 pub mod hamiltonian;
 pub mod krylov;
+pub mod linear_operator;
 pub mod operator;
 pub mod qmatrix;
 pub mod schrodinger;
 
 use basis::sym_element::{_compose, _order, _validate_group, composite, lattice, local};
 use basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis, PySymElement};
+use expm::{PyExpmOp, PyExpmWorker, PyExpmWorker2};
 use hamiltonian::{PyHamiltonian, PyStatic};
 use krylov::{PyEigSolver, PyFTLM, PyFTLMDynamic, PyLTLM};
+use linear_operator::PyQMatrixLinearOperator;
 use operator::{
     PyBondOperator, PyBosonOperator, PyFermionOperator, PyMonomialOperator, PyPauliOperator,
 };
@@ -44,6 +48,10 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyQMatrix>()?;
     m.add_class::<PyStatic>()?;
     m.add_class::<PyHamiltonian>()?;
+    m.add_class::<PyQMatrixLinearOperator>()?;
+    m.add_class::<PyExpmOp>()?;
+    m.add_class::<PyExpmWorker>()?;
+    m.add_class::<PyExpmWorker2>()?;
     m.add_class::<PySchrodingerEq>()?;
     // Krylov subspace methods
     m.add_class::<PyEigSolver>()?;

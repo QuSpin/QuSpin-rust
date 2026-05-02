@@ -9,19 +9,23 @@
 use quspin_types::ExpmComputation;
 use quspin_types::LinearOperator;
 
-/// Borrowed view of the shifted operator `B = a·(A − μI)`.
-pub(crate) struct ShiftedOp<'a, V, Op> {
-    pub op: &'a Op,
+/// Shifted operator `B = a·(A − μI)`.
+///
+/// `Op` is held by value; pass `&T` to obtain a borrowed shifted view, or an
+/// owned/shared type (`Arc<T>`, etc.) for a long-lived one — the relevant
+/// `LinearOperator<V>` blanket impls live in `quspin-types`.
+pub(crate) struct ShiftedOp<V, Op> {
+    pub op: Op,
     pub a: V,
     pub mu: V,
 }
 
-impl<'a, V, Op> ShiftedOp<'a, V, Op>
+impl<V, Op> ShiftedOp<V, Op>
 where
     V: ExpmComputation,
     Op: LinearOperator<V>,
 {
-    pub fn new(op: &'a Op, a: V, mu: V) -> Self {
+    pub fn new(op: Op, a: V, mu: V) -> Self {
         Self { op, a, mu }
     }
 

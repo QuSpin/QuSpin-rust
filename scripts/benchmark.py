@@ -3,6 +3,7 @@ import math
 import numpy as np
 
 from quspin_rs._rs import (
+    ExpmOp,
     Hamiltonian,
     PauliOperator,
     QMatrix,
@@ -78,15 +79,15 @@ output = np.zeros_like(psi0)
 ham.dot_many(0.5, psi0.reshape((-1, 1)), output.reshape((-1, 1)), True)
 
 
-# TODO: Fix this this interface, should have input and output arrays
-# This method is going to be removed later on. after issue https://github.com/QuSpin/QuSpin-rust/issues/33
 a = 0.01j
 print(psi0)
-ham.expm_dot(0.0, a, input1 := psi0.copy())
+expm_op = ExpmOp(ham.as_linearoperator(0.0), a)
+worker = expm_op.worker(1)
+worker.apply(input1 := psi0.copy())
 print(input1)
-ham.expm_dot(0.0, a, input2 := input1.copy())
+worker.apply(input2 := input1.copy())
 print(input2)
-ham.expm_dot(0.0, a, input3 := input2.copy())
+worker.apply(input3 := input2.copy())
 print(input3)
 
 print(ham.dtype)

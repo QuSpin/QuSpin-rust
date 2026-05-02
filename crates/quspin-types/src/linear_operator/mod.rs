@@ -10,10 +10,9 @@
 //!
 //! [`LinearOperator::parallel_hint`] signals whether the operator can safely be
 //! called from the persistent-thread parallel expm path.  Operators with internal
-//! rayon parallelism or GIL-bound callbacks should return `false`; the
-//! `expm_multiply_auto` functions will then use the sequential path, which calls
-//! [`LinearOperator::dot`] once per Taylor iteration and allows the operator to
-//! parallelise internally.
+//! rayon parallelism or GIL-bound callbacks should return `false`; `ExpmOp`
+//! will then use the sequential path, which calls [`LinearOperator::dot`] once
+//! per Taylor iteration and allows the operator to parallelise internally.
 
 pub mod fn_op;
 
@@ -62,7 +61,7 @@ pub trait LinearOperator<V: ExpmComputation>: Send + Sync {
     /// Column 1-norm of the shifted matrix: `‖A_eff − shift·I‖₁`.
     fn onenorm(&self, shift: V) -> V::Real;
 
-    /// Whether `expm_multiply_auto` may use the persistent-thread parallel path.
+    /// Whether `ExpmOp` may use the persistent-thread parallel path.
     ///
     /// Return `false` to force the sequential path, which calls [`dot`] once per
     /// Taylor iteration.  This is the correct choice when the operator has
@@ -127,3 +126,89 @@ pub trait LinearOperator<V: ExpmComputation>: Send + Sync {
 
 /// Convenience alias for a heap-allocated, type-erased [`LinearOperator`].
 pub type DynLinearOperator<V> = Box<dyn LinearOperator<V> + Send + Sync>;
+
+// ---------------------------------------------------------------------------
+// Blanket impls so references and smart pointers auto-implement the trait.
+//
+// These let `ExpmOp<V, Op>` (and similar generic consumers) accept either an
+// owned operator (`Op = T`), a reference (`Op = &T` — the lifetime lives in
+// `Op`), or a shared `Arc<T>` / `Box<T>` interchangeably.
+// ---------------------------------------------------------------------------
+
+macro_rules! forward_linear_operator {
+    ($self_ty:ty, $($bounds:tt)*) => {
+        impl<T, V> LinearOperator<V> for $self_ty
+        where
+            T: LinearOperator<V> + ?Sized,
+            V: ExpmComputation,
+            $($bounds)*
+        {
+            #[inline]
+            fn dim(&self) -> usize {
+                (**self).dim()
+            }
+            #[inline]
+            fn trace(&self) -> V {
+                (**self).trace()
+            }
+            #[inline]
+            fn onenorm(&self, shift: V) -> V::Real {
+                (**self).onenorm(shift)
+            }
+            #[inline]
+            fn parallel_hint(&self) -> bool {
+                (**self).parallel_hint()
+            }
+            #[inline]
+            fn dot(
+                &self,
+                overwrite: bool,
+                input: &[V],
+                output: &mut [V],
+            ) -> Result<(), QuSpinError> {
+                (**self).dot(overwrite, input, output)
+            }
+            #[inline]
+            fn dot_transpose(
+                &self,
+                overwrite: bool,
+                input: &[V],
+                output: &mut [V],
+            ) -> Result<(), QuSpinError> {
+                (**self).dot_transpose(overwrite, input, output)
+            }
+            #[inline]
+            fn dot_many(
+                &self,
+                overwrite: bool,
+                input: ArrayView2<'_, V>,
+                output: ArrayViewMut2<'_, V>,
+            ) -> Result<(), QuSpinError> {
+                (**self).dot_many(overwrite, input, output)
+            }
+            #[inline]
+            fn dot_chunk(
+                &self,
+                overwrite: bool,
+                input: &[V],
+                output_chunk: &mut [V],
+                row_start: usize,
+            ) -> Result<(), QuSpinError> {
+                (**self).dot_chunk(overwrite, input, output_chunk, row_start)
+            }
+            #[inline]
+            fn dot_transpose_chunk(
+                &self,
+                input: &[V],
+                output: &[V::Atomic],
+                rows: Range<usize>,
+            ) -> Result<(), QuSpinError> {
+                (**self).dot_transpose_chunk(input, output, rows)
+            }
+        }
+    };
+}
+
+forward_linear_operator!(&T,);
+forward_linear_operator!(Box<T>,);
+forward_linear_operator!(std::sync::Arc<T>,);
