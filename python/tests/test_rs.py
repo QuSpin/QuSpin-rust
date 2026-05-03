@@ -722,7 +722,7 @@ class TestExpmOpAndWorker:
         assert qop_t0.dim == 2 == qop_t1.dim
         # The coefficient is internal — verify indirectly through ExpmOp:
         expm_op_t1 = ExpmOp(qop_t1, complex(-0.5, 0.0))
-        worker = expm_op_t1.worker(1)
+        worker = expm_op_t1.worker()
         psi = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
         worker.apply(psi)
         # H(π/2) = Z, exp(-0.5·Z) on |0⟩ = exp(-0.5)·|0⟩
@@ -740,12 +740,28 @@ class TestExpmOpAndWorker:
 
     # -- worker(n_vec) dispatches to the right type ---------------------------
 
-    def test_worker_n_vec_1_returns_1d_worker(self):
+    def test_worker_n_vec_0_returns_1d_worker(self):
+        ham = self._diagonal_ham()
+        qop = ham.as_linearoperator(0.0)
+        eo = ExpmOp(qop, complex(0.0, -math.pi / 4))
+        w = eo.worker(0)
+        assert isinstance(w, ExpmWorker)
+
+    def test_worker_default_n_vec_returns_1d_worker(self):
+        """Default n_vec is 0 → 1-D ExpmWorker."""
+        ham = self._diagonal_ham()
+        qop = ham.as_linearoperator(0.0)
+        eo = ExpmOp(qop, complex(0.0, -math.pi / 4))
+        assert isinstance(eo.worker(), ExpmWorker)
+
+    def test_worker_n_vec_1_returns_2d_worker_capacity_1(self):
+        """n_vec=1 unambiguously means 2-D batch of capacity 1."""
         ham = self._diagonal_ham()
         qop = ham.as_linearoperator(0.0)
         eo = ExpmOp(qop, complex(0.0, -math.pi / 4))
         w = eo.worker(1)
-        assert isinstance(w, ExpmWorker)
+        assert isinstance(w, ExpmWorker2)
+        assert w.n_vec == 1
 
     def test_worker_n_vec_gt1_returns_2d_worker(self):
         ham = self._diagonal_ham()
@@ -754,13 +770,6 @@ class TestExpmOpAndWorker:
         w = eo.worker(3)
         assert isinstance(w, ExpmWorker2)
         assert w.n_vec == 3
-
-    def test_worker_n_vec_zero_raises(self):
-        ham = self._diagonal_ham()
-        qop = ham.as_linearoperator(0.0)
-        eo = ExpmOp(qop, complex(0.0, -1.0))
-        with pytest.raises(Exception):
-            eo.worker(0)
 
     # -- 1-D apply correctness ------------------------------------------------
 
@@ -771,11 +780,11 @@ class TestExpmOpAndWorker:
         eo = ExpmOp(qop, a)
         f = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128) / math.sqrt(2)
         expected = self._ref_expm_z(a, f.copy())
-        eo.worker(1).apply(f)
+        eo.worker().apply(f)
         np.testing.assert_allclose(f, expected, atol=1e-10)
 
     def test_worker_apply_xx_matches_eigendecomposition(self):
-        """Cross-check: ExpmOp.worker(1).apply == exp(a·H) via eigendecomposition."""
+        """Cross-check: ExpmOp.worker().apply == exp(a·H) via eigendecomposition."""
         ham = self._xx_ham()
         a = -1j * math.pi / 3
         H = ham.to_dense(0.0)
@@ -788,7 +797,7 @@ class TestExpmOpAndWorker:
         expected = ref_expm @ f
 
         eo = ExpmOp(ham.as_linearoperator(0.0), a)
-        eo.worker(1).apply(f)
+        eo.worker().apply(f)
 
         np.testing.assert_allclose(f, expected, atol=1e-10)
 
@@ -797,7 +806,7 @@ class TestExpmOpAndWorker:
         ham = self._diagonal_ham()
         a = -1j * math.pi / 4
         eo = ExpmOp(ham.as_linearoperator(0.0), a)
-        worker = eo.worker(1)
+        worker = eo.worker()
         f = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
         worker.apply(f)
         first = f.copy()
@@ -808,7 +817,7 @@ class TestExpmOpAndWorker:
     def test_worker_apply_wrong_shape_raises(self):
         ham = self._diagonal_ham()
         eo = ExpmOp(ham.as_linearoperator(0.0), -1j)
-        worker = eo.worker(1)
+        worker = eo.worker()
         f = np.zeros(5, dtype=np.complex128)
         with pytest.raises(Exception):
             worker.apply(f)
@@ -863,12 +872,12 @@ class TestExpmOpAndWorker:
         a = -1j * math.pi / 4
         eo = ExpmOp(ham.as_linearoperator(0.0), a)
         work = np.zeros(2 * eo.dim, dtype=np.complex128)  # length 4
-        worker = eo.worker(1, work=work)
+        worker = eo.worker(0, work=work)
         f = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
         worker.apply(f)
         # Ground truth via plain worker
         f_ref = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
-        eo.worker(1).apply(f_ref)
+        eo.worker().apply(f_ref)
         np.testing.assert_allclose(f, f_ref, atol=1e-12)
 
     def test_worker_with_user_work_2d(self):

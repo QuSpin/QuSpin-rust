@@ -6,8 +6,9 @@
 //! clone of that same `ExpmOp`.
 //!
 //! `expm_op.worker(n_vec, work)` dispatches at construction time:
-//! - `n_vec == 1` → `PyExpmWorker` (1-D scratch, accepts 1-D `apply`)
-//! - `n_vec  > 1` → `PyExpmWorker2` (2-D scratch, accepts 2-D `apply`)
+//! - `n_vec == 0` → `PyExpmWorker` (1-D scratch, accepts 1-D `apply`)
+//! - `n_vec  > 0` → `PyExpmWorker2` (2-D scratch of capacity `n_vec`,
+//!   accepts 2-D `apply`)
 
 use std::sync::Arc;
 
@@ -76,31 +77,28 @@ impl PyExpmOp {
     /// Build a worker bound to this operator.
     ///
     /// Args:
-    ///     n_vec: Batch capacity.  ``1`` returns a 1-D ``ExpmWorker``;
-    ///         values ``> 1`` return a 2-D ``ExpmWorker2``.
+    ///     n_vec: Output dimensionality / batch capacity.  ``0`` (the default)
+    ///         returns a 1-D ``ExpmWorker`` for single-vector application;
+    ///         any value ``> 0`` returns a 2-D ``ExpmWorker2`` whose ``apply``
+    ///         accepts shape ``(dim, k)`` with ``k <= n_vec``.
     ///     work:  Optional caller-supplied scratch buffer adopted as the
-    ///         worker's backing storage (no copy).  For ``n_vec == 1`` a
+    ///         worker's backing storage (no copy).  For ``n_vec == 0`` a
     ///         1-D ``complex128`` array of length ``>= 2 * dim``; for
-    ///         ``n_vec > 1`` a 2-D ``complex128`` array of shape
+    ///         ``n_vec > 0`` a 2-D ``complex128`` array of shape
     ///         ``(>= 2 * dim, >= n_vec)``.  When ``None`` (default), a
     ///         fresh buffer is allocated.
-    #[pyo3(signature = (n_vec = 1, work = None))]
+    #[pyo3(signature = (n_vec = 0, work = None))]
     fn worker<'py>(
         &self,
         py: Python<'py>,
         n_vec: usize,
         work: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        if n_vec == 0 {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "n_vec must be >= 1",
-            ));
-        }
         let dim = self.inner.dim();
         let need = 2 * dim;
         let expm_op = Arc::clone(&self.inner);
 
-        if n_vec == 1 {
+        if n_vec == 0 {
             let inner = match work {
                 Some(arr) => {
                     let buf = extract_buf_1d(&arr, need)?;

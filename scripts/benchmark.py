@@ -82,7 +82,7 @@ ham.dot_many(0.5, psi0.reshape((-1, 1)), output.reshape((-1, 1)), True)
 a = 0.01j
 print(psi0)
 expm_op = ExpmOp(ham.as_linearoperator(0.0), a)
-worker = expm_op.worker(1)
+worker = expm_op.worker()
 worker.apply(input1 := psi0.copy())
 print(input1)
 worker.apply(input2 := input1.copy())

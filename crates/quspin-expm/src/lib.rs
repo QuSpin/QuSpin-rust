@@ -15,7 +15,7 @@ pub mod params;
 mod shifted_op;
 
 pub use algorithm::PAR_THRESHOLD;
-pub use expm_op::{ExpmOp, ExpmWorker, ExpmWorker2, compute_expm_params};
+pub use expm_op::{AnyExpmWorker, ExpmOp, ExpmWorker, ExpmWorker2, compute_expm_params};
 pub use params::{LazyNormInfo, fragment_3_1};
 pub use quspin_types::{
     AtomicAccum, DynLinearOperator, ExpmComputation, FnLinearOperator, LinearOperator,

@@ -46,7 +46,7 @@ mat = QMatrix.build_pauli(H, basis, np.dtype("float64"))
 # Time-evolve a state under H: psi ← exp(-i·dt·H) · psi
 ham = Hamiltonian(mat, [Static()])
 expm_op = ExpmOp(ham.as_linearoperator(0.0), a=-1j * 0.05)
-worker = expm_op.worker(1)             # 2*dim scratch, reused across calls
+worker = expm_op.worker()              # 1-D worker (n_vec=0); 2*dim scratch reused
 psi = np.zeros(basis.size, dtype=np.complex128)
 psi[0] = 1.0
 worker.apply(psi)                      # one timestep, no allocations

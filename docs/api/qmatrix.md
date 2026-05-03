@@ -33,7 +33,9 @@ cooperating types:
 3. **`ExpmWorker`** (1-D) / **`ExpmWorker2`** (2-D batch) — packages
    reusable scratch memory bound to an `ExpmOp`.  Built via
    `expm_op.worker(n_vec, work)`, which dispatches at construction time:
-   `n_vec == 1` returns `ExpmWorker`, `n_vec > 1` returns `ExpmWorker2`.
+   `n_vec == 0` (the default) returns `ExpmWorker` for single-vector
+   application; `n_vec > 0` returns `ExpmWorker2` whose `apply` accepts
+   a `(dim, k)` array with `k <= n_vec`.
 
 ```python
 import numpy as np
@@ -50,8 +52,8 @@ ham = Hamiltonian(mat, [Static()])
 qop = ham.as_linearoperator(0.0)
 expm_op = ExpmOp(qop, a=-1j * 0.05)            # `a` = -i·dt for time evolution
 
-# Single-vector worker — `apply` reuses the worker's 2*dim scratch buffer.
-worker = expm_op.worker(1)
+# Single-vector worker (n_vec=0, the default).
+worker = expm_op.worker()
 psi = np.array([1, 0, 0, 0], dtype=np.complex128)
 worker.apply(psi)         # psi ← exp(-i·dt·H) · psi
 worker.apply(psi)         # second step, no allocations

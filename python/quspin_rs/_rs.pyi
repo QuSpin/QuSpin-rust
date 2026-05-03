@@ -794,22 +794,24 @@ class ExpmOp:
     def a(self) -> complex: ...
     def worker(
         self,
-        n_vec: int = 1,
+        n_vec: int = 0,
         work: npt.NDArray[Any] | None = None,
     ) -> ExpmWorker | ExpmWorker2:
         """Build a worker bound to this operator.
 
         Args:
-            n_vec: Batch capacity.  ``1`` returns a 1-D ``ExpmWorker``;
-                values ``> 1`` return a 2-D ``ExpmWorker2``.
-            work:  Optional pre-allocated scratch buffer.  For ``n_vec == 1``
+            n_vec: Output dimensionality / batch capacity.  ``0`` (the default)
+                returns a 1-D ``ExpmWorker`` for single-vector application;
+                any value ``> 0`` returns a 2-D ``ExpmWorker2`` whose ``apply``
+                accepts shape ``(dim, k)`` with ``k <= n_vec``.
+            work:  Optional pre-allocated scratch buffer.  For ``n_vec == 0``
                 a 1-D ``complex128`` array of length ``>= 2 * dim``; for
-                ``n_vec > 1`` a 2-D ``complex128`` array of shape
+                ``n_vec > 0`` a 2-D ``complex128`` array of shape
                 ``(>= 2 * dim, >= n_vec)``.  When ``None`` (default), a fresh
                 buffer is allocated.
 
         Returns:
-            ``ExpmWorker`` if ``n_vec == 1``, otherwise ``ExpmWorker2``.
+            ``ExpmWorker`` if ``n_vec == 0``, otherwise ``ExpmWorker2``.
         """
         ...
 

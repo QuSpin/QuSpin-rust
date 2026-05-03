@@ -128,6 +128,9 @@ where
 /// Holds an `Arc<ExpmOp<V, Op>>` so the worker can be freely moved or stored
 /// independently of the originating `ExpmOp`.  Each `apply` reuses the
 /// internal `2 · dim()` scratch buffer instead of reallocating.
+///
+/// In the unified [`ExpmOp::worker`] dispatch this is the `n_vec == 0`
+/// branch.  Use [`ExpmWorker2`] when you need 2-D batch application.
 pub struct ExpmWorker<V, Op>
 where
     V: ExpmComputation,
@@ -190,6 +193,9 @@ where
 ///
 /// Holds an `Arc<ExpmOp<V, Op>>` plus a `(2 · dim, n_vecs)` scratch buffer
 /// reused across `apply` calls.
+///
+/// In the unified [`ExpmOp::worker`] dispatch this is the `n_vec > 0`
+/// branch.  Use [`ExpmWorker`] for single-vector application.
 pub struct ExpmWorker2<V, Op>
 where
     V: ExpmComputation,
@@ -256,6 +262,49 @@ where
         }
         let work_view = self.work.slice_mut(ndarray::s![.., ..want]);
         self.expm_op.apply_many_into(f, work_view)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AnyExpmWorker — runtime-dispatched 1-D / 2-D worker
+// ---------------------------------------------------------------------------
+
+/// Runtime-dispatched worker returned by [`ExpmOp::worker`].
+///
+/// `Single` wraps a 1-D [`ExpmWorker`] (selected when `n_vec == 0`); `Batch`
+/// wraps a 2-D [`ExpmWorker2`] (selected when `n_vec > 0`).  This mirrors
+/// the Python `expm_op.worker(n_vec) -> ExpmWorker | ExpmWorker2` dispatch.
+pub enum AnyExpmWorker<V, Op>
+where
+    V: ExpmComputation,
+    Op: LinearOperator<V>,
+{
+    /// 1-D worker — `n_vec == 0`.  `apply` takes an `ArrayViewMut1`.
+    Single(ExpmWorker<V, Op>),
+    /// 2-D batch worker — `n_vec > 0`.  `apply` takes an `ArrayViewMut2`
+    /// of shape `(dim, k)` with `k <= n_vec`.
+    Batch(ExpmWorker2<V, Op>),
+}
+
+impl<V, Op> ExpmOp<V, Op>
+where
+    V: ExpmComputation,
+    Op: LinearOperator<V>,
+{
+    /// Build a worker bound to `self` (which must already be in an `Arc`).
+    ///
+    /// `n_vec == 0` produces a 1-D [`ExpmWorker`] for single-vector
+    /// application; `n_vec > 0` produces a 2-D [`ExpmWorker2`] whose
+    /// `apply` accepts shape `(dim, k)` with `k <= n_vec`.
+    ///
+    /// For Rust callers that want a typed worker directly, see
+    /// [`ExpmWorker::new`] / [`ExpmWorker2::new`].
+    pub fn worker(self: &Arc<Self>, n_vec: usize) -> AnyExpmWorker<V, Op> {
+        if n_vec == 0 {
+            AnyExpmWorker::Single(ExpmWorker::new(Arc::clone(self)))
+        } else {
+            AnyExpmWorker::Batch(ExpmWorker2::new(Arc::clone(self), n_vec))
+        }
     }
 }
 
@@ -423,5 +472,27 @@ mod tests {
         let expm_op = Arc::new(ExpmOp::new(&op, Complex::new(0.0, -0.5)).unwrap());
         let buf = vec![Complex::new(0.0, 0.0); 1]; // need 2*dim = 4
         assert!(ExpmWorker::with_buf(expm_op, buf).is_err());
+    }
+
+    /// `Arc<ExpmOp>::worker(0)` returns the 1-D variant.
+    #[test]
+    fn dispatch_worker_n_vec_zero_is_single() {
+        let op = diag2(Complex::new(1.0, 0.0), Complex::new(-1.0, 0.0));
+        let expm_op = Arc::new(ExpmOp::new(&op, Complex::new(0.0, -0.5)).unwrap());
+        match expm_op.worker(0) {
+            AnyExpmWorker::Single(_) => {}
+            AnyExpmWorker::Batch(_) => panic!("n_vec == 0 must return Single"),
+        }
+    }
+
+    /// `Arc<ExpmOp>::worker(n)` for n > 0 returns the 2-D variant.
+    #[test]
+    fn dispatch_worker_n_vec_positive_is_batch() {
+        let op = diag2(Complex::new(1.0, 0.0), Complex::new(-1.0, 0.0));
+        let expm_op = Arc::new(ExpmOp::new(&op, Complex::new(0.0, -0.5)).unwrap());
+        match expm_op.worker(3) {
+            AnyExpmWorker::Single(_) => panic!("n_vec > 0 must return Batch"),
+            AnyExpmWorker::Batch(w) => assert_eq!(w.n_vecs(), 3),
+        }
     }
 }
