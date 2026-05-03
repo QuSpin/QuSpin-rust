@@ -1890,7 +1890,9 @@ cooperating types:</p>
 <li><strong><code>ExpmWorker</code></strong> (1-D) / <strong><code>ExpmWorker2</code></strong> (2-D batch) — packages
    reusable scratch memory bound to an <code>ExpmOp</code>.  Built via
    <code>expm_op.worker(n_vec, work)</code>, which dispatches at construction time:
-   <code>n_vec == 1</code> returns <code>ExpmWorker</code>, <code>n_vec &gt; 1</code> returns <code>ExpmWorker2</code>.</li>
+   <code>n_vec == 0</code> (the default) returns <code>ExpmWorker</code> for single-vector
+   application; <code>n_vec &gt; 0</code> returns <code>ExpmWorker2</code> whose <code>apply</code> accepts
+   a <code>(dim, k)</code> array with <code>k &lt;= n_vec</code>.</li>
 </ol>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">quspin_rs._rs</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
@@ -1906,8 +1908,8 @@ cooperating types:</p>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">qop</span> <span class="o">=</span> <span class="n">ham</span><span class="o">.</span><span class="n">as_linearoperator</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">expm_op</span> <span class="o">=</span> <span class="n">ExpmOp</span><span class="p">(</span><span class="n">qop</span><span class="p">,</span> <span class="n">a</span><span class="o">=-</span><span class="mi">1</span><span class="n">j</span> <span class="o">*</span> <span class="mf">0.05</span><span class="p">)</span>            <span class="c1"># `a` = -i·dt for time evolution</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># Single-vector worker — `apply` reuses the worker&#39;s 2*dim scratch buffer.</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">worker</span> <span class="o">=</span> <span class="n">expm_op</span><span class="o">.</span><span class="n">worker</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># Single-vector worker (n_vec=0, the default).</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">worker</span> <span class="o">=</span> <span class="n">expm_op</span><span class="o">.</span><span class="n">worker</span><span class="p">()</span>
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="n">psi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">complex128</span><span class="p">)</span>
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="n">worker</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">psi</span><span class="p">)</span>         <span class="c1"># psi ← exp(-i·dt·H) · psi</span>
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="n">worker</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">psi</span><span class="p">)</span>         <span class="c1"># second step, no allocations</span>
@@ -2341,7 +2343,7 @@ errors defaults to 'strict'.</p>
 
 <a href="#quspin_rs._rs.ExpmOp.worker" class="headerlink" title="Permanent link">&para;</a></h4>
 <div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">worker</span><span class="p">(</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">n_vec</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">work</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">n_vec</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">work</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExpmWorker</span> <span class="o">|</span> <span class="n">ExpmWorker2</span>
 </code></pre></div>
 
@@ -2370,12 +2372,14 @@ errors defaults to 'strict'.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Batch capacity.  <code>1</code> returns a 1-D <code>ExpmWorker</code>;
-values <code>&gt; 1</code> return a 2-D <code>ExpmWorker2</code>.</p>
+                <p>Output dimensionality / batch capacity.  <code>0</code> (the default)
+returns a 1-D <code>ExpmWorker</code> for single-vector application;
+any value <code>&gt; 0</code> returns a 2-D <code>ExpmWorker2</code> whose <code>apply</code>
+accepts shape <code>(dim, k)</code> with <code>k &lt;= n_vec</code>.</p>
               </div>
             </td>
             <td>
-                  <code>1</code>
+                  <code>0</code>
             </td>
           </tr>
           <tr class="doc-section-item">
@@ -2388,9 +2392,9 @@ values <code>&gt; 1</code> return a 2-D <code>ExpmWorker2</code>.</p>
             <td>
               <div class="doc-md-description">
                 <p>Optional caller-supplied scratch buffer adopted as the
-worker's backing storage (no copy).  For <code>n_vec == 1</code> a
+worker's backing storage (no copy).  For <code>n_vec == 0</code> a
 1-D <code>complex128</code> array of length <code>&gt;= 2 * dim</code>; for
-<code>n_vec &gt; 1</code> a 2-D <code>complex128</code> array of shape
+<code>n_vec &gt; 0</code> a 2-D <code>complex128</code> array of shape
 <code>(&gt;= 2 * dim, &gt;= n_vec)</code>.  When <code>None</code> (default), a
 fresh buffer is allocated.</p>
               </div>
