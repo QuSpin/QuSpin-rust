@@ -43,9 +43,9 @@ type DotManyFn<V> = Arc<
 ///
 /// # Parallel dispatch
 ///
-/// [`parallel_hint`] always returns `false`.  The `expm_multiply_auto`
-/// functions will therefore use the sequential path, which calls `dot` once
-/// per Taylor iteration and lets the closure parallelise internally.
+/// [`parallel_hint`] always returns `false`.  `ExpmOp` will therefore use the
+/// sequential path, which calls `dot` once per Taylor iteration and lets the
+/// closure parallelise internally.
 ///
 /// `dot_chunk` and `dot_transpose_chunk` are implemented as fallbacks (compute
 /// the full product into a temporary buffer and copy/scatter the relevant
@@ -218,7 +218,7 @@ impl<V: ExpmComputation> LinearOperator<V> for FnLinearOperator<V> {
 
     /// Fallback: compute the full product into a temporary buffer and copy the
     /// requested row range.  O(dim) allocation — only reached if the caller
-    /// bypasses `expm_multiply_auto` and invokes `expm_multiply_par` directly.
+    /// bypasses `ExpmOp` and invokes `expm_multiply_par` directly.
     fn dot_chunk(
         &self,
         overwrite: bool,

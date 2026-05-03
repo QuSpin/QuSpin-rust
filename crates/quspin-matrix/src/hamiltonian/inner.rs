@@ -7,6 +7,7 @@
 /// abbreviation.  For example `HMf64U8` is `Hamiltonian<f64, i64, u8>`.
 use super::ham::{CoeffFn, Hamiltonian};
 use crate::qmatrix::QMatrixInner;
+use crate::qmatrix::dispatch::IntoQMatrixInner;
 use ndarray::{ArrayView2, ArrayViewMut2};
 use num_complex::Complex;
 use quspin_types::QuSpinError;
@@ -283,22 +284,17 @@ impl HamiltonianInner {
         })
     }
 
-    pub fn expm_dot(
-        &self,
-        time: f64,
-        a: Complex<f64>,
-        f: &mut [Complex<f64>],
-    ) -> Result<(), QuSpinError> {
-        with_hamiltonian!(self, _M, _C, h, { h.expm_dot(time, a, f) })
-    }
-
-    pub fn expm_dot_many(
-        &self,
-        time: f64,
-        a: Complex<f64>,
-        f: ArrayViewMut2<'_, Complex<f64>>,
-    ) -> Result<(), QuSpinError> {
-        with_hamiltonian!(self, _M, _C, h, { h.expm_dot_many(time, a, f) })
+    /// Snapshot the Hamiltonian at `time`.
+    ///
+    /// Clones the underlying matrix into a `QMatrixInner` and evaluates every
+    /// coefficient function at `time`.  Returns `(matrix, coeffs)` where
+    /// `coeffs.len() == matrix.num_coeff()`.
+    pub fn snapshot(&self, time: f64) -> (QMatrixInner, Vec<Complex<f64>>) {
+        with_hamiltonian!(self, _M, _C, h, {
+            let mat = h.matrix().clone().into_qmatrix_inner();
+            let coeffs = h.eval_coeffs(time);
+            (mat, coeffs)
+        })
     }
 }
 

@@ -16,15 +16,14 @@ pub use quspin_types::{compute, dtype, error, primitive};
 // Flat re-export at crate root
 pub use quspin_basis::*;
 pub use quspin_bitbasis::*;
-pub use quspin_expm::{
-    expm_multiply_auto, expm_multiply_auto_into, expm_multiply_many_auto,
-    expm_multiply_many_auto_into,
-};
 pub use quspin_krylov::*;
 pub use quspin_matrix::{
-    Hamiltonian, HamiltonianInner, IntoHamiltonianInner, OperatorDispatch, QMatrix, QMatrixInner,
-    QMatrixOperator, SchrodingerEq, apply_and_project_to,
+    Hamiltonian, HamiltonianInner, IntoHamiltonianInner, OperatorDispatch, OwnedQMatrixOperator,
+    QMatrix, QMatrixInner, QMatrixOperator, SchrodingerEq, apply_and_project_to,
 };
+// Re-export dispatch macros so callers like `quspin-py` can match on the
+// type-erased `*Inner` enums without taking a direct dep on `quspin-matrix`.
+pub use quspin_matrix::{with_hamiltonian, with_qmatrix};
 pub use quspin_operator::{
     BondOperator, BondOperatorInner, BondTerm, BosonOp, BosonOpEntry, BosonOperator,
     BosonOperatorInner, FermionOp, FermionOpEntry, FermionOperator, FermionOperatorInner,

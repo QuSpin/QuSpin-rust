@@ -127,7 +127,7 @@ impl<T> RawSlice<T> {
 /// # Errors
 /// Returns `ValueError` if buffer lengths are inconsistent.
 pub(crate) fn expm_multiply<V, Op>(
-    b: &ShiftedOp<'_, V, Op>,
+    b: &ShiftedOp<V, Op>,
     params: &TaylorParams<V::Real>,
     mut f: ArrayViewMut1<'_, V>,
     work: &mut [V],
@@ -250,7 +250,7 @@ where
 /// mismatch, which is validated before threads are spawned).
 #[allow(dead_code)] // not yet routed by the auto-dispatch entry points
 pub(crate) fn expm_multiply_par<V, Op>(
-    b: &ShiftedOp<'_, V, Op>,
+    b: &ShiftedOp<V, Op>,
     params: &TaylorParams<V::Real>,
     f: ArrayViewMut1<'_, V>,
     work: &mut [V],
@@ -510,7 +510,7 @@ where
 /// # Errors
 /// Returns `ValueError` if array shapes are inconsistent.
 pub(crate) fn expm_multiply_many<V, Op>(
-    b: &ShiftedOp<'_, V, Op>,
+    b: &ShiftedOp<V, Op>,
     params: &TaylorParams<V::Real>,
     mut f: ArrayViewMut2<'_, V>,
     mut work: ArrayViewMut2<'_, V>,

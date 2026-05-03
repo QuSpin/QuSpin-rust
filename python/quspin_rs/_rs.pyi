@@ -649,6 +649,20 @@ class QMatrix:
         output: npt.NDArray[Any],
         overwrite: bool,
     ) -> None: ...
+    def as_linearoperator(
+        self,
+        coeffs: npt.NDArray[Any],
+    ) -> QMatrixLinearOperator:
+        """Snapshot the matrix with a fully-evaluated coefficient vector.
+
+        Args:
+            coeffs: 1-D complex128 array of length ``num_coeff``.
+
+        Returns:
+            A ``QMatrixLinearOperator`` sharing this matrix's allocation.
+        """
+        ...
+
     def __repr__(self) -> str: ...
 
 # ---------------------------------------------------------------------------
@@ -730,33 +744,108 @@ class Hamiltonian:
         output: npt.NDArray[Any],
         overwrite: bool,
     ) -> None: ...
-    def expm_dot(
-        self,
-        time: float,
-        a: complex,
-        f: npt.NDArray[Any],
-    ) -> None:
-        """Compute ``exp(a · H(time)) · f`` in-place.
+    def as_linearoperator(self, time: float) -> QMatrixLinearOperator:
+        """Snapshot the Hamiltonian at ``time`` as a ``QMatrixLinearOperator``.
 
-        Args:
-            time: Evaluation time for the coefficient functions.
-            a:    Scalar multiplier on the Hamiltonian exponent.
-            f:    1-D complex128 array of shape ``(dim,)`` (modified in place).
+        Evaluates every time-dependent coefficient and clones the underlying
+        matrix.  The returned operator can be passed to ``ExpmOp``.
         """
         ...
 
-    def expm_dot_many(
+    def __repr__(self) -> str: ...
+
+# ---------------------------------------------------------------------------
+# QMatrixLinearOperator + ExpmOp + ExpmWorker
+# ---------------------------------------------------------------------------
+
+class QMatrixLinearOperator:
+    """Snapshot of a ``QMatrix`` paired with a fully-evaluated coefficient
+    vector — i.e. a concrete linear operator ``A``.
+
+    Construct via ``QMatrix.as_linearoperator(coeffs)`` or
+    ``Hamiltonian.as_linearoperator(time)``.  Accepted as the first argument
+    to ``ExpmOp``.
+    """
+
+    @property
+    def dim(self) -> int: ...
+    @property
+    def num_coeff(self) -> int: ...
+    @property
+    def dtype(self) -> str: ...
+    def __repr__(self) -> str: ...
+
+class ExpmOp:
+    """Cached ``exp(a · A) · v`` action over a ``QMatrixLinearOperator``.
+
+    Construction runs the partitioned-Taylor parameter selection once and
+    caches the resulting ``(μ, s, m_star, tol)`` scalars.  Use ``worker(...)``
+    to obtain a worker that reuses scratch memory across ``apply`` calls.
+
+    Args:
+        qop: Linear-operator snapshot.
+        a:   Scalar multiplier on ``A``.  E.g. ``-1j * dt`` for time evolution.
+    """
+
+    def __init__(self, qop: QMatrixLinearOperator, a: complex) -> None: ...
+    @property
+    def dim(self) -> int: ...
+    @property
+    def a(self) -> complex: ...
+    def worker(
         self,
-        time: float,
-        a: complex,
-        f: npt.NDArray[Any],
-    ) -> None:
-        """Compute ``exp(a · H(time)) · F`` in-place for multiple column vectors.
+        n_vec: int = 0,
+        work: npt.NDArray[Any] | None = None,
+    ) -> ExpmWorker | ExpmWorker2:
+        """Build a worker bound to this operator.
 
         Args:
-            time: Evaluation time for the coefficient functions.
-            a:    Scalar multiplier on the Hamiltonian exponent.
-            f:    2-D complex128 array of shape ``(dim, n_vecs)`` (modified in place).
+            n_vec: Output dimensionality / batch capacity.  ``0`` (the default)
+                returns a 1-D ``ExpmWorker`` for single-vector application;
+                any value ``> 0`` returns a 2-D ``ExpmWorker2`` whose ``apply``
+                accepts shape ``(dim, k)`` with ``k <= n_vec``.
+            work:  Optional pre-allocated scratch buffer.  For ``n_vec == 0``
+                a 1-D ``complex128`` array of length ``>= 2 * dim``; for
+                ``n_vec > 0`` a 2-D ``complex128`` array of shape
+                ``(>= 2 * dim, >= n_vec)``.  When ``None`` (default), a fresh
+                buffer is allocated.
+
+        Returns:
+            ``ExpmWorker`` if ``n_vec == 0``, otherwise ``ExpmWorker2``.
+        """
+        ...
+
+    def __repr__(self) -> str: ...
+
+class ExpmWorker:
+    """1-D worker bound to an ``ExpmOp``.  Holds ``2 * dim`` complex128 scratch."""
+
+    @property
+    def dim(self) -> int: ...
+    def apply(self, f: npt.NDArray[np.complexfloating[Any, Any]]) -> None:
+        """Apply ``f ← exp(a · A) · f`` in place.
+
+        Args:
+            f: 1-D complex128 array of length ``dim`` (modified in place).
+        """
+        ...
+
+    def __repr__(self) -> str: ...
+
+class ExpmWorker2:
+    """2-D batch worker bound to an ``ExpmOp``.  Holds a ``2 * dim * n_vec``
+    complex128 scratch buffer."""
+
+    @property
+    def dim(self) -> int: ...
+    @property
+    def n_vec(self) -> int: ...
+    def apply(self, f: npt.NDArray[np.complexfloating[Any, Any]]) -> None:
+        """Apply ``F ← exp(a · A) · F`` in place.
+
+        Args:
+            f: 2-D complex128 array of shape ``(dim, k)`` with ``k <= n_vec``
+                (modified in place).
         """
         ...
 

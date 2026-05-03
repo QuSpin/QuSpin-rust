@@ -72,10 +72,22 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
     }
 
     // ------------------------------------------------------------------
-    // Private: evaluate coefficients at time t
+    // Borrow internals
     // ------------------------------------------------------------------
 
-    fn eval_coeffs(&self, time: f64) -> Vec<Complex<f64>> {
+    /// Borrow the underlying matrix.
+    pub fn matrix(&self) -> &QMatrix<M, I, C> {
+        &self.matrix
+    }
+
+    // ------------------------------------------------------------------
+    // Evaluate coefficients at time t
+    // ------------------------------------------------------------------
+
+    /// Evaluate every coefficient function at `time`.
+    ///
+    /// Static entries return `1.0`; dynamic entries call their callable.
+    pub fn eval_coeffs(&self, time: f64) -> Vec<Complex<f64>> {
         self.coeff_fns
             .iter()
             .map(|f| match f {
@@ -190,12 +202,13 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
     // LinearOperator snapshot
     // ------------------------------------------------------------------
 
-    /// Snapshot the Hamiltonian at `time` as a [`QMatrixOperator`].
+    /// Snapshot the Hamiltonian at `time` as a borrowed [`QMatrixOperator`].
     ///
     /// Evaluates all time-dependent coefficient functions at `time` and wraps
     /// `&self.matrix` with the resulting coefficient vector.  The returned
-    /// operator borrows `self` and can be passed to any `expm_multiply_auto*`
-    /// function directly.
+    /// operator borrows `self`; for matrix-exponential action over many
+    /// applies, prefer `OwnedQMatrixOperator` + `ExpmOp` (constructed from
+    /// `HamiltonianInner::snapshot`) to avoid the lifetime tie-in.
     ///
     /// # Errors
     /// Propagates errors from [`QMatrixOperator::new`] (coefficient length
@@ -208,50 +221,6 @@ impl<M: Primitive, I: Index, C: CIndex> Hamiltonian<M, I, C> {
     ) -> Result<crate::QMatrixOperator<'_, M, I, C, Complex<f64>>, QuSpinError> {
         let coeffs = self.eval_coeffs(time);
         crate::QMatrixOperator::new(&self.matrix, coeffs)
-    }
-
-    // ------------------------------------------------------------------
-    // Matrix-exponential action
-    // ------------------------------------------------------------------
-
-    /// Compute `exp(a · H(time)) · f` in-place (single vector).
-    ///
-    /// Uses the adaptive partitioned Taylor method of Al-Mohy & Higham (2011).
-    /// The diagonal shift μ, scaling factor s, and Taylor order m_star are
-    /// chosen automatically based on the operator norm at `time`.
-    ///
-    /// # Arguments
-    /// - `time`  — evaluation time for the time-dependent coefficients
-    /// - `a`     — scalar factor (e.g. `-i·dt` for time evolution)
-    /// - `f`     — input/output vector (length = `self.dim()`)
-    ///
-    /// # Errors
-    /// Returns `ValueError` if `f.len() != self.dim()`.
-    pub fn expm_dot(
-        &self,
-        time: f64,
-        a: Complex<f64>,
-        f: &mut [Complex<f64>],
-    ) -> Result<(), QuSpinError> {
-        let op = self.as_linear_operator(time)?;
-        quspin_expm::expm_multiply_auto(&op, a, ndarray::aview_mut1(f))
-    }
-
-    /// Compute `exp(a · H(time)) · F` in-place for multiple column vectors.
-    ///
-    /// `f` has shape `(dim, n_vecs)`.  The matrix-exponential parameters are
-    /// computed once from the operator and reused for every column.
-    ///
-    /// # Errors
-    /// Returns `ValueError` if `f.nrows() != self.dim()`.
-    pub fn expm_dot_many(
-        &self,
-        time: f64,
-        a: Complex<f64>,
-        f: ArrayViewMut2<'_, Complex<f64>>,
-    ) -> Result<(), QuSpinError> {
-        let op = self.as_linear_operator(time)?;
-        quspin_expm::expm_multiply_many_auto(&op, a, f)
     }
 }
 

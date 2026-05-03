@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::linear_operator::PyQMatrixLinearOperator;
 use crate::qmatrix::PyQMatrix;
 use num_complex::Complex;
 use numpy::{Complex64, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
@@ -98,7 +99,7 @@ impl PyHamiltonian {
             })
             .collect();
 
-        let inner = HamiltonianInner::from_qmatrix_inner(qmatrix.inner.clone(), rust_fns)
+        let inner = HamiltonianInner::from_qmatrix_inner((*qmatrix.inner).clone(), rust_fns)
             .map_err(Error::from)?;
 
         Ok(PyHamiltonian {
@@ -289,81 +290,21 @@ impl PyHamiltonian {
     }
 
     // ------------------------------------------------------------------
-    // Matrix exponential
+    // LinearOperator snapshot
     // ------------------------------------------------------------------
 
-    /// Compute `exp(a · H(time)) · f` in-place (GIL released).
-    fn expm_dot<'py>(
-        &self,
-        py: Python<'py>,
-        time: f64,
-        a: Complex<f64>,
-        f: &Bound<'py, PyArray1<Complex64>>,
-    ) -> PyResult<()> {
-        let n = self.inner.dim();
-        if unsafe { f.as_array().len() } != n {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "expected array of length {n}"
-            )));
-        }
-        let mut f_vec: Vec<Complex<f64>> = unsafe { f.as_array() }
-            .iter()
-            .map(|c| Complex::new(c.re, c.im))
-            .collect();
-        let inner = Arc::clone(&self.inner);
-        let result = py.detach(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
-            inner.expm_dot(time, a, &mut f_vec)?;
-            Ok(f_vec)
-        });
-        let f_vec = result.map_err(Error::from)?;
-        unsafe {
-            let mut f_arr = f.as_array_mut();
-            for (i, v) in f_arr.iter_mut().enumerate() {
-                *v = Complex64::new(f_vec[i].re, f_vec[i].im);
-            }
-        }
-        Ok(())
-    }
-
-    /// Compute `exp(a · H(time)) · F` in-place for multiple column vectors (GIL released).
+    /// Snapshot the Hamiltonian at `time` as a `QMatrixLinearOperator`.
     ///
-    /// Args:
-    ///     time: Evaluation time for the coefficient functions.
-    ///     a:    Scalar multiplier on the Hamiltonian.
-    ///     f:    2-D complex128 array of shape `(dim, n_vecs)` (modified in place).
-    fn expm_dot_many<'py>(
-        &self,
-        py: Python<'py>,
-        time: f64,
-        a: Complex<f64>,
-        f: &Bound<'py, PyArray2<Complex64>>,
-    ) -> PyResult<()> {
-        let n = self.inner.dim();
-        if unsafe { f.as_array().shape()[0] } != n {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "f first dim must be {n}"
-            )));
-        }
-        let n_vecs = unsafe { f.as_array().shape()[1] };
-        let mut f_vec: Vec<Complex<f64>> = unsafe { f.as_array() }
-            .iter()
-            .map(|c| Complex::new(c.re, c.im))
-            .collect();
-        let inner = Arc::clone(&self.inner);
-        let result = py.detach(move || -> Result<Vec<Complex<f64>>, QuSpinError> {
-            let mut f_view = ndarray::ArrayViewMut2::from_shape((n, n_vecs), &mut f_vec)
-                .map_err(|e| QuSpinError::ValueError(e.to_string()))?;
-            inner.expm_dot_many(time, a, f_view.view_mut())?;
-            Ok(f_vec)
-        });
-        let f_vec = result.map_err(Error::from)?;
-        unsafe {
-            let mut f_arr = f.as_array_mut();
-            for ((r, c), v) in f_arr.indexed_iter_mut() {
-                *v = Complex64::new(f_vec[r * n_vecs + c].re, f_vec[r * n_vecs + c].im);
-            }
-        }
-        Ok(())
+    /// Evaluates every time-dependent coefficient and clones the underlying
+    /// matrix into a fresh `Arc`.  The returned operator can be passed to
+    /// `ExpmOp`.
+    fn as_linearoperator(&self, time: f64) -> PyResult<PyQMatrixLinearOperator> {
+        let (mat, coeffs) = self.inner.snapshot(time);
+        let owned =
+            quspin_core::OwnedQMatrixOperator::new(Arc::new(mat), coeffs).map_err(Error::from)?;
+        Ok(PyQMatrixLinearOperator {
+            inner: Arc::new(owned),
+        })
     }
 
     /// Transpose matrix-vector product (batch, GIL released).

@@ -9,18 +9,13 @@
 //! `quspin-matrix`.
 
 pub mod algorithm;
-pub mod expm_impl;
 pub mod expm_op;
 pub mod norm_est;
 pub mod params;
 mod shifted_op;
 
 pub use algorithm::PAR_THRESHOLD;
-pub use expm_impl::{
-    expm_multiply_auto, expm_multiply_auto_into, expm_multiply_many_auto,
-    expm_multiply_many_auto_into,
-};
-pub use expm_op::ExpmOp;
+pub use expm_op::{AnyExpmWorker, ExpmOp, ExpmWorker, ExpmWorker2, compute_expm_params};
 pub use params::{LazyNormInfo, fragment_3_1};
 pub use quspin_types::{
     AtomicAccum, DynLinearOperator, ExpmComputation, FnLinearOperator, LinearOperator,
