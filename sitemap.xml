@@ -2,26 +2,26 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://quspin.github.io/QuSpin-rust/</loc>
-         <lastmod>2026-05-03</lastmod>
+         <lastmod>2026-05-06</lastmod>
     </url>
     <url>
          <loc>https://quspin.github.io/QuSpin-rust/api/basis/</loc>
-         <lastmod>2026-05-03</lastmod>
+         <lastmod>2026-05-06</lastmod>
     </url>
     <url>
          <loc>https://quspin.github.io/QuSpin-rust/api/operators/</loc>
-         <lastmod>2026-05-03</lastmod>
+         <lastmod>2026-05-06</lastmod>
     </url>
     <url>
          <loc>https://quspin.github.io/QuSpin-rust/api/qmatrix/</loc>
-         <lastmod>2026-05-03</lastmod>
+         <lastmod>2026-05-06</lastmod>
     </url>
     <url>
          <loc>https://quspin.github.io/QuSpin-rust/api/symmetry/</loc>
-         <lastmod>2026-05-03</lastmod>
+         <lastmod>2026-05-06</lastmod>
     </url>
     <url>
          <loc>https://quspin.github.io/QuSpin-rust/guide/symmetry/</loc>
-         <lastmod>2026-05-03</lastmod>
+         <lastmod>2026-05-06</lastmod>
     </url>
 </urlset>
