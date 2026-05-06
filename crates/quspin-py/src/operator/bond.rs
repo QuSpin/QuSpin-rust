@@ -6,14 +6,27 @@ use numpy::{Complex64, PyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
 use quspin_core::operator::bond::{BondOperator, BondOperatorInner, BondTerm};
 
-type BondTermInput<'py> = (PyReadonlyArray2<'py, Complex64>, Vec<(u32, u32)>, usize);
+/// One `(matrix, bonds)` pair within a term. Multiple pairs in the same
+/// term share one cindex (= position of the term in `*terms`).
+type BondPair<'py> = (PyReadonlyArray2<'py, Complex64>, Vec<(u32, u32)>);
 
 /// Python-facing bond (dense two-site matrix) operator.
 ///
-/// Each term is `(matrix, bonds, cindex)` where:
+/// Variadic `*terms` — each positional argument is one term and the term
+/// position is its cindex (matching `PauliOperator`, `BosonOperator`, etc.).
+/// Each term is a list of `(matrix, bonds)` pairs that all share that
+/// cindex:
 /// - `matrix`  – (lhss² × lhss²) complex128 ndarray; row/col index = `a * lhss + b`
 /// - `bonds`   – list of `(site_i, site_j)` pairs to apply the matrix to
-/// - `cindex`  – which coupling constant this term belongs to (default 0)
+///
+/// Example:
+/// ```python
+/// # Two cindices; second cindex carries two matrices on different bond sets:
+/// op = BondOperator(
+///     [(M1, [(0, 1), (1, 2)])],            # cindex 0
+///     [(M2, [(0, 1)]), (M3, [(1, 2)])],    # cindex 1
+/// )
+/// ```
 #[pyclass(name = "BondOperator", module = "quspin._rs")]
 pub struct PyBondOperator {
     pub inner: BondOperatorInner,
@@ -22,12 +35,13 @@ pub struct PyBondOperator {
 #[pymethods]
 impl PyBondOperator {
     #[new]
-    #[pyo3(signature = (terms))]
-    fn new(terms: Vec<BondTermInput<'_>>) -> PyResult<Self> {
-        let max_cindex = terms.iter().map(|(_, _, c)| *c).max().unwrap_or(0);
+    #[pyo3(signature = (*terms))]
+    fn new(terms: Vec<Vec<BondPair<'_>>>) -> PyResult<Self> {
+        let max_cindex = terms.len().saturating_sub(1);
         let max_site = terms
             .iter()
-            .flat_map(|(_, bonds, _)| bonds.iter())
+            .flat_map(|term| term.iter())
+            .flat_map(|(_, bonds)| bonds.iter())
             .flat_map(|&(si, sj)| [si as usize, sj as usize])
             .max()
             .unwrap_or(0);
@@ -136,19 +150,19 @@ impl PyBondOperator {
 }
 
 fn extract_terms<C: Copy + Ord + TryFrom<usize>>(
-    terms: &[BondTermInput<'_>],
+    terms: &[Vec<BondPair<'_>>],
 ) -> PyResult<Vec<BondTerm<C>>>
 where
     <C as TryFrom<usize>>::Error: std::fmt::Debug,
 {
-    terms
-        .iter()
-        .map(|(mat, bonds, cindex_usize)| {
-            let cindex = C::try_from(*cindex_usize).map_err(|_| {
-                pyo3::exceptions::PyValueError::new_err(format!(
-                    "cindex {cindex_usize} out of range for chosen index type"
-                ))
-            })?;
+    let mut out = Vec::new();
+    for (cindex_usize, term) in terms.iter().enumerate() {
+        let cindex = C::try_from(cindex_usize).map_err(|_| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "cindex {cindex_usize} out of range for chosen index type"
+            ))
+        })?;
+        for (mat, bonds) in term {
             // Copy matrix into an owned ndarray with Complex<f64> elements.
             let arr = mat.as_array();
             let nrows = arr.nrows();
@@ -157,11 +171,12 @@ where
                 let v = arr[[r, c]];
                 Complex::new(v.re, v.im)
             });
-            Ok(BondTerm {
+            out.push(BondTerm {
                 cindex,
                 matrix: owned,
                 bonds: bonds.clone(),
-            })
-        })
-        .collect()
+            });
+        }
+    }
+    Ok(out)
 }

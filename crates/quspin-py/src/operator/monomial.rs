@@ -19,6 +19,8 @@ use smallvec::SmallVec;
 /// Cindex (coupling-constant index) is implicit by position: the i-th term
 /// gets cindex `i`.
 ///
+/// `lhss` is keyword-only (matching `BosonOperator`).
+///
 /// Example (cyclic shift on nearest-neighbour bonds of a 3-site lhss=3 chain):
 /// ```python
 /// import numpy as np
@@ -30,7 +32,7 @@ use smallvec::SmallVec;
 /// ], dtype=np.intp)
 /// amp = np.ones(dim, dtype=complex)
 /// bonds = [(0, 1), (1, 2)]
-/// op = MonomialOperator(lhss, (perm, amp, bonds))
+/// op = MonomialOperator((perm, amp, bonds), lhss=lhss)
 /// ```
 #[pyclass(name = "MonomialOperator", module = "quspin._rs")]
 pub struct PyMonomialOperator {
@@ -39,17 +41,17 @@ pub struct PyMonomialOperator {
 
 #[pymethods]
 impl PyMonomialOperator {
-    /// Construct from `lhss` and one or more terms.
+    /// Construct from one or more terms; `lhss` is keyword-only.
     ///
     /// Args:
-    ///     lhss: Local Hilbert-space size (number of states per site, ≥ 2).
     ///     *terms: Each term is a 3-tuple ``(perm, amp, bonds)`` where:
     ///         - ``perm`` — 1-D integer array of length ``lhss^k``
     ///         - ``amp`` — 1-D complex128 array of length ``lhss^k``
     ///         - ``bonds`` — list of k-tuples of site indices (``int``)
+    ///     lhss: Local Hilbert-space size (number of states per site, ≥ 2).
     #[new]
-    #[pyo3(signature = (lhss, *terms))]
-    fn new(py: Python<'_>, lhss: usize, terms: Vec<Py<PyAny>>) -> PyResult<Self> {
+    #[pyo3(signature = (*terms, lhss))]
+    fn new(py: Python<'_>, terms: Vec<Py<PyAny>>, lhss: usize) -> PyResult<Self> {
         if lhss < 2 {
             return Err(pyo3::exceptions::PyValueError::new_err("lhss must be >= 2"));
         }

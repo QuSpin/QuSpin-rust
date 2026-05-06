@@ -26,7 +26,7 @@ def cyclic_op(lhss: int, n_sites: int, k: int = 2) -> MonomialOperator:
     )
     amp = np.ones(dim, dtype=complex)
     bonds = [tuple(range(i, i + k)) for i in range(n_sites - k + 1)]
-    return MonomialOperator(lhss, (perm, amp, bonds))
+    return MonomialOperator((perm, amp, bonds), lhss=lhss)
 
 
 def swap_op(lhss: int, n_sites: int) -> MonomialOperator:
@@ -37,7 +37,7 @@ def swap_op(lhss: int, n_sites: int) -> MonomialOperator:
     )
     amp = np.ones(dim, dtype=complex)
     bonds = [(i, i + 1) for i in range(n_sites - 1)]
-    return MonomialOperator(lhss, (perm, amp, bonds))
+    return MonomialOperator((perm, amp, bonds), lhss=lhss)
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ class TestMonomialOperatorConstruction:
         perm = np.arange(dim, dtype=np.intp)
         amp = np.ones(dim, dtype=complex)
         bonds = [(0, 1)]
-        op = MonomialOperator(2, (perm, amp, bonds), (perm, amp, [(2, 3)]))
+        op = MonomialOperator((perm, amp, bonds), (perm, amp, [(2, 3)]), lhss=2)
         assert op.num_coeffs == 2
 
     def test_repr(self):
@@ -70,24 +70,24 @@ class TestMonomialOperatorConstruction:
         perm = np.array([0], dtype=np.intp)
         amp = np.array([1.0 + 0j])
         with pytest.raises(ValueError):
-            MonomialOperator(1, (perm, amp, [(0,)]))
+            MonomialOperator((perm, amp, [(0,)]), lhss=1)
 
     def test_no_terms_raises(self):
         with pytest.raises((ValueError, TypeError)):
-            MonomialOperator(2)
+            MonomialOperator(lhss=2)
 
     def test_wrong_perm_length_raises(self):
         # perm of length 5 is not lhss^k for lhss=3
         perm = np.zeros(5, dtype=np.intp)
         amp = np.ones(5, dtype=complex)
         with pytest.raises(ValueError):
-            MonomialOperator(3, (perm, amp, [(0, 1)]))
+            MonomialOperator((perm, amp, [(0, 1)]), lhss=3)
 
     def test_perm_amp_length_mismatch_raises(self):
         perm = np.zeros(9, dtype=np.intp)
         amp = np.ones(4, dtype=complex)
         with pytest.raises(ValueError):
-            MonomialOperator(3, (perm, amp, [(0, 1)]))
+            MonomialOperator((perm, amp, [(0, 1)]), lhss=3)
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +154,7 @@ class TestGenericBasisSubspace:
         dim = 4
         perm = np.arange(dim, dtype=np.intp)
         amp = np.zeros(dim, dtype=complex)  # all-zero amplitude
-        op = MonomialOperator(2, (perm, amp, [(0, 1)]))
+        op = MonomialOperator((perm, amp, [(0, 1)]), lhss=2)
         basis = GenericBasis.subspace(4, 2, op, ["0011"])
         # BFS will start from the seed but emit nothing (amp=0 skipped),
         # so the seed itself may be added but reachable set is just {seed}.

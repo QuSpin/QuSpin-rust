@@ -344,16 +344,23 @@ class PauliOperator:
 class BondOperator:
     """Dense two-site bond operator.
 
-    Args:
-        terms: List of ``(matrix, bonds, cindex)`` tuples where:
-            - ``matrix``: 2-D complex128 array of shape ``(lhss^2, lhss^2)``
-            - ``bonds``: list of ``(site_i, site_j)`` pairs
-            - ``cindex``: coupling constant index
+    Variadic ``*terms`` — the i-th positional argument carries cindex ``i``.
+    Each term is a list of ``(matrix, bonds)`` pairs that share that cindex:
+
+    - ``matrix``: 2-D complex128 array of shape ``(lhss**2, lhss**2)``
+    - ``bonds``: list of ``(site_i, site_j)`` pairs
+
+    Example::
+
+        op = BondOperator(
+            [(M1, [(0, 1), (1, 2)])],            # cindex 0
+            [(M2, [(0, 1)]), (M3, [(1, 2)])],    # cindex 1
+        )
     """
 
     def __init__(
         self,
-        terms: list[tuple[npt.NDArray[Any], list[tuple[int, int]], int]],
+        *terms: list[tuple[npt.NDArray[Any], list[tuple[int, int]]]],
     ) -> None: ...
     @property
     def max_site(self) -> int: ...
@@ -485,7 +492,7 @@ class MonomialOperator:
       have the same number of sites ``k``.
 
     Cindex (coupling-constant index) is implicit by position: the i-th term
-    gets cindex ``i``.
+    gets cindex ``i``.  ``lhss`` is keyword-only (matching ``BosonOperator``).
 
     Example (cyclic shift on nearest-neighbour bonds, lhss=3, 4 sites)::
 
@@ -499,17 +506,17 @@ class MonomialOperator:
         ], dtype=np.intp)
         amp = np.ones(dim, dtype=complex)
         bonds = [(0, 1), (1, 2), (2, 3)]
-        op = MonomialOperator(lhss, (perm, amp, bonds))
+        op = MonomialOperator((perm, amp, bonds), lhss=lhss)
     """
 
     def __init__(
         self,
-        lhss: int,
         *terms: tuple[
             npt.NDArray[np.intp],
             npt.NDArray[np.complexfloating[Any, Any]],
             list[tuple[int, ...]],
         ],
+        lhss: int,
     ) -> None: ...
     @property
     def max_site(self) -> int: ...

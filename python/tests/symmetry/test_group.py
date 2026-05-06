@@ -509,7 +509,7 @@ class TestBasisSymmetricEndToEnd:
         dim = lhss * lhss
         perm = np.arange(dim, dtype=np.intp)
         amp = np.zeros(dim, dtype=complex)
-        H = MonomialOperator(lhss, (perm, amp, [(0, 1)]))
+        H = MonomialOperator((perm, amp, [(0, 1)]), lhss=lhss)
 
         group = SymmetryGroup(n_sites=n_sites, lhss=lhss)
         # cyclic Z_3 local symmetry (per-site value-permutation [1, 2, 0]).
