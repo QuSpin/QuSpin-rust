@@ -1,4 +1,7 @@
-use crate::basis::{group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic};
+use crate::basis::{
+    group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic,
+    validate_op_max_site,
+};
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::boson::PyBosonOperator;
@@ -17,16 +20,17 @@ pub struct PyBosonBasis {
 fn build_boson_basis(
     basis: &mut BosonBasis,
     ham: &Bound<'_, PyAny>,
+    n_sites: usize,
     byte_seeds: &[Vec<u8>],
 ) -> PyResult<()> {
     if let Ok(op) = ham.cast::<PyBosonOperator>() {
-        basis
-            .build(&op.borrow().inner, byte_seeds)
-            .map_err(Error::from)?;
+        let op = op.borrow();
+        validate_op_max_site(op.inner.max_site(), n_sites)?;
+        basis.build(&op.inner, byte_seeds).map_err(Error::from)?;
     } else if let Ok(op) = ham.cast::<PyBondOperator>() {
-        basis
-            .build(&op.borrow().inner, byte_seeds)
-            .map_err(Error::from)?;
+        let op = op.borrow();
+        validate_op_max_site(op.inner.max_site(), n_sites)?;
+        basis.build(&op.inner, byte_seeds).map_err(Error::from)?;
     } else {
         return Err(pyo3::exceptions::PyTypeError::new_err(
             "ham must be a BosonOperator or BondOperator",
@@ -63,9 +67,9 @@ impl PyBosonBasis {
         ham: &Bound<'_, PyAny>,
         seeds: Vec<String>,
     ) -> PyResult<Self> {
-        let byte_seeds = parse_seeds(&seeds, lhss)?;
+        let byte_seeds = parse_seeds(&seeds, n_sites, lhss)?;
         let mut basis = BosonBasis::new(n_sites, lhss, SpaceKind::Sub).map_err(Error::from)?;
-        build_boson_basis(&mut basis, ham, &byte_seeds)?;
+        build_boson_basis(&mut basis, ham, n_sites, &byte_seeds)?;
         Ok(PyBosonBasis { inner: basis })
     }
 
@@ -86,10 +90,10 @@ impl PyBosonBasis {
         seeds: Vec<String>,
     ) -> PyResult<Self> {
         let (n_sites, lhss) = group_n_sites_lhss(group)?;
-        let byte_seeds = parse_seeds(&seeds, lhss)?;
+        let byte_seeds = parse_seeds(&seeds, n_sites, lhss)?;
         let mut basis = BosonBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
         replay_group_into_generic(group, &mut basis.inner)?;
-        build_boson_basis(&mut basis, ham, &byte_seeds)?;
+        build_boson_basis(&mut basis, ham, n_sites, &byte_seeds)?;
         Ok(PyBosonBasis { inner: basis })
     }
 
@@ -134,7 +138,11 @@ impl PyBosonBasis {
 
     /// Return the index of `state_str`, or `None` if absent.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = parse_state_str(state_str, self.inner.inner.lhss())?;
+        let bytes = parse_state_str(
+            state_str,
+            self.inner.inner.n_sites(),
+            self.inner.inner.lhss(),
+        )?;
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 

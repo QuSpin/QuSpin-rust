@@ -1,4 +1,7 @@
-use crate::basis::{group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic};
+use crate::basis::{
+    group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic,
+    validate_op_max_site,
+};
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::pauli::PyPauliOperator;
@@ -19,16 +22,17 @@ pub struct PySpinBasis {
 fn build_spin_basis(
     basis: &mut SpinBasis,
     ham: &Bound<'_, PyAny>,
+    n_sites: usize,
     byte_seeds: &[Vec<u8>],
 ) -> PyResult<()> {
     if let Ok(op) = ham.cast::<PyPauliOperator>() {
-        basis
-            .build(&op.borrow().inner, byte_seeds)
-            .map_err(Error::from)?;
+        let op = op.borrow();
+        validate_op_max_site(op.inner.max_site(), n_sites)?;
+        basis.build(&op.inner, byte_seeds).map_err(Error::from)?;
     } else if let Ok(op) = ham.cast::<PyBondOperator>() {
-        basis
-            .build(&op.borrow().inner, byte_seeds)
-            .map_err(Error::from)?;
+        let op = op.borrow();
+        validate_op_max_site(op.inner.max_site(), n_sites)?;
+        basis.build(&op.inner, byte_seeds).map_err(Error::from)?;
     } else {
         return Err(pyo3::exceptions::PyTypeError::new_err(
             "ham must be a PauliOperator (lhss=2) or BondOperator",
@@ -69,9 +73,9 @@ impl PySpinBasis {
         seeds: Vec<String>,
         lhss: usize,
     ) -> PyResult<Self> {
-        let byte_seeds = parse_seeds(&seeds, lhss)?;
+        let byte_seeds = parse_seeds(&seeds, n_sites, lhss)?;
         let mut basis = SpinBasis::new(n_sites, lhss, SpaceKind::Sub).map_err(Error::from)?;
-        build_spin_basis(&mut basis, ham, &byte_seeds)?;
+        build_spin_basis(&mut basis, ham, n_sites, &byte_seeds)?;
         Ok(PySpinBasis { inner: basis })
     }
 
@@ -92,10 +96,10 @@ impl PySpinBasis {
         seeds: Vec<String>,
     ) -> PyResult<Self> {
         let (n_sites, lhss) = group_n_sites_lhss(group)?;
-        let byte_seeds = parse_seeds(&seeds, lhss)?;
+        let byte_seeds = parse_seeds(&seeds, n_sites, lhss)?;
         let mut basis = SpinBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
         replay_group_into_generic(group, &mut basis.inner)?;
-        build_spin_basis(&mut basis, ham, &byte_seeds)?;
+        build_spin_basis(&mut basis, ham, n_sites, &byte_seeds)?;
         Ok(PySpinBasis { inner: basis })
     }
 
@@ -147,7 +151,11 @@ impl PySpinBasis {
     /// `'0'`/`'1'` character per site. For `lhss > 2`: one decimal digit per
     /// site in the range `0..lhss`.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = parse_state_str(state_str, self.inner.inner.lhss())?;
+        let bytes = parse_state_str(
+            state_str,
+            self.inner.inner.n_sites(),
+            self.inner.inner.lhss(),
+        )?;
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 

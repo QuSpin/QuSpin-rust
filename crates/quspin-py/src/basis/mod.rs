@@ -21,21 +21,36 @@ use quspin_core::basis::seed::{dit_seed_from_str, seed_from_str};
 
 /// Parse seed strings into byte vectors.
 ///
-/// For `lhss == 2` uses binary `seed_from_str`; for `lhss > 2` uses
-/// `dit_seed_from_str`.
-pub(crate) fn parse_seeds(seeds: &[String], lhss: usize) -> PyResult<Vec<Vec<u8>>> {
+/// Each seed must have length `n_sites`. For `lhss == 2` uses binary
+/// `seed_from_str`; for `lhss > 2` uses `dit_seed_from_str`.
+pub(crate) fn parse_seeds(seeds: &[String], n_sites: usize, lhss: usize) -> PyResult<Vec<Vec<u8>>> {
     seeds
         .iter()
         .map(|s| {
             if lhss == 2 {
-                seed_from_str(s).map_err(Error::from).map_err(PyErr::from)
+                seed_from_str(s, n_sites)
+                    .map_err(Error::from)
+                    .map_err(PyErr::from)
             } else {
-                dit_seed_from_str(s, lhss)
+                dit_seed_from_str(s, n_sites, lhss)
                     .map_err(Error::from)
                     .map_err(PyErr::from)
             }
         })
         .collect()
+}
+
+/// Reject an operator that references a site index `>= n_sites`. Called
+/// from the basis builder helpers after the operator has been downcast.
+pub(crate) fn validate_op_max_site(op_max_site: usize, n_sites: usize) -> PyResult<()> {
+    if op_max_site >= n_sites {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "operator references site {op_max_site} but basis has only \
+             {n_sites} sites (max valid index is {})",
+            n_sites.saturating_sub(1),
+        )));
+    }
+    Ok(())
 }
 
 /// Read `(n_sites, lhss)` from a `SymmetryGroup`-like Python object via
@@ -96,13 +111,15 @@ pub(crate) fn replay_group_into_bit(
 }
 
 /// Parse a state string to bytes, handling LHSS=2 (binary) and LHSS>2 (dit).
-pub(crate) fn parse_state_str(state_str: &str, lhss: usize) -> PyResult<Vec<u8>> {
+///
+/// `state_str` must have length `n_sites`.
+pub(crate) fn parse_state_str(state_str: &str, n_sites: usize, lhss: usize) -> PyResult<Vec<u8>> {
     if lhss == 2 {
-        seed_from_str(state_str)
+        seed_from_str(state_str, n_sites)
             .map_err(Error::from)
             .map_err(PyErr::from)
     } else {
-        dit_seed_from_str(state_str, lhss)
+        dit_seed_from_str(state_str, n_sites, lhss)
             .map_err(Error::from)
             .map_err(PyErr::from)
     }

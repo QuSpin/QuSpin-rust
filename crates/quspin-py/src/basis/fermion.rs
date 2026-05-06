@@ -1,4 +1,6 @@
-use crate::basis::{group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_bit};
+use crate::basis::{
+    group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_bit, validate_op_max_site,
+};
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::fermion::PyFermionOperator;
@@ -17,16 +19,17 @@ pub struct PyFermionBasis {
 fn build_fermion_basis(
     basis: &mut FermionBasis,
     ham: &Bound<'_, PyAny>,
+    n_sites: usize,
     byte_seeds: &[Vec<u8>],
 ) -> PyResult<()> {
     if let Ok(op) = ham.cast::<PyFermionOperator>() {
-        basis
-            .build(&op.borrow().inner, byte_seeds)
-            .map_err(Error::from)?;
+        let op = op.borrow();
+        validate_op_max_site(op.inner.max_site(), n_sites)?;
+        basis.build(&op.inner, byte_seeds).map_err(Error::from)?;
     } else if let Ok(op) = ham.cast::<PyBondOperator>() {
-        basis
-            .build(&op.borrow().inner, byte_seeds)
-            .map_err(Error::from)?;
+        let op = op.borrow();
+        validate_op_max_site(op.inner.max_site(), n_sites)?;
+        basis.build(&op.inner, byte_seeds).map_err(Error::from)?;
     } else {
         return Err(pyo3::exceptions::PyTypeError::new_err(
             "ham must be a FermionOperator or BondOperator",
@@ -60,9 +63,9 @@ impl PyFermionBasis {
         ham: &Bound<'_, PyAny>,
         seeds: Vec<String>,
     ) -> PyResult<Self> {
-        let byte_seeds = parse_seeds(&seeds, 2)?;
+        let byte_seeds = parse_seeds(&seeds, n_sites, 2)?;
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Sub).map_err(Error::from)?;
-        build_fermion_basis(&mut basis, ham, &byte_seeds)?;
+        build_fermion_basis(&mut basis, ham, n_sites, &byte_seeds)?;
         Ok(PyFermionBasis { inner: basis })
     }
 
@@ -88,10 +91,10 @@ impl PyFermionBasis {
                 "FermionBasis requires SymmetryGroup with lhss=2, got lhss={lhss}"
             )));
         }
-        let byte_seeds = parse_seeds(&seeds, 2)?;
+        let byte_seeds = parse_seeds(&seeds, n_sites, 2)?;
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Symm).map_err(Error::from)?;
         replay_group_into_bit(group, &mut basis.inner)?;
-        build_fermion_basis(&mut basis, ham, &byte_seeds)?;
+        build_fermion_basis(&mut basis, ham, n_sites, &byte_seeds)?;
         Ok(PyFermionBasis { inner: basis })
     }
 
@@ -136,7 +139,7 @@ impl PyFermionBasis {
 
     /// Return the index of `state_str` in this basis, or `None` if absent.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = parse_state_str(state_str, 2)?;
+        let bytes = parse_state_str(state_str, self.inner.inner.n_sites(), 2)?;
         Ok(self.inner.inner.index_of_bytes(&bytes))
     }
 

@@ -1,4 +1,7 @@
-use crate::basis::{group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic};
+use crate::basis::{
+    group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_generic,
+    validate_op_max_site,
+};
 use crate::error::Error;
 use crate::operator::monomial::PyMonomialOperator;
 use pyo3::prelude::*;
@@ -43,7 +46,8 @@ impl PyGenericBasis {
         ham: &PyMonomialOperator,
         seeds: Vec<String>,
     ) -> PyResult<Self> {
-        let byte_seeds = parse_seeds(&seeds, lhss)?;
+        validate_op_max_site(ham.inner.max_site(), n_sites)?;
+        let byte_seeds = parse_seeds(&seeds, n_sites, lhss)?;
         let mut basis =
             GenericBasis::new(n_sites, lhss, SpaceKind::Sub, false).map_err(Error::from)?;
         basis.build(&ham.inner, &byte_seeds).map_err(Error::from)?;
@@ -67,7 +71,8 @@ impl PyGenericBasis {
         seeds: Vec<String>,
     ) -> PyResult<Self> {
         let (n_sites, lhss) = group_n_sites_lhss(group)?;
-        let byte_seeds = parse_seeds(&seeds, lhss)?;
+        validate_op_max_site(ham.inner.max_site(), n_sites)?;
+        let byte_seeds = parse_seeds(&seeds, n_sites, lhss)?;
         let mut basis =
             GenericBasis::new(n_sites, lhss, SpaceKind::Symm, false).map_err(Error::from)?;
         replay_group_into_generic(group, &mut basis)?;
@@ -116,7 +121,7 @@ impl PyGenericBasis {
 
     /// Return the index of `state_str`, or `None` if absent.
     fn index(&self, state_str: &str) -> PyResult<Option<usize>> {
-        let bytes = parse_state_str(state_str, self.inner.lhss())?;
+        let bytes = parse_state_str(state_str, self.inner.n_sites(), self.inner.lhss())?;
         Ok(self.inner.index_of_bytes(&bytes))
     }
 

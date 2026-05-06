@@ -10,8 +10,8 @@
 /// - **string slice** (`&str`): ASCII characters `'0'` and `'1'`, one per
 ///   site.  This is the Python / human-readable form.
 ///
-/// `seed_from_str` is a thin wrapper: it validates the string and converts it
-/// to a byte slice, then delegates to `seed_from_bytes`.
+/// `seed_from_str` is a thin wrapper: it validates the string length matches
+/// `n_sites` and the character set, then delegates to `seed_from_bytes`.
 use quspin_bitbasis::{BitInt, manip::DynamicDitManip};
 use quspin_types::QuSpinError;
 
@@ -49,9 +49,17 @@ pub fn seed_from_bytes<B: BitInt>(bytes: &[u8]) -> B {
 
 /// Parse a `'0'`/`'1'` ASCII string into a site-occupation byte vector.
 ///
-/// Returns `QuSpinError::ValueError` if any character is not `'0'` or `'1'`.
-/// The resulting `Vec<u8>` can be passed directly to `seed_from_bytes`.
-pub fn seed_from_str(s: &str) -> Result<Vec<u8>, QuSpinError> {
+/// `n_sites` is the expected length of `s`. Returns
+/// `QuSpinError::ValueError` if the length doesn't match, or if any
+/// character is not `'0'` or `'1'`. The resulting `Vec<u8>` can be passed
+/// directly to `seed_from_bytes`.
+pub fn seed_from_str(s: &str, n_sites: usize) -> Result<Vec<u8>, QuSpinError> {
+    let len = s.chars().count();
+    if len != n_sites {
+        return Err(QuSpinError::ValueError(format!(
+            "seed string has length {len}, expected {n_sites} (one character per site)"
+        )));
+    }
     s.chars()
         .map(|c| match c {
             '0' => Ok(0u8),
@@ -94,9 +102,16 @@ pub fn dit_seed_from_bytes<B: BitInt>(bytes: &[u8], manip: &DynamicDitManip) -> 
 
 /// Parse a decimal ASCII string into a site-occupation byte vector.
 ///
-/// Returns `QuSpinError::ValueError` if any character is not a valid decimal
-/// digit in range `0..lhss`.
-pub fn dit_seed_from_str(s: &str, lhss: usize) -> Result<Vec<u8>, QuSpinError> {
+/// `n_sites` is the expected length of `s`. Returns
+/// `QuSpinError::ValueError` if the length doesn't match, or if any
+/// character is not a valid decimal digit in range `0..lhss`.
+pub fn dit_seed_from_str(s: &str, n_sites: usize, lhss: usize) -> Result<Vec<u8>, QuSpinError> {
+    let len = s.chars().count();
+    if len != n_sites {
+        return Err(QuSpinError::ValueError(format!(
+            "seed string has length {len}, expected {n_sites} (one character per site)"
+        )));
+    }
     s.chars()
         .map(|c| {
             c.to_digit(10)
@@ -112,4 +127,49 @@ pub fn dit_seed_from_str(s: &str, lhss: usize) -> Result<Vec<u8>, QuSpinError> {
                 })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seed_from_str_ok() {
+        assert_eq!(seed_from_str("0101", 4).unwrap(), vec![0, 1, 0, 1]);
+    }
+
+    #[test]
+    fn seed_from_str_rejects_short() {
+        let err = seed_from_str("01", 4).unwrap_err();
+        assert!(matches!(err, QuSpinError::ValueError(ref m) if m.contains("length 2")));
+    }
+
+    #[test]
+    fn seed_from_str_rejects_long() {
+        let err = seed_from_str("01010", 4).unwrap_err();
+        assert!(matches!(err, QuSpinError::ValueError(ref m) if m.contains("length 5")));
+    }
+
+    #[test]
+    fn seed_from_str_rejects_bad_char() {
+        let err = seed_from_str("0102", 4).unwrap_err();
+        assert!(matches!(err, QuSpinError::ValueError(ref m) if m.contains("'2'")));
+    }
+
+    #[test]
+    fn dit_seed_from_str_ok() {
+        assert_eq!(dit_seed_from_str("0123", 4, 4).unwrap(), vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn dit_seed_from_str_rejects_length_mismatch() {
+        let err = dit_seed_from_str("012", 4, 4).unwrap_err();
+        assert!(matches!(err, QuSpinError::ValueError(ref m) if m.contains("length 3")));
+    }
+
+    #[test]
+    fn dit_seed_from_str_rejects_oversize_digit() {
+        let err = dit_seed_from_str("0124", 4, 4).unwrap_err();
+        assert!(matches!(err, QuSpinError::ValueError(ref m) if m.contains("'4'")));
+    }
 }
