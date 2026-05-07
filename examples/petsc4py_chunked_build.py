@@ -15,6 +15,8 @@ regardless of the global dimension.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import scipy.sparse
 
@@ -48,14 +50,24 @@ def build_distributed() -> tuple[PETSc.Mat, int]:
     mat.setUp()
     rstart, rend = mat.getOwnershipRange()
 
+    # XX + ZZ has only real matrix elements, so request float64 directly
+    # from `csr_slab` and skip any complex/real conversion.  numpy issues a
+    # ComplexWarning at the wrapper boundary because the Rust kernel
+    # internally accumulates in complex128 before the cast — silenced here
+    # because the imaginary part is provably zero for this Hamiltonian.
+    # (Use dtype=np.complex128 for a Hamiltonian with non-trivial imaginary
+    # entries, e.g. complex hopping amplitudes — but then PETSc itself must
+    # also be built with --with-scalar-type=complex.)
     coeffs = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
-    indptr, indices, data = op.csr_slab(
-        basis, coeffs, rstart, rend, dtype=np.dtype("complex128")
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", np.exceptions.ComplexWarning)
+        indptr, indices, data = op.csr_slab(
+            basis, coeffs, rstart, rend, dtype=np.dtype("float64")
+        )
     mat.setValuesCSR(
         indptr.astype(PETSc.IntType, copy=False),
         indices.astype(PETSc.IntType, copy=False),
-        data,
+        np.ascontiguousarray(data, dtype=PETSc.ScalarType),
     )
     mat.assemble()
     return mat, basis.size
@@ -79,6 +91,8 @@ def gather_distributed_csr(mat: PETSc.Mat, dim: int) -> np.ndarray | None:
     indptr_loc, indices_loc, data_loc = mat.getValuesCSR()
     n_local = rend - rstart
 
+    # Always promote to complex128 for the comparison so the same code path
+    # works whether PETSc was built with real or complex scalars.
     comm = MPI.COMM_WORLD
     parts = comm.gather(
         (
