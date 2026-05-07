@@ -46,6 +46,13 @@ docs = [
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.27",
 ]
+petsc4py = [
+    # Optional group for `examples/petsc4py_chunked_build.py`.  Install via
+    # `uv sync --group petsc4py`.  Requires a working PETSc + MPI install
+    # on the system (e.g. `brew install petsc`).  Not part of CI.
+    "mpi4py>=4.0.0",
+    "petsc4py>=3.22.0",
+]
 
 [tool.isort]
 profile = "black"

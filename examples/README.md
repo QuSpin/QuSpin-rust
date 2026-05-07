@@ -11,22 +11,28 @@ to_csr` on rank 0.
 
 ### Requirements
 
+PETSc + an MPI implementation must be installed on the system before
+the Python bindings can be built — `brew install petsc` (macOS) or
+`apt-get install petsc-dev openmpi-bin` (Debian/Ubuntu) typically
+suffice.  On HPC clusters, load the PETSc / MPI modules first.
+
+Then install the optional `petsc4py` dependency group, which bundles
+`petsc4py` and `mpi4py`:
+
 ```sh
-pip install petsc4py mpi4py
+uv sync --group petsc4py
 ```
 
-petsc4py needs a working PETSc install — `brew install petsc` (macOS) or
-`apt-get install petsc-dev` (Debian/Ubuntu) typically suffice. On HPC
-clusters, load the PETSc module first.
+(or `pip install petsc4py mpi4py` outside the uv-managed environment).
 
 ### Running
 
 ```sh
 # Single-rank serial check:
-python examples/petsc4py_chunked_build.py
+uv run python examples/petsc4py_chunked_build.py
 
 # Distributed run (4 ranks):
-mpirun -n 4 python examples/petsc4py_chunked_build.py
+uv run mpirun -n 4 python examples/petsc4py_chunked_build.py
 ```
 
 Both should print
