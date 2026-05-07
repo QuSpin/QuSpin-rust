@@ -6,16 +6,16 @@
 //! includes the wide widths is itself gated behind the same feature
 //! so that no `#[cfg]` arms ever appear inside a match expression.
 
-pub(crate) type B128 = ruint::Uint<128, 2>;
-pub(crate) type B256 = ruint::Uint<256, 4>;
+pub type B128 = ruint::Uint<128, 2>;
+pub type B256 = ruint::Uint<256, 4>;
 
 #[cfg(feature = "large-int")]
-pub(crate) type B512 = ruint::Uint<512, 8>;
+pub type B512 = ruint::Uint<512, 8>;
 #[cfg(feature = "large-int")]
-pub(crate) type B1024 = ruint::Uint<1024, 16>;
+pub type B1024 = ruint::Uint<1024, 16>;
 #[cfg(feature = "large-int")]
-pub(crate) type B2048 = ruint::Uint<2048, 32>;
+pub type B2048 = ruint::Uint<2048, 32>;
 #[cfg(feature = "large-int")]
-pub(crate) type B4096 = ruint::Uint<4096, 64>;
+pub type B4096 = ruint::Uint<4096, 64>;
 #[cfg(feature = "large-int")]
-pub(crate) type B8192 = ruint::Uint<8192, 128>;
+pub type B8192 = ruint::Uint<8192, 128>;

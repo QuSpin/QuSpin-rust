@@ -12,12 +12,22 @@ use quspin_bitbasis::BitInt;
 use quspin_operator::Operator;
 use quspin_types::QuSpinError;
 use rayon::prelude::*;
+use smallvec::SmallVec;
 
 use crate::qmatrix::CIndex;
 use crate::qmatrix::matrix::PARALLEL_DIM_THRESHOLD;
 
 /// Drop-zeros tolerance — matches `QMatrix::to_csr_into` / `materialize`.
 const ZERO_TOL: f64 = 4.0 * f64::EPSILON;
+
+/// Inline capacity for per-row (col, value) buffers.  Matches
+/// `build_from_symmetric` so heap allocation is avoided for any row whose
+/// width fits inside this many entries.
+const ROW_CAP: usize = 64;
+
+/// Per-row buffer of `(global_col, accumulated_value)` pairs.  Backed by
+/// `SmallVec` so rows narrower than [`ROW_CAP`] never touch the heap.
+type RowSlab = SmallVec<[(i64, Complex<f64>); ROW_CAP]>;
 
 /// Output triple of [`csr_slab_kernel`] and the public dispatchers.
 ///
@@ -69,9 +79,10 @@ where
     let n_local = row_end - row_start;
 
     // Per-row work: collect (col, contribution) entries via op.apply, sort + merge.
-    let process_row = |r: usize| -> Vec<(i64, Complex<f64>)> {
+    // SmallVec keeps the common case (row width <= ROW_CAP) heap-allocation free.
+    let process_row = |r: usize| -> RowSlab {
         let state = basis.state_at(r);
-        let mut entries: Vec<(i64, Complex<f64>)> = Vec::new();
+        let mut entries: RowSlab = SmallVec::new();
         op.apply(state, |cindex, amp, new_state| {
             if let Some(col) = basis.index(new_state) {
                 entries.push((col as i64, amp * coeffs[cindex.as_usize()]));
@@ -79,7 +90,7 @@ where
         });
         // Sort by col, merge same-col, drop_zeros (relative tolerance).
         entries.sort_unstable_by_key(|&(c, _)| c);
-        let mut merged: Vec<(i64, Complex<f64>)> = Vec::with_capacity(entries.len());
+        let mut merged: RowSlab = SmallVec::new();
         let mut i = 0;
         while i < entries.len() {
             let col = entries[i].0;
@@ -98,7 +109,7 @@ where
         merged
     };
 
-    let row_results: Vec<Vec<(i64, Complex<f64>)>> = if n_local >= PARALLEL_DIM_THRESHOLD {
+    let row_results: Vec<RowSlab> = if n_local >= PARALLEL_DIM_THRESHOLD {
         (row_start..row_end)
             .into_par_iter()
             .map(process_row)
@@ -129,7 +140,6 @@ where
 
 use quspin_basis::sym::{NormInt, SymBasis};
 use quspin_bitbasis::{DynamicPermDitValues, FermionicBitStateOp, PermDitMask, PermDitValues};
-use smallvec::SmallVec;
 
 /// Companion to `csr_slab_kernel` for symmetric bases. `SymBasis<B, L, N>`
 /// stores only orbit representatives; the Hamiltonian matrix elements must
@@ -171,26 +181,22 @@ where
     }
 
     let n_local = row_end - row_start;
-    const ROW_CAP: usize = 64;
 
-    let process_row = |r: usize| -> Vec<(i64, num_complex::Complex<f64>)> {
+    let process_row = |r: usize| -> RowSlab {
         let (state, norm) = basis.entry(r);
-        let mut row_buf: SmallVec<[(C, num_complex::Complex<f64>); ROW_CAP]> = SmallVec::new();
+        let mut row_buf: SmallVec<[(C, Complex<f64>); ROW_CAP]> = SmallVec::new();
         let mut new_states: SmallVec<[B; ROW_CAP]> = SmallVec::new();
-        let mut ref_out: SmallVec<[(B, num_complex::Complex<f64>); ROW_CAP]> = SmallVec::new();
+        let mut ref_out: SmallVec<[(B, Complex<f64>); ROW_CAP]> = SmallVec::new();
 
         op.apply(state, |cindex, amp, new_state| {
             row_buf.push((cindex, amp));
             new_states.push(new_state);
         });
 
-        let mut entries: Vec<(i64, num_complex::Complex<f64>)> = Vec::new();
+        let mut entries: RowSlab = SmallVec::new();
 
         if !new_states.is_empty() {
-            ref_out.resize(
-                new_states.len(),
-                (new_states[0], num_complex::Complex::new(1.0, 0.0)),
-            );
+            ref_out.resize(new_states.len(), (new_states[0], Complex::new(1.0, 0.0)));
             basis.get_refstate_batch(&new_states, &mut ref_out);
 
             for ((cindex, amp), (ref_state, grp_char)) in row_buf.iter().zip(ref_out.iter()) {
@@ -207,11 +213,11 @@ where
 
         // Sort by col, then merge same-col entries.
         entries.sort_unstable_by_key(|&(c, _)| c);
-        let mut merged: Vec<(i64, num_complex::Complex<f64>)> = Vec::with_capacity(entries.len());
+        let mut merged: RowSlab = SmallVec::new();
         let mut i = 0;
         while i < entries.len() {
             let col = entries[i].0;
-            let mut acc = num_complex::Complex::new(0.0, 0.0);
+            let mut acc = Complex::new(0.0, 0.0);
             let mut scale = 0.0f64;
             while i < entries.len() && entries[i].0 == col {
                 let v = entries[i].1;
@@ -226,15 +232,14 @@ where
         merged
     };
 
-    let row_results: Vec<Vec<(i64, num_complex::Complex<f64>)>> =
-        if n_local >= PARALLEL_DIM_THRESHOLD {
-            (row_start..row_end)
-                .into_par_iter()
-                .map(process_row)
-                .collect()
-        } else {
-            (row_start..row_end).map(process_row).collect()
-        };
+    let row_results: Vec<RowSlab> = if n_local >= PARALLEL_DIM_THRESHOLD {
+        (row_start..row_end)
+            .into_par_iter()
+            .map(process_row)
+            .collect()
+    } else {
+        (row_start..row_end).map(process_row).collect()
+    };
 
     // Flatten into CSR.
     let total_nnz: usize = row_results.iter().map(|r| r.len()).sum();
@@ -257,27 +262,15 @@ where
 // ===========================================================================
 
 use quspin_basis::dispatch::{
-    BitBasis, BitBasisDefault, DitBasis, DynDitBasis, DynDitBasisDefault, GenericBasis, QuatBasis,
-    QuatBasisDefault, TritBasis, TritBasisDefault,
+    B128, B256, BitBasis, BitBasisDefault, DitBasis, DynDitBasis, DynDitBasisDefault, GenericBasis,
+    QuatBasis, QuatBasisDefault, TritBasis, TritBasisDefault,
 };
 #[cfg(feature = "large-int")]
 use quspin_basis::dispatch::{
-    BitBasisLargeInt, DynDitBasisLargeInt, QuatBasisLargeInt, TritBasisLargeInt,
+    B512, B1024, B2048, B4096, B8192, BitBasisLargeInt, DynDitBasisLargeInt, QuatBasisLargeInt,
+    TritBasisLargeInt,
 };
 use quspin_operator::pauli::{HardcoreOperator, HardcoreOperatorInner};
-
-type B128 = ruint::Uint<128, 2>;
-type B256 = ruint::Uint<256, 4>;
-#[cfg(feature = "large-int")]
-type B512 = ruint::Uint<512, 8>;
-#[cfg(feature = "large-int")]
-type B1024 = ruint::Uint<1024, 16>;
-#[cfg(feature = "large-int")]
-type B2048 = ruint::Uint<2048, 32>;
-#[cfg(feature = "large-int")]
-type B4096 = ruint::Uint<4096, 64>;
-#[cfg(feature = "large-int")]
-type B8192 = ruint::Uint<8192, 128>;
 
 // ---------------------------------------------------------------------------
 // Slab variants of the plain_default_arms! / plain_largeint_arms! macros.
