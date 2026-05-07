@@ -54,3 +54,106 @@ fn csr_slab_full_range_matches_materialize() {
         assert!((a - b).norm() < 1e-12, "data mismatch: {a} vs {b}");
     }
 }
+
+#[test]
+fn csr_slab_partition_concat_matches_materialize() {
+    let op = xx_zz_op();
+    let basis = full_4site_basis();
+    let dim = 16;
+    let coeffs = vec![Complex::new(1.0, 0.0), Complex::new(0.5, 0.0)];
+
+    let qm = QMatrixInner::build_hardcore(&op, &basis, ValueDType::Complex128);
+    let (ref_indptr, ref_indices, ref_data) = qm.materialize(&coeffs, true).unwrap();
+
+    // Try several partitions: 1 chunk (= full), 2, 3, dim chunks (one row each).
+    for &k in &[1usize, 2, 3, dim] {
+        let bounds: Vec<usize> = (0..=k).map(|i| i * dim / k).collect();
+        let mut indptr_concat: Vec<i64> = vec![0];
+        let mut indices_concat: Vec<i64> = Vec::new();
+        let mut data_concat: Vec<Complex<f64>> = Vec::new();
+        for w in bounds.windows(2) {
+            let (rs, re) = (w[0], w[1]);
+            let (ip, ii, dd) = csr_slab_pauli_generic(&op, &basis, &coeffs, rs, re, true).unwrap();
+            // CSR-of-row-blocks merge: shift `ip` by current data length, drop ip[0].
+            let off = indices_concat.len() as i64;
+            for &p in &ip[1..] {
+                indptr_concat.push(p + off);
+            }
+            indices_concat.extend_from_slice(&ii);
+            data_concat.extend_from_slice(&dd);
+        }
+        assert_eq!(indptr_concat, ref_indptr, "k={k}: indptr");
+        assert_eq!(indices_concat, ref_indices, "k={k}: indices");
+        assert_eq!(data_concat.len(), ref_data.len(), "k={k}: nnz");
+        for (a, b) in data_concat.iter().zip(ref_data.iter()) {
+            assert!((a - b).norm() < 1e-12, "k={k}: data mismatch");
+        }
+    }
+}
+
+#[test]
+fn csr_slab_empty_range_returns_empty_arrays() {
+    let op = xx_zz_op();
+    let basis = full_4site_basis();
+    let coeffs = vec![Complex::new(1.0, 0.0), Complex::new(0.5, 0.0)];
+
+    for r in [0usize, 5, 16] {
+        let (ip, ii, dd) = csr_slab_pauli_generic(&op, &basis, &coeffs, r, r, true).unwrap();
+        assert_eq!(ip, vec![0i64]);
+        assert!(ii.is_empty());
+        assert!(dd.is_empty());
+    }
+}
+
+#[test]
+fn csr_slab_drop_zeros_false_keeps_zeros() {
+    // 4-site H = XX + (-1)*XX on 2 cindices (with both coeffs = 1.0) → all-zero matrix.
+    let entries = vec![
+        OpEntry::new(
+            0u8,
+            Complex::new(1.0, 0.0),
+            smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)],
+        ),
+        OpEntry::new(
+            1u8,
+            Complex::new(-1.0, 0.0),
+            smallvec![(HardcoreOp::X, 0u32), (HardcoreOp::X, 1u32)],
+        ),
+    ];
+    let op = HardcoreOperatorInner::Ham8(HardcoreOperator::new(entries));
+    let basis = full_4site_basis();
+    let coeffs = vec![Complex::new(1.0, 0.0), Complex::new(1.0, 0.0)];
+
+    // drop_zeros=true: matrix collapses to nothing.
+    let (_, ii_drop, dd_drop) = csr_slab_pauli_generic(&op, &basis, &coeffs, 0, 16, true).unwrap();
+    assert!(ii_drop.is_empty());
+    assert!(dd_drop.is_empty());
+
+    // drop_zeros=false: every row that XX touches still emits the (cancelled) entry.
+    let (_, ii_keep, _) = csr_slab_pauli_generic(&op, &basis, &coeffs, 0, 16, false).unwrap();
+    assert!(
+        !ii_keep.is_empty(),
+        "drop_zeros=false should preserve cancelled entries"
+    );
+}
+
+#[test]
+fn csr_slab_invalid_range_errors() {
+    let op = xx_zz_op();
+    let basis = full_4site_basis();
+    let coeffs = vec![Complex::new(1.0, 0.0), Complex::new(0.5, 0.0)];
+
+    // row_start > row_end
+    assert!(csr_slab_pauli_generic(&op, &basis, &coeffs, 5, 3, true).is_err());
+    // row_end > basis.size()
+    assert!(csr_slab_pauli_generic(&op, &basis, &coeffs, 0, 99, true).is_err());
+}
+
+#[test]
+fn csr_slab_wrong_coeffs_len_errors() {
+    let op = xx_zz_op();
+    let basis = full_4site_basis();
+    // op has 2 cindices; pass 3 coeffs.
+    let coeffs = vec![Complex::new(1.0, 0.0); 3];
+    assert!(csr_slab_pauli_generic(&op, &basis, &coeffs, 0, 16, true).is_err());
+}
