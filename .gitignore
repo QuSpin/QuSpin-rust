@@ -42,6 +42,8 @@ __pycache__
 __pycache__
 scratch/
 
+.worktrees/
+
 # Managed by ion
 .agents/skills/*
 .claude/skills/*
