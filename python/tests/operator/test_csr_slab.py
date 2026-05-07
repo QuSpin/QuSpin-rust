@@ -12,7 +12,6 @@ from quspin_rs._rs import (
     SpinBasis,
 )
 
-
 N = 4
 
 
@@ -34,9 +33,7 @@ def reference_csr(op, basis, coeffs):
     """Build the full QMatrix and materialise its CSR for comparison."""
     mat = QMatrix.build_pauli(op, basis, np.dtype("complex128"))
     indptr, indices, data = mat.to_csr(coeffs)
-    return scipy.sparse.csr_matrix(
-        (data, indices, indptr), shape=(mat.dim, mat.dim)
-    )
+    return scipy.sparse.csr_matrix((data, indices, indptr), shape=(mat.dim, mat.dim))
 
 
 class TestCsrSlabFullRange:
@@ -106,9 +103,7 @@ class TestCsrSlabEmpty:
         coeffs = np.array([1.0 + 0j, 0.5 + 0j], dtype=np.complex128)
 
         for r in (0, 5, basis.size):
-            ip, ii, dd = op.csr_slab(
-                basis, coeffs, r, r, dtype=np.dtype("complex128")
-            )
+            ip, ii, dd = op.csr_slab(basis, coeffs, r, r, dtype=np.dtype("complex128"))
             assert ip.dtype == np.int64
             assert ii.dtype == np.int64
             assert dd.dtype == np.complex128
@@ -136,7 +131,7 @@ class TestCsrSlabValidation:
         basis = BosonBasis.full(2, lhss=2)  # wrong type for PauliOperator
         coeffs = np.array([1.0 + 0j, 0.5 + 0j], dtype=np.complex128)
         with pytest.raises((TypeError, ValueError)):
-            op.csr_slab(basis, coeffs, 0, basis.size, dtype=np.dtype("complex128"))
+            op.csr_slab(basis, coeffs, 0, basis.size, dtype=np.dtype("complex128"))  # type: ignore[arg-type]
 
     def test_wrong_coeffs_size_raises(self):
         op = make_xx_zz()
@@ -154,6 +149,4 @@ class TestCsrSlabValidation:
             op.csr_slab(basis, coeffs, 10, 5, dtype=np.dtype("complex128"))
         # row_end > basis.size
         with pytest.raises(ValueError):
-            op.csr_slab(
-                basis, coeffs, 0, basis.size + 1, dtype=np.dtype("complex128")
-            )
+            op.csr_slab(basis, coeffs, 0, basis.size + 1, dtype=np.dtype("complex128"))
