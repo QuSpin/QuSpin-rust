@@ -8,6 +8,7 @@
 //! - [`OperatorDispatch`] extension trait on `*OperatorInner` enums
 
 pub mod apply;
+pub mod csr_slab;
 pub mod dispatch;
 pub mod hamiltonian;
 mod owned_qmatrix_op;
