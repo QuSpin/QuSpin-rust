@@ -39,6 +39,7 @@ dev = [
     "pytest-xdist>=3.5.0",
     "ruff>=0.7.3",
     "rust-just>=1.36.0",
+    "scipy>=1.14.0",
 ]
 docs = [
     "mkdocs>=1.6",
