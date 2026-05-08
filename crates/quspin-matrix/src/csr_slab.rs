@@ -84,8 +84,14 @@ where
         let state = basis.state_at(r);
         let mut entries: RowSlab = SmallVec::new();
         op.apply(state, |cindex, amp, new_state| {
+            // Skip cindices the caller masked out — avoids the basis.index
+            // lookup when the contribution would be zero anyway.
+            let coeff = coeffs[cindex.as_usize()];
+            if coeff.re == 0.0 && coeff.im == 0.0 {
+                return;
+            }
             if let Some(col) = basis.index(new_state) {
-                entries.push((col as i64, amp * coeffs[cindex.as_usize()]));
+                entries.push((col as i64, amp * coeff));
             }
         });
         // Sort by col, merge same-col, drop_zeros (relative tolerance).
@@ -189,6 +195,12 @@ where
         let mut ref_out: SmallVec<[(B, Complex<f64>); ROW_CAP]> = SmallVec::new();
 
         op.apply(state, |cindex, amp, new_state| {
+            // Skip cindices the caller masked out — avoids both the
+            // refstate batch and the per-element ref/index/norm work.
+            let coeff = coeffs[cindex.as_usize()];
+            if coeff.re == 0.0 && coeff.im == 0.0 {
+                return;
+            }
             row_buf.push((cindex, amp));
             new_states.push(new_state);
         });

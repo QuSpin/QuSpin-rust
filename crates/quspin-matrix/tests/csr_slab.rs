@@ -157,3 +157,43 @@ fn csr_slab_wrong_coeffs_len_errors() {
     let coeffs = vec![Complex::new(1.0, 0.0); 3];
     assert!(csr_slab_pauli_generic(&op, &basis, &coeffs, 0, 16, true).is_err());
 }
+
+/// Zero-coefficient masking: passing `coeffs = [1.0, 0.0]` against the
+/// XX + ZZ operator must yield exactly the same matrix as a single-cindex
+/// XX-only operator with `coeffs = [1.0]`.  Exercises the `coeff == 0`
+/// fast-skip path inside `process_row`.
+#[test]
+fn csr_slab_zero_coeff_filter_matches_smaller_op() {
+    fn xx_only_op() -> HardcoreOperatorInner {
+        let mut entries = Vec::new();
+        for i in 0..3u32 {
+            entries.push(OpEntry::new(
+                0u8,
+                Complex::new(1.0, 0.0),
+                smallvec![(HardcoreOp::X, i), (HardcoreOp::X, i + 1)],
+            ));
+        }
+        HardcoreOperatorInner::Ham8(HardcoreOperator::new(entries))
+    }
+
+    let basis = full_4site_basis();
+
+    // Two-cindex op masked to keep only XX.
+    let masked_op = xx_zz_op();
+    let masked_coeffs = vec![Complex::new(1.0, 0.0), Complex::new(0.0, 0.0)];
+    let (mask_ip, mask_ii, mask_dd) =
+        csr_slab_pauli_generic(&masked_op, &basis, &masked_coeffs, 0, 16, true).unwrap();
+
+    // Single-cindex XX-only op as the reference.
+    let ref_op = xx_only_op();
+    let ref_coeffs = vec![Complex::new(1.0, 0.0)];
+    let (ref_ip, ref_ii, ref_dd) =
+        csr_slab_pauli_generic(&ref_op, &basis, &ref_coeffs, 0, 16, true).unwrap();
+
+    assert_eq!(mask_ip, ref_ip);
+    assert_eq!(mask_ii, ref_ii);
+    assert_eq!(mask_dd.len(), ref_dd.len());
+    for (a, b) in mask_dd.iter().zip(ref_dd.iter()) {
+        assert!((a - b).norm() < 1e-12);
+    }
+}
