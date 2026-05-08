@@ -78,22 +78,21 @@ where
 
     let n_local = row_end - row_start;
 
-    // Per-row work: collect (col, contribution) entries via op.apply, sort + merge.
-    // SmallVec keeps the common case (row width <= ROW_CAP) heap-allocation free.
+    // Per-row work: collect (col, contribution) entries via op.apply_masked,
+    // which skips per-term bit manipulation for cindices the caller masked
+    // out.  SmallVec keeps the common case heap-allocation free.
     let process_row = |r: usize| -> RowSlab {
         let state = basis.state_at(r);
         let mut entries: RowSlab = SmallVec::new();
-        op.apply(state, |cindex, amp, new_state| {
-            // Skip cindices the caller masked out — avoids the basis.index
-            // lookup when the contribution would be zero anyway.
-            let coeff = coeffs[cindex.as_usize()];
-            if coeff.re == 0.0 && coeff.im == 0.0 {
-                return;
-            }
-            if let Some(col) = basis.index(new_state) {
-                entries.push((col as i64, amp * coeff));
-            }
-        });
+        op.apply_masked(
+            state,
+            |cindex| coeffs[cindex.as_usize()],
+            |_cindex, scaled_amp, new_state| {
+                if let Some(col) = basis.index(new_state) {
+                    entries.push((col as i64, scaled_amp));
+                }
+            },
+        );
         // Sort by col, merge same-col, drop_zeros (relative tolerance).
         entries.sort_unstable_by_key(|&(c, _)| c);
         let mut merged: RowSlab = SmallVec::new();
@@ -190,20 +189,20 @@ where
 
     let process_row = |r: usize| -> RowSlab {
         let (state, norm) = basis.entry(r);
-        let mut row_buf: SmallVec<[(C, Complex<f64>); ROW_CAP]> = SmallVec::new();
+        // Already-scaled amplitudes (`amp * coeffs[cindex]`) — collected via
+        // `apply_masked` which skips the per-term bit work for masked cindices.
+        let mut scaled_amps: SmallVec<[Complex<f64>; ROW_CAP]> = SmallVec::new();
         let mut new_states: SmallVec<[B; ROW_CAP]> = SmallVec::new();
         let mut ref_out: SmallVec<[(B, Complex<f64>); ROW_CAP]> = SmallVec::new();
 
-        op.apply(state, |cindex, amp, new_state| {
-            // Skip cindices the caller masked out — avoids both the
-            // refstate batch and the per-element ref/index/norm work.
-            let coeff = coeffs[cindex.as_usize()];
-            if coeff.re == 0.0 && coeff.im == 0.0 {
-                return;
-            }
-            row_buf.push((cindex, amp));
-            new_states.push(new_state);
-        });
+        op.apply_masked(
+            state,
+            |cindex| coeffs[cindex.as_usize()],
+            |_cindex, scaled_amp, new_state| {
+                scaled_amps.push(scaled_amp);
+                new_states.push(new_state);
+            },
+        );
 
         let mut entries: RowSlab = SmallVec::new();
 
@@ -211,14 +210,13 @@ where
             ref_out.resize(new_states.len(), (new_states[0], Complex::new(1.0, 0.0)));
             basis.get_refstate_batch(&new_states, &mut ref_out);
 
-            for ((cindex, amp), (ref_state, grp_char)) in row_buf.iter().zip(ref_out.iter()) {
+            for (scaled_amp, (ref_state, grp_char)) in scaled_amps.iter().zip(ref_out.iter()) {
                 let Some(col_idx) = basis.index(*ref_state) else {
                     continue;
                 };
                 let (_, new_norm) = basis.entry(col_idx);
                 let scale = grp_char * (new_norm / norm).sqrt();
-                let full_amp = amp * scale;
-                let weighted = full_amp * coeffs[cindex.as_usize()];
+                let weighted = scaled_amp * scale;
                 entries.push((col_idx as i64, weighted));
             }
         }

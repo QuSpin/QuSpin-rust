@@ -240,6 +240,28 @@ impl<C: Copy + Ord> Operator<C> for HardcoreOperator<C> {
             }
         }
     }
+
+    /// Override that skips the per-term bit manipulation entirely when
+    /// `mask(entry.cindex)` is zero.
+    #[inline]
+    fn apply_masked<B, F, M>(&self, state: B, mask: M, mut emit: F)
+    where
+        B: BitInt,
+        F: FnMut(C, Complex<f64>, B),
+        M: Fn(C) -> Complex<f64>,
+        C: Copy,
+    {
+        for entry in &self.terms {
+            let coeff = mask(entry.cindex);
+            if coeff.re == 0.0 && coeff.im == 0.0 {
+                continue;
+            }
+            let (amp, new_state) = entry.apply(state);
+            if amp != Complex::new(0.0, 0.0) {
+                emit(entry.cindex, amp * coeff, new_state);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
