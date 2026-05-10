@@ -44,18 +44,38 @@ where
 
     // -----------------------------------------------------------------------
     // Forward pass: apply B p times to ell probe vectors.
-    // Probe vectors use alternating sign patterns (deterministic, no rng dep).
+    //
+    // We use a mix of probe types to avoid systematic null-space failures:
+    //  - For even j: unit vector e_j (column j of the identity).  The image
+    //    B^p·e_j is column j of B^p, so its 1-norm is a column 1-norm — a
+    //    provably valid lower bound as long as column j is nonzero.
+    //  - For odd j: alternating-sign vector (original probe) for breadth.
+    //
+    // Either probe alone can land in the null space of B^p for specific
+    // matrices (the alternating probe fails for XX-type Hamiltonians; a unit
+    // vector fails for a nilpotent matrix whose nonzero columns start later).
+    // Mixing both greatly reduces the probability of a simultaneous failure.
     // -----------------------------------------------------------------------
     let mut ax = vec![V::default(); n];
     let mut best_col: Option<Vec<V>> = None;
 
     for j in 0..ell {
-        let mut x: Vec<V> = (0..n)
-            .map(|i| {
-                let sign = if (i + j) % 2 == 0 { 1.0_f64 } else { -1.0_f64 };
-                V::from_real(V::real_from_f64(sign))
-            })
-            .collect();
+        let mut x: Vec<V> = if j % 2 == 0 {
+            // Unit vector e_j (column j of the identity, clamped to column 0
+            // when j >= n so we always probe at least one valid column).
+            let col = j.min(n - 1);
+            let mut v = vec![V::default(); n];
+            v[col] = V::from_real(V::real_from_f64(1.0));
+            v
+        } else {
+            // Alternating ±1 vector.
+            (0..n)
+                .map(|i| {
+                    let sign = if (i + j) % 2 == 0 { 1.0_f64 } else { -1.0_f64 };
+                    V::from_real(V::real_from_f64(sign))
+                })
+                .collect()
+        };
 
         b.apply_pow_in_place(p, &mut x, &mut ax);
 
