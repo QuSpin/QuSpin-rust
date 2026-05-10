@@ -237,13 +237,14 @@ where
         }
         est_old = est;
 
-        // Hard iteration limit (mirrors scipy's `if k > itmax: break`).
+        // --- Build sign matrix S = sign_roundup(Y); save S_old ---
+        // Hard limit check comes first (scipy: `S_old = S; if k > itmax: break;
+        // S = sign_round_up(Y)`), so we don't compute the new S on the final
+        // iteration.
+        let s_old = s_mat;
         if k > ITMAX {
             break;
         }
-
-        // --- Build sign matrix S = sign_roundup(Y); save S_old ---
-        let s_old = s_mat;
         s_mat = sign_roundup_mat::<V>(&y_mat);
 
         // --- Termination (2): S has converged (every col parallel to S_old) ---
