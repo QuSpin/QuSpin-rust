@@ -156,17 +156,7 @@ where
         let est = onenorm_matrix_power_nnm(&b, p, self.ell);
         // Convert V::Real → f64 via round-trip through Complex<f64>.
         let est_f64 = V::from_real(est).to_complex().re;
-        // d(p) = ||B^p||_1^(1/p).
-        // If the estimator returns 0 despite onenorm_exact > 0, the probe
-        // vectors landed in the null space of B^p (a known failure mode for
-        // structured matrices).  Fall back to onenorm_exact, which by
-        // submultiplicativity satisfies d(p) ≤ ||B||_1 = onenorm_exact, so
-        // using it as the estimate is always conservative and correct.
-        let d_p = if est_f64 == 0.0 {
-            self.onenorm_exact
-        } else {
-            est_f64.powf(1.0 / p as f64)
-        };
+        let d_p = est_f64.powf(1.0 / p as f64);
         self.d_cache.insert(p, d_p);
         d_p
     }
