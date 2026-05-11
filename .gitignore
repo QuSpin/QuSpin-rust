@@ -1,3 +1,5 @@
+vendor/**
+
 *.dylib*
 /build*
 /target
