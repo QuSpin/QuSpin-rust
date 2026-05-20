@@ -128,9 +128,15 @@ fn every_col_parallel<V: ExpmComputation>(
                 return false;
             }
             let c = xc[0].to_complex() / y0;
+            // Tolerance is O(machine_eps) in the scalar type's precision.
+            // Using 128 × machine_eps keeps us above f32 roundoff (~1e-7)
+            // while still rejecting genuinely distinct directions.
+            let tol: f64 = V::from_real(V::real_from_f64(128.0) * V::machine_eps())
+                .to_complex()
+                .re;
             xc.iter()
                 .zip(yc.iter())
-                .all(|(&x, &y)| (x.to_complex() - c * y.to_complex()).norm() < 1e-10)
+                .all(|(&x, &y)| (x.to_complex() - c * y.to_complex()).norm() < tol)
         })
     })
 }
@@ -269,12 +275,18 @@ where
             }
         }
 
-        // --- Sort rows by h descending; keep top (t + |ind_hist|) ---
+        // --- Partial sort: keep only the top (t + |ind_hist|) rows by h ---
+        // `take` is typically ≤ 12 (t=2, itmax=5), so a full O(n log n) sort
+        // is wasteful for large operators.  We use select_nth_unstable_by to
+        // partition in O(n), then sort only the small top-`take` slice.
         let take = (t + ind_hist.len()).min(n);
         let mut ind_sorted: Vec<usize> = (0..n).collect();
-        ind_sorted.sort_unstable_by(|&a, &b| {
-            h[b].partial_cmp(&h[a]).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        let cmp_desc =
+            |&a: &usize, &b: &usize| h[b].partial_cmp(&h[a]).unwrap_or(std::cmp::Ordering::Equal);
+        if take < n {
+            ind_sorted.select_nth_unstable_by(take - 1, cmp_desc);
+        }
+        ind_sorted[..take].sort_unstable_by(cmp_desc);
         let ind_all = &ind_sorted[..take];
 
         // --- Termination (5): top-t candidates all already visited ---

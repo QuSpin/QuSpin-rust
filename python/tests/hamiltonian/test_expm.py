@@ -181,7 +181,9 @@ class TestExpmOpAndWorker:
         psi /= np.linalg.norm(psi)
         for _ in range(10):
             worker.apply(psi)
-            np.testing.assert_allclose(np.linalg.norm(psi) ** 2, 1.0, atol=1e-13)
+            np.testing.assert_allclose(
+                np.linalg.norm(psi) ** 2, 1.0, atol=1e-13, rtol=0
+            )
 
     def test_worker_apply_xx4_matches_eigendecomposition(self):
         """4-site XX result matches eigendecomposition at machine precision."""
@@ -200,7 +202,7 @@ class TestExpmOpAndWorker:
         eo = ExpmOp(ham.as_linearoperator(0.0), a)
         eo.worker().apply(f)
 
-        np.testing.assert_allclose(f, expected, atol=1e-13)
+        np.testing.assert_allclose(f, expected, atol=1e-13, rtol=0)
 
     def test_worker_reuse_same_result(self):
         """Calling apply twice with a reset input should give the same answer."""
