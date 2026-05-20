@@ -149,6 +149,7 @@ where
     ///
     /// Mirrors `LazyOperatorNormInfo.d()` in the Python source.
     pub fn d(&mut self, p: usize) -> f64 {
+        assert!(p > 0, "d(p) requires p ≥ 1; p=0 gives 1/p = inf");
         if let Some(&cached) = self.d_cache.get(&p) {
             return cached;
         }
@@ -156,12 +157,7 @@ where
         let est = onenorm_matrix_power_nnm(&b, p, self.ell);
         // Convert V::Real → f64 via round-trip through Complex<f64>.
         let est_f64 = V::from_real(est).to_complex().re;
-        // d(p) = ||B^p||_1^(1/p)
-        let d_p = if est_f64 == 0.0 {
-            0.0
-        } else {
-            est_f64.powf(1.0 / p as f64)
-        };
+        let d_p = est_f64.powf(1.0 / p as f64);
         self.d_cache.insert(p, d_p);
         d_p
     }

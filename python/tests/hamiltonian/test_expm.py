@@ -36,6 +36,13 @@ class TestExpmOpAndWorker:
         mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
         return Hamiltonian(mat, [Static()])
 
+    def _xx4_ham(self) -> Hamiltonian:
+        """H = Σ_i X_i X_{i+1} (periodic) on 4 spin-1/2 sites, full 16-dim basis."""
+        op = PauliOperator([("XX", [[1.0, i, (i + 1) % 4] for i in range(4)])])
+        basis = SpinBasis.full(4)
+        mat = QMatrix.build_pauli(op, basis, np.dtype("float64"))
+        return Hamiltonian(mat, [Static()])
+
     @staticmethod
     def _ref_expm_z(a: complex, f: np.ndarray) -> np.ndarray:
         scale = np.array([cmath.exp(a), cmath.exp(-a)], dtype=np.complex128)
@@ -156,6 +163,46 @@ class TestExpmOpAndWorker:
         eo.worker().apply(f)
 
         np.testing.assert_allclose(f, expected, atol=1e-10)
+
+    def test_worker_apply_xx4_small_a_is_unitary(self):
+        """Regression: small |a| on a 4-site XX Hamiltonian.
+
+        The 1-norm estimator's alternating ±1 probe vectors lie in the null
+        space of B² for this operator, which previously caused fragment_3_1 to
+        select m_star=1 (first-order Taylor only) and produce a non-unitary
+        result.  Verify that ‖exp(-i·dt·H)·ψ‖² == 1 for 10 successive steps.
+        """
+        ham = self._xx4_ham()
+        a = -1j * 0.05  # small |a|: the failure mode requires |a|·‖H‖₁ ≈ 0.2
+        eo = ExpmOp(ham.as_linearoperator(0.0), a)
+        worker = eo.worker()
+        rng = np.random.default_rng(42)
+        psi = rng.standard_normal(16) + 1j * rng.standard_normal(16)
+        psi /= np.linalg.norm(psi)
+        for _ in range(10):
+            worker.apply(psi)
+            np.testing.assert_allclose(
+                np.linalg.norm(psi) ** 2, 1.0, atol=1e-13, rtol=0
+            )
+
+    def test_worker_apply_xx4_matches_eigendecomposition(self):
+        """4-site XX result matches eigendecomposition at machine precision."""
+        ham = self._xx4_ham()
+        a = -1j * 0.05
+        H = ham.to_dense(0.0)
+        vals, vecs = np.linalg.eigh(H)
+        ref_expm = (vecs * np.exp(a * vals)) @ vecs.conj().T
+
+        rng = np.random.default_rng(7)
+        f = (rng.standard_normal(16) + 1j * rng.standard_normal(16)).astype(
+            np.complex128
+        )
+        expected = ref_expm @ f
+
+        eo = ExpmOp(ham.as_linearoperator(0.0), a)
+        eo.worker().apply(f)
+
+        np.testing.assert_allclose(f, expected, atol=1e-13, rtol=0)
 
     def test_worker_reuse_same_result(self):
         """Calling apply twice with a reset input should give the same answer."""
