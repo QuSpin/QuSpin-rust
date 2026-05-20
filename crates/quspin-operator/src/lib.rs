@@ -39,6 +39,34 @@ pub trait Operator<C> {
     fn apply<B: BitInt, F>(&self, state: B, emit: F)
     where
         F: FnMut(C, Complex<f64>, B);
+
+    /// Like [`apply`](Self::apply), but the per-term work is skipped
+    /// entirely when `mask(cindex)` is zero.  The closure receives the
+    /// already-scaled amplitude `amp * mask(cindex)`.
+    ///
+    /// Useful when the caller wants to materialise only a subset of the
+    /// operator's terms (e.g. one cindex at a time when building a
+    /// time-dependent decomposition for petsc4py).
+    ///
+    /// The default implementation forwards to [`apply`](Self::apply) and
+    /// filters in the closure — correct for any operator but doesn't
+    /// avoid the per-term bit manipulation.  Concrete implementations
+    /// should override to short-circuit before computing the term.
+    fn apply_masked<B, F, M>(&self, state: B, mask: M, mut emit: F)
+    where
+        B: BitInt,
+        F: FnMut(C, Complex<f64>, B),
+        M: Fn(C) -> Complex<f64>,
+        C: Copy,
+    {
+        self.apply(state, |cindex, amp, new_state| {
+            let coeff = mask(cindex);
+            if coeff.re == 0.0 && coeff.im == 0.0 {
+                return;
+            }
+            emit(cindex, amp * coeff, new_state);
+        });
+    }
 }
 
 impl<C, T: Operator<C> + ?Sized> Operator<C> for &T {
@@ -56,6 +84,16 @@ impl<C, T: Operator<C> + ?Sized> Operator<C> for &T {
         F: FnMut(C, Complex<f64>, B),
     {
         (**self).apply(state, emit)
+    }
+
+    fn apply_masked<B, F, M>(&self, state: B, mask: M, emit: F)
+    where
+        B: BitInt,
+        F: FnMut(C, Complex<f64>, B),
+        M: Fn(C) -> Complex<f64>,
+        C: Copy,
+    {
+        (**self).apply_masked(state, mask, emit)
     }
 }
 

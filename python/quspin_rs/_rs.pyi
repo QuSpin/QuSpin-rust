@@ -339,6 +339,28 @@ class PauliOperator:
         """Apply operator to ``input``, projecting back into the same ``basis``."""
         ...
 
+    def csr_slab(
+        self,
+        basis: SpinBasis | FermionBasis,
+        coeffs: npt.NDArray[Any],
+        row_start: int,
+        row_end: int,
+        dtype: np.dtype[Any],
+        drop_zeros: bool = True,
+    ) -> tuple[
+        npt.NDArray[np.int64],
+        npt.NDArray[np.int64],
+        npt.NDArray[Any],
+    ]:
+        """Materialise rows ``[row_start, row_end)`` as CSR.
+
+        Designed for petsc4py: each MPI rank calls this with its locally-owned
+        row range.  Returns ``(indptr, indices, data)`` where ``indices`` are
+        **global** column indices.  See the petsc4py demo at
+        ``examples/petsc4py_chunked_build.py``.
+        """
+        ...
+
     def __repr__(self) -> str: ...
 
 class BondOperator:

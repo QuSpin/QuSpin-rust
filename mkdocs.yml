@@ -36,6 +36,7 @@ nav:
   - Home: index.md
   - Guide:
       - Symmetry groups: guide/symmetry.md
+      - Distributed assembly with petsc4py: guide/petsc4py.md
   - API reference:
       - Basis types: api/basis.md
       - Symmetry: api/symmetry.md

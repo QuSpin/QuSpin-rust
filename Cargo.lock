@@ -977,6 +977,7 @@ dependencies = [
  "ode_solvers",
  "quspin-basis",
  "quspin-bitbasis",
+ "quspin-core",
  "quspin-expm",
  "quspin-operator",
  "quspin-types",

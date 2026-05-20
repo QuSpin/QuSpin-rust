@@ -66,13 +66,14 @@ pub mod dit;
 pub(crate) mod macros;
 pub mod quat;
 pub mod trit;
-pub(crate) mod types;
+pub mod types;
 pub(crate) mod validate;
 
 pub use bit::{BitBasis, BitBasisDefault};
 pub use dit::{DynDitBasis, DynDitBasisDefault};
 pub use quat::{QuatBasis, QuatBasisDefault};
 pub use trit::{TritBasis, TritBasisDefault};
+pub use types::{B128, B256};
 
 #[cfg(feature = "large-int")]
 pub use bit::BitBasisLargeInt;
@@ -82,6 +83,8 @@ pub use dit::DynDitBasisLargeInt;
 pub use quat::QuatBasisLargeInt;
 #[cfg(feature = "large-int")]
 pub use trit::TritBasisLargeInt;
+#[cfg(feature = "large-int")]
+pub use types::{B512, B1024, B2048, B4096, B8192};
 
 use crate::seed::{dit_state_to_str, state_to_str};
 use crate::space::{FullSpace, Subspace};
