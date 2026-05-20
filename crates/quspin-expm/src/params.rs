@@ -149,7 +149,7 @@ where
     ///
     /// Mirrors `LazyOperatorNormInfo.d()` in the Python source.
     pub fn d(&mut self, p: usize) -> f64 {
-        debug_assert!(p > 0, "d(p) requires p ≥ 1; p=0 gives 1/p = inf");
+        assert!(p > 0, "d(p) requires p ≥ 1; p=0 gives 1/p = inf");
         if let Some(&cached) = self.d_cache.get(&p) {
             return cached;
         }

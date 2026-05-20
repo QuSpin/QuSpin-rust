@@ -304,8 +304,10 @@ where
         }
 
         // --- Reorder: unvisited first (preserving h-order), visited last ---
-        let (unvisited, visited): (Vec<usize>, Vec<usize>) =
-            ind_all.iter().partition(|&&i| !ind_hist.contains(&i));
+        let (unvisited, visited): (Vec<usize>, Vec<usize>) = ind_all
+            .iter()
+            .copied()
+            .partition(|&i| !ind_hist.contains(&i));
         ind = unvisited.into_iter().chain(visited).collect();
 
         // --- X[:, j] = e_{ind[j]}: probe the most promising unit vectors ---
