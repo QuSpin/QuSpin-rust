@@ -2,12 +2,13 @@ use super::matrix::PARALLEL_DIM_THRESHOLD;
 use super::{CIndex, Entry, Index, QMatrix};
 use num_complex::Complex;
 use quspin_basis::dispatch::{
-    BitBasis, BitBasisDefault, DitBasis, DynDitBasis, DynDitBasisDefault, GenericBasis, QuatBasis,
-    QuatBasisDefault, TritBasis, TritBasisDefault,
+    B128, B256, BitBasis, BitBasisDefault, DitBasis, DynDitBasis, DynDitBasisDefault, GenericBasis,
+    QuatBasis, QuatBasisDefault, TritBasis, TritBasisDefault,
 };
 #[cfg(feature = "large-int")]
 use quspin_basis::dispatch::{
-    BitBasisLargeInt, DynDitBasisLargeInt, QuatBasisLargeInt, TritBasisLargeInt,
+    B512, B1024, B2048, B4096, B8192, BitBasisLargeInt, DynDitBasisLargeInt, QuatBasisLargeInt,
+    TritBasisLargeInt,
 };
 use quspin_basis::{
     BasisSpace,
@@ -20,19 +21,6 @@ use quspin_operator::Operator;
 use quspin_types::Primitive;
 use rayon::prelude::*;
 use smallvec::SmallVec;
-
-type B128 = ruint::Uint<128, 2>;
-type B256 = ruint::Uint<256, 4>;
-#[cfg(feature = "large-int")]
-type B512 = ruint::Uint<512, 8>;
-#[cfg(feature = "large-int")]
-type B1024 = ruint::Uint<1024, 16>;
-#[cfg(feature = "large-int")]
-type B2048 = ruint::Uint<2048, 32>;
-#[cfg(feature = "large-int")]
-type B4096 = ruint::Uint<4096, 64>;
-#[cfg(feature = "large-int")]
-type B8192 = ruint::Uint<8192, 128>;
 
 /// Assemble a `QMatrix` from per-row entry vectors.
 fn rows_to_qmatrix<M: Primitive, I: Index, C: CIndex>(

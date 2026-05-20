@@ -23,6 +23,7 @@ pub use quspin_matrix::{
 };
 // Re-export dispatch macros so callers like `quspin-py` can match on the
 // type-erased `*Inner` enums without taking a direct dep on `quspin-matrix`.
+pub use quspin_matrix::csr_slab::{csr_slab_pauli_bit, csr_slab_pauli_generic};
 pub use quspin_matrix::{with_hamiltonian, with_qmatrix};
 pub use quspin_operator::{
     BondOperator, BondOperatorInner, BondTerm, BosonOp, BosonOpEntry, BosonOperator,

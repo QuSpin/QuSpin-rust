@@ -3,7 +3,8 @@ use crate::operator::{
     Terms, as_c64_vec, dispatch_apply, dispatch_apply_and_project_to, max_site_from_terms,
     parse_terms_generic, write_c64_back,
 };
-use numpy::{Complex64, PyArray1};
+use num_complex::Complex;
+use numpy::{Complex64, PyArray1, PyArrayDescr, PyArrayDescrMethods, ToPyArray};
 use pyo3::prelude::*;
 use quspin_core::operator::pauli::{HardcoreOp, HardcoreOperator, HardcoreOperatorInner, OpEntry};
 
@@ -130,6 +131,112 @@ impl PyPauliOperator {
 
         unsafe { write_c64_back(output, &output_vec) };
         Ok(())
+    }
+
+    /// Materialise rows ``[row_start, row_end)`` as CSR without building a
+    /// global QMatrix.  Designed for petsc4py distributed assembly: each
+    /// MPI rank calls this with its locally-owned row range.
+    ///
+    /// Args:
+    ///     basis:      ``SpinBasis`` or ``FermionBasis``.
+    ///     coeffs:     1-D complex128 array of length ``num_cindices``.
+    ///     row_start:  inclusive, 0-based.
+    ///     row_end:    exclusive.
+    ///     dtype:      output value dtype (default complex128).
+    ///     drop_zeros: omit entries with ``|acc| <= scale * 4 * f64::EPSILON``.
+    ///
+    /// Returns:
+    ///     ``(indptr, indices, data)`` as numpy arrays.  ``indptr`` length
+    ///     ``row_end - row_start + 1``, indices are **global** column
+    ///     indices (zero-based).  Both indptr and indices are int64; the
+    ///     petsc4py user does ``arr.astype(PETSc.IntType, copy=False)``.
+    #[pyo3(signature = (basis, coeffs, row_start, row_end, dtype, drop_zeros = true))]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::type_complexity)]
+    fn csr_slab<'py>(
+        &self,
+        py: Python<'py>,
+        basis: &Bound<'py, PyAny>,
+        coeffs: numpy::PyReadonlyArray1<'py, Complex64>,
+        row_start: usize,
+        row_end: usize,
+        dtype: &Bound<'py, PyArrayDescr>,
+        drop_zeros: bool,
+    ) -> PyResult<(
+        Bound<'py, numpy::PyArray1<i64>>,
+        Bound<'py, numpy::PyArray1<i64>>,
+        Bound<'py, pyo3::types::PyAny>,
+    )> {
+        use crate::basis::fermion::PyFermionBasis;
+        use crate::basis::spin::PySpinBasis;
+        use quspin_core::{csr_slab_pauli_bit, csr_slab_pauli_generic};
+
+        // Convert numpy::Complex64 -> num_complex::Complex<f64> (same memory layout).
+        let coeffs_vec: Vec<Complex<f64>> = coeffs
+            .as_array()
+            .iter()
+            .map(|c| Complex::new(c.re, c.im))
+            .collect();
+
+        // Dispatch on basis type.
+        let (indptr, indices, data) = if let Ok(b) = basis.cast::<PySpinBasis>() {
+            let basis_ref = b.borrow();
+            if !basis_ref.inner.inner.is_built() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "basis must be built (call .full / .subspace / .symmetric first)",
+                ));
+            }
+            csr_slab_pauli_generic(
+                &self.inner,
+                &basis_ref.inner.inner,
+                &coeffs_vec,
+                row_start,
+                row_end,
+                drop_zeros,
+            )
+            .map_err(Error::from)?
+        } else if let Ok(b) = basis.cast::<PyFermionBasis>() {
+            let basis_ref = b.borrow();
+            if !basis_ref.inner.inner.is_built() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "basis must be built (call .full / .subspace / .symmetric first)",
+                ));
+            }
+            csr_slab_pauli_bit(
+                &self.inner,
+                &basis_ref.inner.inner,
+                &coeffs_vec,
+                row_start,
+                row_end,
+                drop_zeros,
+            )
+            .map_err(Error::from)?
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "basis must be SpinBasis or FermionBasis for PauliOperator.csr_slab",
+            ));
+        };
+
+        // Convert to numpy arrays.
+        let indptr_py = indptr.to_pyarray(py);
+        let indices_py = indices.to_pyarray(py);
+
+        // Output dtype: build a complex128 numpy array and `astype` if user
+        // asked for something else.  For complex128 (the common case) this
+        // is a no-op cast.
+        let data_c128: Bound<'py, numpy::PyArray1<Complex64>> = data
+            .iter()
+            .map(|c| numpy::Complex64::new(c.re, c.im))
+            .collect::<Vec<_>>()
+            .to_pyarray(py);
+        let data_out: Bound<'py, pyo3::types::PyAny> =
+            if dtype.is_equiv_to(&numpy::dtype::<Complex64>(py)) {
+                data_c128.into_any()
+            } else {
+                data_c128.call_method1("astype", (dtype.clone(),))?
+            };
+
+        Ok((indptr_py, indices_py, data_out))
     }
 
     fn __repr__(&self) -> String {

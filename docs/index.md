@@ -56,6 +56,8 @@ worker.apply(psi)                      # one timestep, no allocations
 
 - **[Symmetry-group guide](guide/symmetry.md)** — how to build groups for
   `*Basis.symmetric(...)`.
+- **[Distributed assembly with petsc4py](guide/petsc4py.md)** — building
+  PETSc matrices row-by-row across MPI ranks via `op.csr_slab(...)`.
 - **[Basis types](api/basis.md)** — `SpinBasis`, `FermionBasis`,
   `BosonBasis`, `GenericBasis`.
 - **[Symmetry API](api/symmetry.md)** — `SymmetryGroup` plus the

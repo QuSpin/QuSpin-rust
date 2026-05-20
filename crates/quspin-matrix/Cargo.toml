@@ -26,3 +26,4 @@ nalgebra = { workspace = true }
 
 [dev-dependencies]
 quspin-bitbasis = { path = "../quspin-bitbasis", features = ["test-graphs"] }
+quspin-core = { path = "../quspin-core" }

@@ -20,7 +20,7 @@ const ZERO_TOL: f64 = 4.0 * f64::EPSILON;
 ///
 /// Below this threshold the sequential path is used to avoid rayon fork/join
 /// overhead.  Matches `PARALLEL_FRONTIER_THRESHOLD` in `basis::bfs`.
-pub(super) const PARALLEL_DIM_THRESHOLD: usize = 256;
+pub(crate) const PARALLEL_DIM_THRESHOLD: usize = 256;
 
 // ---------------------------------------------------------------------------
 // Index / CIndex sealed traits
