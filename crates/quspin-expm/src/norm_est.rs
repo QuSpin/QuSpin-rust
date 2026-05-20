@@ -23,6 +23,7 @@ fn xorshift_sign(state: &mut u64) -> f64 {
 
 /// Apply `B^p` (or `(B^T)^p` when `transpose`) to every column of the
 /// column-major matrix `x_mat` (shape n×t).  Returns `Y` column-major n×t.
+#[allow(clippy::too_many_arguments)]
 fn apply_block<V, Op>(
     b: &ShiftedOp<V, Op>,
     p: usize,
@@ -30,6 +31,7 @@ fn apply_block<V, Op>(
     n: usize,
     t: usize,
     work: &mut Vec<V>,
+    col_buf: &mut Vec<V>,
     transpose: bool,
 ) -> Vec<V>
 where
@@ -37,15 +39,16 @@ where
     Op: LinearOperator<V>,
 {
     work.resize(n, V::default());
+    col_buf.resize(n, V::default());
     let mut y_mat = vec![V::default(); n * t];
     for col in 0..t {
-        let mut col_buf: Vec<V> = x_mat[col * n..(col + 1) * n].to_vec();
+        col_buf.copy_from_slice(&x_mat[col * n..(col + 1) * n]);
         if transpose {
-            b.apply_pow_in_place_transpose(p, &mut col_buf, work);
+            b.apply_pow_in_place_transpose(p, col_buf, work);
         } else {
-            b.apply_pow_in_place(p, &mut col_buf, work);
+            b.apply_pow_in_place(p, col_buf, work);
         }
-        y_mat[col * n..(col + 1) * n].copy_from_slice(&col_buf);
+        y_mat[col * n..(col + 1) * n].copy_from_slice(col_buf);
     }
     y_mat
 }
@@ -119,6 +122,12 @@ fn every_col_parallel<V: ExpmComputation>(
     if n == 0 {
         return true;
     }
+    // Tolerance is O(machine_eps) in the scalar type's precision.
+    // Using 128 × machine_eps keeps us above f32 roundoff (~1e-7)
+    // while still rejecting genuinely distinct directions.
+    let tol: f64 = V::from_real(V::real_from_f64(128.0) * V::machine_eps())
+        .to_complex()
+        .re;
     (0..t_x).all(|cx| {
         let xc = &x_mat[cx * n..(cx + 1) * n];
         (0..t_y).any(|cy| {
@@ -128,12 +137,6 @@ fn every_col_parallel<V: ExpmComputation>(
                 return false;
             }
             let c = xc[0].to_complex() / y0;
-            // Tolerance is O(machine_eps) in the scalar type's precision.
-            // Using 128 × machine_eps keeps us above f32 roundoff (~1e-7)
-            // while still rejecting genuinely distinct directions.
-            let tol: f64 = V::from_real(V::real_from_f64(128.0) * V::machine_eps())
-                .to_complex()
-                .re;
             xc.iter()
                 .zip(yc.iter())
                 .all(|(&x, &y)| (x.to_complex() - c * y.to_complex()).norm() < tol)
@@ -217,13 +220,14 @@ where
     let mut ind_hist: Vec<usize> = Vec::with_capacity(t * (ITMAX + 1));
     let mut ind_best: usize = 0;
     let mut work = vec![V::default(); n];
+    let mut col_buf = vec![V::default(); n];
 
     // We iterate for k = 1, 2, …, ITMAX+1.  The hard limit is hit when
     // k > ITMAX (scipy: `if k > itmax: break`), which lets iteration ITMAX+1
     // run its forward pass and termination check (1) before exiting.
     for k in 1..=(ITMAX + 1) {
         // --- (A) Forward pass: Y = B^p X ---
-        let y_mat = apply_block(b, p, &x_mat, n, t, &mut work, false);
+        let y_mat = apply_block(b, p, &x_mat, n, t, &mut work, &mut col_buf, false);
 
         // --- Column 1-norms; pick the best column ---
         let mags = col_onenorms::<V>(&y_mat, n, t);
@@ -259,12 +263,14 @@ where
         }
 
         // --- (B) Transpose pass: Z = (B^T)^p S ---
-        let z_mat = apply_block(b, p, &s_mat, n, t, &mut work, true);
+        let z_mat = apply_block(b, p, &s_mat, n, t, &mut work, &mut col_buf, true);
 
         // --- h[i] = max_col |z_{i,col}| ---
         let h = row_max_abs::<V>(&z_mat, n, t);
 
         // --- Termination (4): transpose pass confirms ind_best is optimal ---
+        // Both max_h and h[ind_best] are elements of the same h array, so the
+        // equality check is exact (no floating-point rounding between them).
         if k >= 2 {
             let max_h = h
                 .iter()
