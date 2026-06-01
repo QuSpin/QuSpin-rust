@@ -18,6 +18,15 @@ style: |
      adds a <header> element before the h1, so the h1 isn't the first child. */
   section > h1 + * { margin-top: auto !important; }
   section > *:last-child { margin-bottom: auto !important; }
+  /* Move the running header text to the bottom of the slide.
+     (We keep `header:` in the frontmatter so the <header> stays in the DOM
+     and our :first-child / :last-child selectors keep working.) */
+  section > header {
+    top: auto !important;
+    bottom: 14px !important;
+    font-size: 14px;
+    color: #888;
+  }
   h1 { font-size: 34px; margin-top: 0 !important; }
   h2 { font-size: 28px; }
   code { font-size: 0.85em; }
