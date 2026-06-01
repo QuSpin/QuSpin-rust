@@ -179,12 +179,12 @@ with two symmetries:
 In Python, the whole calculation looks like:
 
 ```python
-group = SymmetryGroup(n_sites=8, lhss=2)
+group  = SymmetryGroup(n_sites=8, lhss=2)
 group.add_cyclic(Lattice(translation_by_1), k=0)
-basis = SpinBasis.symmetric(group, H_terms, seeds=["00001111"])
-mat   = QMatrix.build_bond(H_terms, basis, np.float64)
-ham   = Hamiltonian(mat, [Static()])
-E0    = ham.lanczos_eig(...)
+basis  = SpinBasis.symmetric(group, H_terms, seeds=["00001111"])
+mat    = QMatrix.build_bond(H_terms, basis, np.float64)
+ham    = Hamiltonian(mat, [Static()])
+E0, ψ0, _ = EigSolver(ham).solve(v0, k_krylov=30, k_wanted=1, which="SA")
 ```
 
 **By the end you will know which crate every one of these lines touches.**
@@ -231,21 +231,25 @@ and a sorted `Vec<integer>` as the entire basis storage.
 
 ```rust
 // quspin-types/src/bit_int.rs
-pub trait BitInt: Copy + Eq + Ord + Hash + ... {
-    fn zero() -> Self;
-    fn bit(self, k: usize) -> bool;
-    fn set_bit(self, k: usize) -> Self;          // + ~20 more primitives
+pub trait BitInt: Copy + Eq + Ord + Hash
+    + BitAnd + BitOr + BitXor + Not + Shl<usize> + Shr<usize> + ... {
+    const BITS: u32;            // 32 / 64 / N
+    fn from_u64(v: u64) -> Self;
+    fn to_usize(self) -> usize;
+    fn count_ones(self) -> u32;
 }
 
+impl BitInt for u32  { ... }
 impl BitInt for u64  { ... }
-impl BitInt for u128 { ... }
 impl<const N: usize, const LIMBS: usize> BitInt for Uint<N, LIMBS> { ... }
 //                                            ↑ ruint multi-word integer
 ```
 
 **Reading the syntax:**
 
-- `T: Copy + Eq + Ord` — `T` must satisfy *all* of these; `+` means *and*.
+- `T: Copy + BitAnd + ...` — `T` must satisfy *all* of these; `+` means *and*.
+- Bit manipulation comes from the operator supertraits (`&`, `|`, `^`, `<<`, `>>`),
+  not from named methods.
 - `<B: BitInt>` on a struct/fn — works for any `B` implementing `BitInt`.
 
 **Static polymorphism:** one specialised copy per `B` used, zero runtime cost.
@@ -259,13 +263,14 @@ remember that. `DitManip` gives a uniform site-level API:
 
 ```rust
 // quspin-bitbasis/src/manip.rs
-pub struct DitManip<const LHSS: usize>;
+pub struct DitManip<const LHSS: usize>;            // zero-sized marker
 
 impl<const LHSS: usize> DitManip<LHSS> {
-    pub fn get_dit<B: BitInt>(&self, state: B, site: usize) -> u8;
-    pub fn set_dit<B: BitInt>(&self, state: B, site: usize, val: u8) -> B;
-    pub fn swap<B: BitInt>(&self, state: B, i: usize, j: usize) -> B;
-}
+    pub fn get_dit<I: BitInt>(state: I, site: usize) -> usize;
+    pub fn set_dit<I: BitInt>(state: I, val: usize, site: usize) -> I;
+    pub fn state_from_dense<I: BitInt>(dense: usize, n_sites: usize) -> I;
+    pub fn dense_from_state<I: BitInt>(state: I, n_sites: usize) -> Option<usize>;
+}                                                  // + get_sub_state / set_sub_state
 ```
 
 For Heisenberg (`LHSS = 2`), this collapses to a single bit get/set/xor.
@@ -319,7 +324,7 @@ pub trait StateTransitions: Send + Sync {
 }
 ```
 
-Every operator type (`PauliOperator`, `BondOperator`, …) implements
+Every operator type (`HardcoreOperator`, `BondOperator`, …) implements
 `StateTransitions`; BFS takes `&impl StateTransitions`.
 
 Two patterns at once: **dependency inversion** (basis defines the
@@ -336,11 +341,13 @@ An *operator* in QuSpin-rust is a description of terms in `H`. It does
 
 ```rust
 // crates/quspin-operator/
-pub struct PauliOperator   { /* Pauli strings + amplitudes      */ }
-pub struct BondOperator    { /* (op_id, bond_sites, amp) tuples */ }
-pub struct MonomialOperator{ /* permutation × amplitude table   */ }
-pub struct BosonOperator   { /* b†, b, n products               */ }
-pub struct FermionOperator { /* c†, c, n products + signs       */ }
+pub struct HardcoreOperator<C> { /* Pauli strings on lhss=2 (a.k.a.    */ }
+//                                  PauliOperator in Python bindings)
+pub struct SpinOperator<C>     { /* spin-S operator strings            */ }
+pub struct BondOperator<C>     { /* (op_id, bond_sites, amp) tuples    */ }
+pub struct MonomialOperator<C> { /* permutation × amplitude table      */ }
+pub struct BosonOperator<C>    { /* b†, b, n products                  */ }
+pub struct FermionOperator<C>  { /* c†, c, n products + signs          */ }
 ```
 
 Why basis-agnostic? Because the same `H` is reused across many bases — full
@@ -505,27 +512,26 @@ The interesting engineering: **how do we apply $g \in G$ fast**, and
 
 ---
 
-# Design pattern: `SymElement<L>` as a typed enum
+# Design pattern: `SymElement<L>` — three shapes, three storage vectors
 
-A group element on a lattice basis can be one of three shapes:
+A group element on a lattice basis can be one of three shapes; encoded as
+**two `Option`s**, with constructors enforcing the three legal combos:
 
 ```rust
 // quspin-basis/src/sym_element.rs
-enum SymElementInner<L> {
-    LatticeOnly(Permutation),         // pure site permutation
-    LocalOnly(L),                     // on-site unitary (e.g. spin flip)
-    Composite(Permutation, L),        // permutation × on-site unitary
-}
+pub struct SymElement<L> { perm: Option<Vec<usize>>, local: Option<L> }
+
 impl<L> SymElement<L> {
-    pub fn lattice(perm) -> Self;     pub fn local(op) -> Self;
-    pub fn composite(perm, op) -> Self;
+    pub fn lattice(perm: &[usize]) -> Self;   // (Some, None)  — pure permutation
+    pub fn local(op: L)            -> Self;   // (None, Some)  — on-site unitary
+    pub fn composite(p: &[usize], op: L) -> Self;  // (Some, Some) — both
 }
 ```
 
-`SymBasis` stores group elements in **three separate vectors**, one per
-variant. The hot loop walks each vector in turn — no per-element `match`,
-no virtual call. Pure-lattice symmetries skip the local-op multiply
-entirely.
+`SymBasis` then routes each element into **one of three typed vectors**
+(`lattice_only`, `local_only`, `composite` — `crates/quspin-basis/src/sym.rs:113`).
+The hot loop walks each vector in turn — no per-element `match`, no
+virtual call. Pure-lattice symmetries skip the local-op multiply entirely.
 
 **Make illegal states unrepresentable** + **devirtualization via typed
 dispatch.**
@@ -540,17 +546,13 @@ silently-wrong physics. We refuse to start BFS until we've checked:
 ```rust
 // quspin-basis/src/sym.rs (sketch)
 impl<B, L, N> SymBasis<B, L, N> {
-    pub fn build(group, graph, seeds) -> Result<Self, QuSpinError> {
-        // 1. Closure check, O(|G|² · probes): for every g,h ∈ G verify
-        //    (g·h) ∈ G acts as composing g then h on probe states.
-        validate_closure(group)?;
-
-        // 2. Character check on probes:
-        //    χ(g·h) =? χ(g)·χ(h)   for representative pairs.
-        validate_characters(group)?;
-
-        // 3. Only now: BFS using graph: StateTransitions.
-        bfs::run(seeds, graph, /* projector */)
+    pub fn build<G: StateTransitions>(&mut self, seed: B, graph: &G)
+        -> Result<(), QuSpinError>
+    {
+        if !self.built { self.validate_group()?; }  // ← one-shot probe check
+        self.built = true;                          //   (closure + duplicate +
+                                                    //    character consistency,
+        // ... BFS using graph: StateTransitions    //    O(|G|² · probes))
     }
 }
 ```
@@ -668,7 +670,11 @@ bits. They consume one trait:
 // quspin-types/src/linear_operator/
 pub trait LinearOperator<V: ExpmComputation>: Send + Sync {
     fn dim(&self) -> usize;
-    fn apply(&self, x: &V, y: &mut V);   // y ← H x
+    fn trace(&self) -> V;
+    fn onenorm(&self, shift: V) -> V::Real;
+    fn dot(&self, overwrite: bool, input: &[V], output: &mut [V])
+        -> Result<(), QuSpinError>;                  // output (±)= H · input
+    // + dot_transpose / dot_many / dot_chunk / parallel_hint
 }
 ```
 
