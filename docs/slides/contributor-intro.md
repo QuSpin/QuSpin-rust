@@ -39,16 +39,10 @@ failing test in the right place.
 # Overview
 
 **Act 1 — The problem and the architecture** *(~15 min)*
-Motivate the package structure from the exact-diagonalization problem.
-Why five jobs ⇒ (roughly) five crates.
 
 **Act 2 — The basis layer in depth** *(~30 min)*
-The mechanically interesting part. Bit-packed Fock states, basis-agnostic
-operators, BFS, symmetry orbits, and the typed `SymElement` split.
 
 **Act 3 — Matrix, dynamics, contributing** *(~10 min)*
-How the basis feeds `QMatrix`, `expm`, and `krylov`. Dev workflow.
-Where to start a first contribution.
 
 ---
 
