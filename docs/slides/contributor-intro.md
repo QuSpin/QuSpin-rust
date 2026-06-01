@@ -456,27 +456,31 @@ calls it.
 
 # `Space` — the storage primitive
 
-A basis is, at heart, a sorted `Vec<B>` plus a way to look up indices:
+A basis exposes two operations: `state_at(i)` (row index → state) and
+`index(state)` (state → row index, or `None` if it left the sector).
 
 ```rust
 // quspin-basis/src/space.rs + traits.rs (simplified)
-pub struct FullSpace<B: BitInt> { states: Vec<B> }
-pub struct Subspace<B: BitInt>  { states: Vec<B> }   // BFS output
+pub struct FullSpace<B: BitInt> { /* no states stored; computed on the fly */ }
+pub struct Subspace<B: BitInt>  { states: Vec<B>, /* + HashMap index */ }
 
 impl<B: BitInt> Subspace<B> {
     pub fn build<G: StateTransitions>(&mut self, seed: B, graph: &G) -> Result<...>;
 }
 
 pub trait BasisSpace<B: BitInt> {
-    fn state_at(&self, i: usize) -> B;            // row index → state
-    fn index(&self, state: B) -> Option<usize>;   // state → row index (or None
-}                                                 //   if state left the sector)
+    fn state_at(&self, i: usize) -> B;
+    fn index(&self, state: B) -> Option<usize>;
+}
 ```
 
-`index(state)` is the bridge the matrix layer uses: given a state $\sigma'$
-produced by applying `H`, find its column index, or signal "this term
-left the sector — skip it." `state_at(i)` is the reverse direction used
-while walking the rows.
+- `FullSpace`: lhss=2 → state integer **is** the dense index; lhss=3,4 →
+  `DitManip` arithmetic. O(1), zero storage.
+- `Subspace`: BFS-discovered states sorted in a `Vec<B>` with a hash map
+  for O(1) average-case lookup.
+
+`index(σ')` is the bridge the matrix layer uses for the column lookup
+during assembly.
 
 ---
 
