@@ -104,7 +104,7 @@ sparse `H`, as cheaply as possible.**
 
 A matvec is one line. Producing it from a physics problem is five jobs:
 
-| # | Job                                            | Concerns                              |
+|   | Job                                            | Concerns                              |
 |---|------------------------------------------------|---------------------------------------|
 | a | Represent Fock states                          | bit packing, multi-word integers      |
 | b | Represent operators **without a basis**        | terms in H as data, not matrices      |
@@ -122,13 +122,16 @@ project.
 
 Five jobs ⇒ (roughly) five crates. Why bother?
 
-- **Local reasoning.** A bug in BFS does not require reading the
-  matrix-fill code. A new operator term does not touch the symmetry layer.
+- **Local reasoning** *(single-responsibility principle).* A bug in BFS
+  does not require reading the matrix-fill code. A new operator term
+  does not touch the symmetry layer.
 - **Parallel compilation.** Independent crates rebuild in parallel — minutes
   → seconds.
-- **Swap-ability via traits.** The basis layer doesn't import operators —
-  it asks "give me anything that can tell me a state's neighbours."
-  Spin / boson / fermion operators all plug in the same way.
+- **Swap-ability via traits** *(open/closed principle).* The basis layer
+  doesn't import operators — it asks "give me anything that can tell me a
+  state's neighbours." Spin / boson / fermion all plug in the same way;
+  a future operator type extends the system without modifying basis,
+  matrix, or krylov.
 - **Static dispatch.** The trait boundaries are crossed by generics, not
   `dyn`. Rust monomorphises at link time — the abstractions compile away.
 
@@ -329,9 +332,11 @@ pub trait StateTransitions: Send + Sync {
 Every operator type — `PauliOperator`, `BondOperator`, `MonomialOperator` —
 implements `StateTransitions`. The basis BFS takes `&impl StateTransitions`.
 
-This is **dependency inversion**: the basis defines the contract, the
-operator crate satisfies it. Plug in a new operator type tomorrow, BFS
-keeps working unchanged.
+Two patterns at once: **dependency inversion** (the basis defines the
+contract, the operator crate satisfies it) and the **visitor pattern in
+callback form** (`neighbors` hands each transition to a closure instead
+of returning a collection — no allocation, the closure inlines into the
+caller's hot loop).
 
 ---
 
@@ -390,9 +395,10 @@ contribution is written straight into the CSR buffer with no
 intermediate `Vec`.
 
 The `C` type parameter is the **only** runtime dispatch in the codebase:
-operators with few terms get `cindex: u8`, larger ones get `u16`. An
-enum `*OperatorInner` chooses between them once at construction.
-Everything else is static.
+operators with few terms get `cindex: u8`, larger ones get `u16`. The
+enum `*OperatorInner { Ham8(…), Ham16(…) }` is a **tagged union** — the
+choice is made once at construction, then `match`-dispatched at each
+call site (one branch, predictable, no `dyn`). Everything else is static.
 
 ---
 
