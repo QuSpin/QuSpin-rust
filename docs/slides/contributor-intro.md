@@ -374,10 +374,9 @@ pub trait Operator<C> {                  // C = term-index width (u8 / u16)
 }
 ```
 
-**`cindex` indexes the terms of**
-$\,H = \sum_\alpha c_\alpha \hat O_\alpha$. One `apply(σ, emit)` call
-walks every term, firing the callback per non-zero contribution with
-$(\alpha,\ c_\alpha\langle\sigma'|\hat O_\alpha|\sigma\rangle,\ \sigma')$.
+**`cindex` indexes the terms of** $H = \sum_\alpha c_\alpha \hat O_\alpha$.
+One `apply(σ, emit)` call walks every term, firing the callback per
+non-zero contribution with $(\alpha,\ c_\alpha\langle\sigma'|\hat O_\alpha|\sigma\rangle,\ \sigma')$.
 
 The `C` type parameter is the **only** runtime dispatch in the codebase:
 few-term operators use `cindex: u8`, larger ones `u16`. The enum
