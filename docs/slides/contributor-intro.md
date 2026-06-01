@@ -13,9 +13,11 @@ style: |
   }
   section > * { max-width: 100%; }
   section p, section ul, section ol, section table { max-width: 100%; }
-  /* Title pinned to top; content below it vertically centred in remaining space */
-  section > h1:first-child + * { margin-top: auto !important; }
-  section > *:last-child           { margin-bottom: auto !important; }
+  /* Title pinned to top; content below it vertically centred in remaining space.
+     Use `h1 + *` (not `h1:first-child + *`) because the `header:` frontmatter
+     adds a <header> element before the h1, so the h1 isn't the first child. */
+  section > h1 + * { margin-top: auto !important; }
+  section > *:last-child { margin-bottom: auto !important; }
   h1 { font-size: 34px; margin-top: 0 !important; }
   h2 { font-size: 28px; }
   code { font-size: 0.85em; }
