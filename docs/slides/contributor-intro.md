@@ -50,22 +50,17 @@ failing test in the right place.
 
 We will spend ~15 minutes here. The aim is to motivate the package structure **before** looking at any code.
 
-1. The exact-diagonalization (ED) problem
-2. What we actually need to compute
-3. Decomposing ED into discrete jobs
-4. Why separation of concerns gives us crates
-5. The crate DAG
-6. The running example: Heisenberg XXZ
+1. The ED problem and what we actually compute
+2. Decomposing ED into discrete jobs
+3. Why separation of concerns gives us crates
+4. The crate DAG
+5. The running example: Heisenberg XXZ
 
 ---
 
 # The problem: exact diagonalization
 
-For a quantum lattice model on `L` sites with local Hilbert-space size `d`:
-
-$$
-\mathcal{H} = \underbrace{d^L}_{\text{Hilbert dimension}} \quad\quad H \in \mathbb{C}^{d^L \times d^L}
-$$
+For a quantum lattice model on `L` sites with local Hilbert-space size `d`, $H \in \mathbb{C}^{d^L \times d^L}$ — dimensions explode fast:
 
 | L  | d=2 (spin-1/2) | d=3 (boson, n_max=2) |
 |----|----------------|----------------------|
@@ -73,23 +68,13 @@ $$
 | 20 | ~10⁶           | ~3.5 × 10⁹           |
 | 30 | ~10⁹           | (out of reach)       |
 
-**We cannot store `H` as a dense matrix.** We cannot even *enumerate* the full basis past ~30 sites. Yet `H` is **sparse** and **structured** — most of the mass sits in tiny symmetry blocks. The whole library is built around exploiting that.
+We cannot store `H` dense, or even enumerate the full basis past ~30 sites. But `H` is **sparse** and **structured** — most of the mass sits in tiny symmetry blocks.
 
----
-
-# What we actually need
-
-Three observables, all reducing to one primitive:
+The observables we actually compute all reduce to **one primitive** — sparse $v \mapsto Hv$ (matvec):
 
 - **Ground state / low-lying spectrum** → Lanczos / Krylov eigensolvers
 - **Real-time dynamics** $|\psi(t)\rangle = e^{-iHt}|\psi(0)\rangle$ → Krylov / Taylor `expm`
 - **Imaginary-time / thermal averages** → FTLM, LTLM
-
-Every one of them only needs **one operation**:
-
-```
-        v  ↦  H v          (sparse matrix–vector product, "matvec")
-```
 
 So our problem reduces to: **produce a matvec on a symmetry-reduced sparse `H`, as cheaply as possible.**
 
