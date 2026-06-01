@@ -5,7 +5,9 @@ paginate: true
 size: 16:9
 header: "QuSpin-rust: design patterns for new contributors"
 style: |
-  section { font-size: 22px; padding: 40px 56px; }
+  section { font-size: 22px; padding: 40px 56px; max-width: none; }
+  section > * { max-width: 100%; }
+  section p, section ul, section ol, section table { max-width: 100%; }
   h1 { font-size: 34px; }
   h2 { font-size: 28px; }
   code { font-size: 0.85em; }
