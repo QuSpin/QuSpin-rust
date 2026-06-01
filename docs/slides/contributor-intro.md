@@ -25,9 +25,7 @@ A tour of the library aimed at physicists who would like to contribute code.
 
 <br>
 
-We will spend most of our hour on **how the basis is built**, because that is
-where QuSpin earns its keep and where most of the interesting mechanical
-moving parts live.
+We will spend most of our hour on **how the basis is built**, because that is where QuSpin earns its keep and where most of the interesting mechanical moving parts live.
 
 <!-- Speaker notes:
 This deck assumes physics background (Fock states, Hamiltonians, symmetry
@@ -50,8 +48,7 @@ failing test in the right place.
 
 # Act 1 — The problem and motivating the architecture
 
-We will spend ~15 minutes here. The aim is to motivate the package
-structure **before** looking at any code.
+We will spend ~15 minutes here. The aim is to motivate the package structure **before** looking at any code.
 
 1. The exact-diagonalization (ED) problem
 2. What we actually need to compute
@@ -76,10 +73,7 @@ $$
 | 20 | ~10⁶           | ~3.5 × 10⁹           |
 | 30 | ~10⁹           | (out of reach)       |
 
-**We cannot store `H` as a dense matrix.** We cannot even *enumerate* the
-full basis past ~30 sites. Yet `H` is **sparse** and **structured** — most
-of the mass sits in tiny symmetry blocks. The whole library is built
-around exploiting that.
+**We cannot store `H` as a dense matrix.** We cannot even *enumerate* the full basis past ~30 sites. Yet `H` is **sparse** and **structured** — most of the mass sits in tiny symmetry blocks. The whole library is built around exploiting that.
 
 ---
 
@@ -97,8 +91,7 @@ Every one of them only needs **one operation**:
         v  ↦  H v          (sparse matrix–vector product, "matvec")
 ```
 
-So our problem reduces to: **produce a matvec on a symmetry-reduced
-sparse `H`, as cheaply as possible.**
+So our problem reduces to: **produce a matvec on a symmetry-reduced sparse `H`, as cheaply as possible.**
 
 ---
 
@@ -114,9 +107,7 @@ A matvec is one line. Producing it from a physics problem is five jobs:
 | d | Assemble the sparse `H` on that basis          | CSR layout, parallel fill             |
 | e | Consume the matvec (eigensolver / propagator)  | Lanczos / Taylor expm                 |
 
-Each job has **different inputs, different invariants, different code that
-changes for different reasons.** This is the engineering thesis of the
-project.
+Each job has **different inputs, different invariants, different code that changes for different reasons.** This is the engineering thesis of the project.
 
 ---
 
@@ -124,18 +115,10 @@ project.
 
 Five jobs ⇒ (roughly) five crates. Why bother?
 
-- **Local reasoning** *(single-responsibility principle).* A bug in BFS
-  does not require reading the matrix-fill code. A new operator term
-  does not touch the symmetry layer.
-- **Parallel compilation.** Independent crates rebuild in parallel — minutes
-  → seconds.
-- **Swap-ability via traits** *(open/closed principle).* The basis layer
-  doesn't import operators — it asks "give me anything that can tell me a
-  state's neighbours." Spin / boson / fermion all plug in the same way;
-  a future operator type extends the system without modifying basis,
-  matrix, or krylov.
-- **Static dispatch.** The trait boundaries are crossed by generics, not
-  `dyn`. Rust monomorphises at link time — the abstractions compile away.
+- **Local reasoning** *(single-responsibility principle).* A bug in BFS does not require reading the matrix-fill code. A new operator term does not touch the symmetry layer.
+- **Parallel compilation.** Independent crates rebuild in parallel — minutes → seconds.
+- **Swap-ability via traits** *(open/closed principle).* The basis layer doesn't import operators — it asks "give me anything that can tell me a state's neighbours." Spin / boson / fermion all plug in the same way; a future operator type extends the system without modifying basis, matrix, or krylov.
+- **Static dispatch.** The trait boundaries are crossed by generics, not `dyn`. Rust monomorphises at link time — the abstractions compile away.
 
 The rest of the deck makes those abstractions concrete.
 
@@ -159,8 +142,7 @@ The rest of the deck makes those abstractions concrete.
 ```
 
 - The four mid-level crates **build in parallel** off `quspin-bitbasis`.
-- `quspin-expm` / `quspin-krylov` know nothing about operators or bases —
-  they consume the generic `LinearOperator` trait.
+- `quspin-expm` / `quspin-krylov` know nothing about operators or bases — they consume the generic `LinearOperator` trait.
 - `quspin-core` has **zero logic**. Never put code there.
 
 ---
@@ -195,15 +177,13 @@ E0, ψ0, _ = EigSolver(ham).solve(v0, k_krylov=30, k_wanted=1, which="SA")
 
 # Act 2 — Deep Dive: The basis layer component by component
 
-For the next ~30 minutes we walk bottom-up through the three crates that
-actually build a basis:
+For the next ~30 minutes we walk bottom-up through the three crates that actually build a basis:
 
 - **`quspin-bitbasis`** — encoding states and permutations as bits (5 slides)
 - **`quspin-operator`** — operators as basis-agnostic term lists (3 slides)
 - **`quspin-basis`** — BFS, orbits, symmetry validation (8 slides)
 
-This is the part of the codebase with the most moving parts and the
-clearest physics payoff. The rest of the library is plumbing around it.
+This is the part of the codebase with the most moving parts and the clearest physics payoff. The rest of the library is plumbing around it.
 
 ---
 
@@ -211,9 +191,7 @@ clearest physics payoff. The rest of the library is plumbing around it.
 
 Packing convention (`quspin-bitbasis/src/manip.rs`):
 
-- **Site 0 = least-significant bits.** Each site uses a *fixed*
-  $b = \lceil\log_2\text{lhss}\rceil$ bits; site $i$ occupies bits
-  $[i\cdot b,\; (i{+}1)\cdot b)$.
+- **Site 0 = least-significant bits.** Each site uses a *fixed* $b = \lceil\log_2\text{lhss}\rceil$ bits; site $i$ occupies bits $[i\cdot b,\; (i{+}1)\cdot b)$.
 
 ```
 Spin-1/2  (lhss=2, b=1):                Boson  (lhss=3, b=2, n∈{0,1,2}):
@@ -222,8 +200,7 @@ Spin-1/2  (lhss=2, b=1):                Boson  (lhss=3, b=2, n∈{0,1,2}):
   bit:   1 0 1 1 0 1 1 1  → 0xB7          bits:  10  01  00  10  → 0x92
 ```
 
-Buys us $O(1)$ equality / hashing / sort, symmetries as bit permutations,
-and a sorted `Vec<integer>` as the entire basis storage.
+Buys us $O(1)$ equality / hashing / sort, symmetries as bit permutations, and a sorted `Vec<integer>` as the entire basis storage.
 
 **Catch:** `L = 100` doesn't fit in `u64` → next slide.
 
@@ -250,8 +227,7 @@ impl<const N: usize, const LIMBS: usize> BitInt for Uint<N, LIMBS> { ... }
 **Reading the syntax:**
 
 - `T: Copy + BitAnd + ...` — `T` must satisfy *all* of these; `+` means *and*.
-- Bit manipulation comes from the operator supertraits (`&`, `|`, `^`, `<<`, `>>`),
-  not from named methods.
+- Bit manipulation comes from the operator supertraits (`&`, `|`, `^`, `<<`, `>>`), not from named methods.
 - `<B: BitInt>` on a struct/fn — works for any `B` implementing `BitInt`.
 
 **Static polymorphism:** one specialised copy per `B` used, zero runtime cost.
@@ -260,8 +236,7 @@ impl<const N: usize, const LIMBS: usize> BitInt for Uint<N, LIMBS> { ... }
 
 # `DitManip` — site-level API hiding the bit packing
 
-For `lhss > 2`, bits-per-site varies. Higher layers do **not** want to
-remember that. `DitManip` gives a uniform site-level API:
+For `lhss > 2`, bits-per-site varies. Higher layers do **not** want to remember that. `DitManip` gives a uniform site-level API:
 
 ```rust
 // quspin-bitbasis/src/manip.rs
@@ -275,12 +250,9 @@ impl<const LHSS: usize> DitManip<LHSS> {
 }                                                  // + get_sub_state / set_sub_state
 ```
 
-For Heisenberg (`LHSS = 2`), this collapses to a single bit get/set/xor.
-For a Bose-Hubbard model with `LHSS = 5`, it does the 3-bit packing
-automatically.
+For Heisenberg (`LHSS = 2`), this collapses to a single bit get/set/xor. For a Bose-Hubbard model with `LHSS = 5`, it does the 3-bit packing automatically.
 
-`LHSS` is a *const generic* — the per-site arithmetic is monomorphised
-and the multiplies / shifts become constants.
+`LHSS` is a *const generic* — the per-site arithmetic is monomorphised and the multiplies / shifts become constants.
 
 ---
 
@@ -293,29 +265,22 @@ in:    b7 b6 b5 b4 b3 b2 b1 b0
 out:   b6 b5 b4 b3 b2 b1 b0 b7
 ```
 
-Reflection, point group, sublattice permutations are all the same shape,
-all needed millions of times during BFS.
+Reflection, point group, sublattice permutations are all the same shape, all needed millions of times during BFS.
 
-**Benes network:** any permutation factors into $2\log_2 L - 1$ stages of
-"swap masked pairs by a fixed shift." Precompute the masks **once**:
+**Benes network:** any permutation factors into $2\log_2 L - 1$ stages of "swap masked pairs by a fixed shift." Precompute the masks **once**:
 
 ```rust
 let net: BenesNetwork<u64> = gen_benes(&translation_targets);
 let permuted = benes_fwd(&net, state);   // hot loop: O(log L) shifts + ANDs
 ```
 
-**Cross-lhss reuse.** Because our packing uses a *fixed* `b` bits per
-site, a site permutation $\pi$ tiles trivially into a bit permutation
-($i\cdot b + k \mapsto \pi(i)\cdot b + k$). **One Benes implementation
-handles spins, bosons, fermions, higher-spin alike** — the original
-C++ QuSpin needed separate permutation code per local Hilbert space.
+**Cross-lhss reuse.** Because our packing uses a *fixed* `b` bits per site, a site permutation $\pi$ tiles trivially into a bit permutation ($i\cdot b + k \mapsto \pi(i)\cdot b + k$). **One Benes implementation handles spins, bosons, fermions, higher-spin alike** — the original C++ QuSpin needed separate permutation code per local Hilbert space.
 
 ---
 
 # Design pattern: `StateTransitions` — the connectivity contract
 
-The basis crate does not import the operator crate. It asks for
-**anyone who can answer "what states does this connect to?"**:
+The basis crate does not import the operator crate. It asks for **anyone who can answer "what states does this connect to?"**:
 
 ```rust
 // quspin-types/src/state_transitions.rs
@@ -326,20 +291,15 @@ pub trait StateTransitions: Send + Sync {
 }
 ```
 
-Every operator type (`HardcoreOperator`, `BondOperator`, …) implements
-`StateTransitions`; BFS takes `&impl StateTransitions`.
+Every operator type (`HardcoreOperator`, `BondOperator`, …) implements `StateTransitions`; BFS takes `&impl StateTransitions`.
 
-Two patterns at once: **dependency inversion** (basis defines the
-contract, operator crate satisfies it) and the **visitor pattern in
-callback form** (closure inlines into the caller's hot loop, no
-intermediate `Vec`).
+Two patterns at once: **dependency inversion** (basis defines the contract, operator crate satisfies it) and the **visitor pattern in callback form** (closure inlines into the caller's hot loop, no intermediate `Vec`).
 
 ---
 
 # Job (b): operators without a basis
 
-An *operator* in QuSpin-rust is a description of terms in `H`. It does
-**not know** what basis it will be applied on.
+An *operator* in QuSpin-rust is a description of terms in `H`. It does **not know** what basis it will be applied on.
 
 ```rust
 // crates/quspin-operator/
@@ -352,12 +312,9 @@ pub struct BosonOperator<C>    { /* b†, b, n products                  */ }
 pub struct FermionOperator<C>  { /* c†, c, n products + signs          */ }
 ```
 
-Why basis-agnostic? Because the same `H` is reused across many bases — full
-space, $S^z$ sector, $S^z$ + translation, $S^z$ + translation + parity. We
-write `H` **once**, apply it on whichever basis we need.
+Why basis-agnostic? Because the same `H` is reused across many bases — full space, $S^z$ sector, $S^z$ + translation, $S^z$ + translation + parity. We write `H` **once**, apply it on whichever basis we need.
 
-Heisenberg XXZ → one `BondOperator` carrying the SxSx + SySy + ΔSzSz terms
-indexed by bonds `(0,1), (1,2), …, (L-1,0)`.
+Heisenberg XXZ → one `BondOperator` carrying the SxSx + SySy + ΔSzSz terms indexed by bonds `(0,1), (1,2), …, (L-1,0)`.
 
 ---
 
@@ -376,31 +333,22 @@ pub trait Operator<C> {                  // C = term-index width (u8 / u16)
 }
 ```
 
-**`cindex` indexes the terms of** $H = \sum_\alpha c_\alpha \hat O_\alpha$.
-One `apply(σ, emit)` call walks every term, firing the callback per
-non-zero contribution with $(\alpha,\ c_\alpha\langle\sigma'|\hat O_\alpha|\sigma\rangle,\ \sigma')$.
+**`cindex` indexes the terms of** $H = \sum_\alpha c_\alpha \hat O_\alpha$. One `apply(σ, emit)` call walks every term, firing the callback per non-zero contribution with $(\alpha,\ c_\alpha\langle\sigma'|\hat O_\alpha|\sigma\rangle,\ \sigma')$.
 
-The `C` type parameter is the **only** runtime dispatch in the codebase:
-few-term operators use `cindex: u8`, larger ones `u16`. The enum
-`*OperatorInner { Ham8(…), Ham16(…) }` is a **tagged union** — chosen
-once at construction, then `match`-dispatched (one predictable branch,
-no `dyn`). Everything else is static.
+The `C` type parameter is the **only** runtime dispatch in the codebase: few-term operators use `cindex: u8`, larger ones `u16`. The enum `*OperatorInner { Ham8(…), Ham16(…) }` is a **tagged union** — chosen once at construction, then `match`-dispatched (one predictable branch, no `dyn`). Everything else is static.
 
 ---
 
 # Why `StateTransitions` is free
 
-`Operator::apply` reports the term index $\alpha$;
-`StateTransitions::neighbors` doesn't. Same callback shape otherwise:
+`Operator::apply` reports the term index $\alpha$; `StateTransitions::neighbors` doesn't. Same callback shape otherwise:
 
 ```rust
 apply     (state, emit:  FnMut(C, amp, new_state))   // ← knows α
 neighbors (state, visit: FnMut(   amp, new_state))   //   doesn't
 ```
 
-So `neighbors` is `apply` with a closure that drops the `cindex`. Same
-body for every operator type — written **once** as a macro
-(`quspin-operator/src/state_transitions.rs`) and expanded per type:
+So `neighbors` is `apply` with a closure that drops the `cindex`. Same body for every operator type — written **once** as a macro (`quspin-operator/src/state_transitions.rs`) and expanded per type:
 
 ```rust
 impl<C> StateTransitions for SpinOperator<C> {           // ← via macro
@@ -411,8 +359,7 @@ impl<C> StateTransitions for SpinOperator<C> {           // ← via macro
 // macro repeats for Bond / Boson / Fermion / Hardcore / Monomial
 ```
 
-The basis layer consumes any of them via `&impl StateTransitions` —
-without ever importing `quspin-operator`.
+The basis layer consumes any of them via `&impl StateTransitions` — without ever importing `quspin-operator`.
 
 ---
 
@@ -427,14 +374,12 @@ Heisenberg XXZ on L=8:
 | $S^z = 0$, $k=0$ (translation)          | ~11       |
 | $S^z = 0$, $k=0$, parity even           | ~6        |
 
-The library's job: **enumerate only the states in the sector we asked for,
-indexed in a way we can look up `H|ψ⟩` cheaply.**
+The library's job: **enumerate only the states in the sector we asked for, indexed in a way we can look up `H|ψ⟩` cheaply.**
 
 This is exactly what `quspin-basis` does, in two stages:
 
 1. **BFS from seeds** to discover the connected sector under `H`
-2. **Orbit reduction** under the symmetry group to collapse equivalent
-   states into one representative + a normalization
+2. **Orbit reduction** under the symmetry group to collapse equivalent states into one representative + a normalization
 
 ---
 
@@ -454,19 +399,15 @@ while queue not empty:
 return sort(visited)              ← this is the basis
 ```
 
-That's it. For Heisenberg with seed `|00001111⟩` (S^z = 0), BFS reaches
-exactly the 70 S^z=0 states, in some order, and we sort them so we can
-binary-search for indices later.
+That's it. For Heisenberg with seed `|00001111⟩` (S^z = 0), BFS reaches exactly the 70 S^z=0 states, in some order, and we sort them so we can binary-search for indices later.
 
-Implemented once in `crates/quspin-basis/src/bfs.rs`; **every** basis type
-calls it.
+Implemented once in `crates/quspin-basis/src/bfs.rs`; **every** basis type calls it.
 
 ---
 
 # `Space` — the storage primitive
 
-A basis exposes two operations: `state_at(i)` (row index → state) and
-`index(state)` (state → row index, or `None` if it left the sector).
+A basis exposes two operations: `state_at(i)` (row index → state) and `index(state)` (state → row index, or `None` if it left the sector).
 
 ```rust
 // quspin-basis/src/space.rs + traits.rs (simplified)
@@ -483,13 +424,10 @@ pub trait BasisSpace<B: BitInt> {
 }
 ```
 
-- `FullSpace`: lhss=2 → state integer **is** the dense index; lhss=3,4 →
-  `DitManip` arithmetic. O(1), zero storage.
-- `Subspace`: BFS-discovered states sorted in a `Vec<B>` with a hash map
-  for O(1) average-case lookup.
+- `FullSpace`: lhss=2 → state integer **is** the dense index; lhss=3,4 → `DitManip` arithmetic. O(1), zero storage.
+- `Subspace`: BFS-discovered states sorted in a `Vec<B>` with a hash map for O(1) average-case lookup.
 
-`index(σ')` is the bridge the matrix layer uses for the column lookup
-during assembly.
+`index(σ')` is the bridge the matrix layer uses for the column lookup during assembly.
 
 ---
 
@@ -501,23 +439,17 @@ $$
 |[\sigma]\rangle \;\propto\; \frac{1}{\sqrt{|G_\sigma|}} \sum_{g \in G} \chi(g)\, g|\sigma\rangle
 $$
 
-We store **one representative state $\sigma$ per orbit**, plus a tiny
-integer encoding the orbit's normalization. The matrix layer later
-multiplies amplitudes by the appropriate character ratios as it walks
-neighbours.
+We store **one representative state $\sigma$ per orbit**, plus a tiny integer encoding the orbit's normalization. The matrix layer later multiplies amplitudes by the appropriate character ratios as it walks neighbours.
 
-For Heisenberg with $\mathbb{Z}_8$ translation: 70 states in $S^z=0$ break
-into ~11 orbits of size up to 8. The basis stores 11 representatives.
+For Heisenberg with $\mathbb{Z}_8$ translation: 70 states in $S^z=0$ break into ~11 orbits of size up to 8. The basis stores 11 representatives.
 
-The interesting engineering: **how do we apply $g \in G$ fast**, and
-**how do we make sure the user didn't give us a bogus group**?
+The interesting engineering: **how do we apply $g \in G$ fast**, and **how do we make sure the user didn't give us a bogus group**?
 
 ---
 
 # Design pattern: `SymElement<L>` — three shapes, three storage vectors
 
-A group element on a lattice basis can be one of three shapes; encoded as
-**two `Option`s**, with constructors enforcing the three legal combos:
+A group element on a lattice basis can be one of three shapes; encoded as **two `Option`s**, with constructors enforcing the three legal combos:
 
 ```rust
 // quspin-basis/src/sym_element.rs
@@ -530,20 +462,15 @@ impl<L> SymElement<L> {
 }
 ```
 
-`SymBasis` then routes each element into **one of three typed vectors**
-(`lattice_only`, `local_only`, `composite` — `crates/quspin-basis/src/sym.rs:113`).
-The hot loop walks each vector in turn — no per-element `match`, no
-virtual call. Pure-lattice symmetries skip the local-op multiply entirely.
+`SymBasis` then routes each element into **one of three typed vectors** (`lattice_only`, `local_only`, `composite` — `crates/quspin-basis/src/sym.rs:113`). The hot loop walks each vector in turn — no per-element `match`, no virtual call. Pure-lattice symmetries skip the local-op multiply entirely.
 
-**Make illegal states unrepresentable** + **devirtualization via typed
-dispatch.**
+**Make illegal states unrepresentable** + **devirtualization via typed dispatch.**
 
 ---
 
 # `SymBasis::build` — validate first, BFS second
 
-A symmetry group with a broken closure or a wrong character will produce
-silently-wrong physics. We refuse to start BFS until we've checked:
+A symmetry group with a broken closure or a wrong character will produce silently-wrong physics. We refuse to start BFS until we've checked:
 
 ```rust
 // quspin-basis/src/sym.rs (sketch)
@@ -559,9 +486,7 @@ impl<B, L, N> SymBasis<B, L, N> {
 }
 ```
 
-Build-time error → impossible to feed a bad group into the matrix
-assembly. The cost is one $|G|^2 \cdot k$ pass; the payoff is no silent
-zero eigenvalues from a mis-specified momentum.
+Build-time error → impossible to feed a bad group into the matrix assembly. The cost is one $|G|^2 \cdot k$ pass; the payoff is no silent zero eigenvalues from a mis-specified momentum.
 
 ---
 
@@ -587,40 +512,28 @@ SpinBasis.symmetric
                    store (rep, norm)  if rep not seen
 ```
 
-Result: a `SymBasis<u64, SpinLocal, u8>` with ~11 orbits, ready to be fed
-to `QMatrix::build_*` in the next slide.
+Result: a `SymBasis<u64, SpinLocal, u8>` with ~11 orbits, ready to be fed to `QMatrix::build_*` in the next slide.
 
 ---
 
 # Why the orbit hot loop matters
 
-The orbit lookup — "which $g \in G$ maps this state to its representative,
-and with what character ratio?" — is the hot loop **for computing matrix
-elements**. It runs in exactly two places:
+The orbit lookup — "which $g \in G$ maps this state to its representative, and with what character ratio?" — is the hot loop **for computing matrix elements**. It runs in exactly two places:
 
 1. **Basis construction (BFS)** — once per emitted neighbour during build.
-2. **Matrix-free matvec** (`OperatorDispatch::apply_and_project_to`) —
-   once per emitted neighbour per matvec.
+2. **Matrix-free matvec** (`OperatorDispatch::apply_and_project_to`) — once per emitted neighbour per matvec.
 
-For path (2) the orbit walk is the inner loop of every Lanczos step, so
-its constant factor sets the wall-clock cost of large dynamics runs.
+For path (2) the orbit walk is the inner loop of every Lanczos step, so its constant factor sets the wall-clock cost of large dynamics runs.
 
-**Once a `QMatrix` is materialised, orbit work is baked into the CSR
-entries.** Lanczos / Krylov on `QMatrix` see only sparse matvec — no
-symmetry code touched on the hot path. The basis cost is amortised at
-build time.
+**Once a `QMatrix` is materialised, orbit work is baked into the CSR entries.** Lanczos / Krylov on `QMatrix` see only sparse matvec — no symmetry code touched on the hot path. The basis cost is amortised at build time.
 
-The three-vector `SymElement` split is what keeps paths (1) and (2) fast:
-**lattice-only** → Benes forward pass; **local-only** → `DitManip`;
-**composite** → both. No `match` inside the loop, vectorisable by the
-compiler. **This is why the type design pays off.**
+The three-vector `SymElement` split is what keeps paths (1) and (2) fast: **lattice-only** → Benes forward pass; **local-only** → `DitManip`; **composite** → both. No `match` inside the loop, vectorisable by the compiler. **This is why the type design pays off.**
 
 ---
 
 # Act 3 — Wrapping it up: Matrix, dynamics, contributing
 
-We are out of the hard part. Six slides on how the basis feeds the rest of
-the library, plus how to find your way around when you start contributing.
+We are out of the hard part. Six slides on how the basis feeds the rest of the library, plus how to find your way around when you start contributing.
 
 - QMatrix: assembling H on a basis
 - expm / krylov: consuming `LinearOperator`
@@ -633,8 +546,7 @@ the library, plus how to find your way around when you start contributing.
 
 # Job (d): assembling H — `QMatrix`
 
-With a basis + an operator, build a CSR-style sparse matrix once
-(`crates/quspin-matrix/src/qmatrix/build.rs`):
+With a basis + an operator, build a CSR-style sparse matrix once (`crates/quspin-matrix/src/qmatrix/build.rs`):
 
 ```rust
 for row in 0..basis.size() {                     // ← rayon-parallelised
@@ -652,21 +564,15 @@ pub struct QMatrix<M, I, C> { indptr: Vec<I>, data: Vec<Entry<M, I, C>> }
 // M = scalar (f64 / c64 …)   I = row/col idx (i32 / i64)   C = cindex (u8 / u16)
 ```
 
-**Why keep `cindex` on every nonzero?** A time-dependent
-$H(t) = \sum_\alpha c_\alpha(t)\hat O_\alpha$ then *re-uses the same
-`QMatrix`* at every time step, just re-weighting by the `c_\alpha(t)`
-vector at matvec time. No rebuild per step.
+**Why keep `cindex` on every nonzero?** A time-dependent $H(t) = \sum_\alpha c_\alpha(t)\hat O_\alpha$ then *re-uses the same `QMatrix`* at every time step, just re-weighting by the `c_\alpha(t)` vector at matvec time. No rebuild per step.
 
-A parallel matrix-free path (`OperatorDispatch::apply_and_project_to`,
-in `quspin-matrix/src/dispatch.rs`) computes $y = Hx$ directly from
-operator + basis when materialising `QMatrix` is unnecessary.
+A parallel matrix-free path (`OperatorDispatch::apply_and_project_to`, in `quspin-matrix/src/dispatch.rs`) computes $y = Hx$ directly from operator + basis when materialising `QMatrix` is unnecessary.
 
 ---
 
 # Job (e): consumers via `LinearOperator`
 
-`quspin-expm` and `quspin-krylov` know nothing about bases, operators, or
-bits. They consume one trait:
+`quspin-expm` and `quspin-krylov` know nothing about bases, operators, or bits. They consume one trait:
 
 ```rust
 // quspin-types/src/linear_operator/
@@ -680,15 +586,11 @@ pub trait LinearOperator<V: ExpmComputation>: Send + Sync {
 }
 ```
 
-Both `QMatrix` and `Hamiltonian` (time-dependent) implement it. So does
-any user-supplied closure (`FnLinearOperator`).
+Both `QMatrix` and `Hamiltonian` (time-dependent) implement it. So does any user-supplied closure (`FnLinearOperator`).
 
-This means: **a future contributor adding, say, an MPS-backed operator
-gets Krylov and expm for free** — they only have to satisfy
-`LinearOperator`. The solvers don't need to be rewritten.
+This means: **a future contributor adding, say, an MPS-backed operator gets Krylov and expm for free** — they only have to satisfy `LinearOperator`. The solvers don't need to be rewritten.
 
-This is **type erasure**, but bounded: it only happens at the top of the
-DAG, where the cost of one virtual call per matvec is negligible.
+This is **type erasure**, but bounded: it only happens at the top of the DAG, where the cost of one virtual call per matvec is negligible.
 
 ---
 
@@ -704,20 +606,15 @@ quspin-py     ← PyO3 bindings, builds the `_rs` Python extension.
                 wraps every public type with a #[pyclass].
 ```
 
-**Project rule (CLAUDE.md):** any feature that lands in the Rust core
-**must** include the matching PyO3 binding and update `python/quspin_rs/_rs.pyi`
-in the **same PR**. We don't merge half-features.
+**Project rule (CLAUDE.md):** any feature that lands in the Rust core **must** include the matching PyO3 binding and update `python/quspin_rs/_rs.pyi` in the **same PR**. We don't merge half-features.
 
-If you add a new operator type to `quspin-operator`, the PR also touches
-`crates/quspin-py/src/operator/` and `_rs.pyi`. This stays simple to
-follow because every existing type already does it the same way.
+If you add a new operator type to `quspin-operator`, the PR also touches `crates/quspin-py/src/operator/` and `_rs.pyi`. This stays simple to follow because every existing type already does it the same way.
 
 ---
 
 # Dev workflow in 60 seconds
 
-Requirements: Rust stable, Python ≥ 3.10, [uv](https://github.com/astral-sh/uv),
-[just](https://github.com/casey/just).
+Requirements: Rust stable, Python ≥ 3.10, [uv](https://github.com/astral-sh/uv), [just](https://github.com/casey/just).
 
 ```sh
 just sync             # uv sync --dev --all-extras  (Python deps)
@@ -733,8 +630,7 @@ cargo check -p quspin-bitbasis    # ditto for type-checking
 pre-commit run --all-files        # fmt + clippy + black + ruff + pyright
 ```
 
-CI on every PR runs the full matrix. Pre-commit hooks catch fmt/clippy
-issues before you push.
+CI on every PR runs the full matrix. Pre-commit hooks catch fmt/clippy issues before you push.
 
 ---
 
@@ -752,8 +648,7 @@ issues before you push.
 | Python surface, type stubs                | `quspin-py` + `.pyi`|
 | Documentation, design docs                | `docs/`             |
 
-If you don't know which crate, **ask in the PR** — the boundaries are
-worth pushing back on if a change feels like it doesn't fit.
+If you don't know which crate, **ask in the PR** — the boundaries are worth pushing back on if a change feels like it doesn't fit.
 
 ---
 
@@ -784,13 +679,8 @@ Reference reading, in order of usefulness:
 
 Three things to take away:
 
-1. **The crate boundaries follow the five jobs.** When you have a change in
-   mind, ask "which job is this?" — the answer names the crate.
+1. **The crate boundaries follow the five jobs.** When you have a change in mind, ask "which job is this?" — the answer names the crate.
 
-2. **Traits are how the layers communicate without coupling.** `BitInt`,
-   `StateTransitions`, `Operator<C>`, `LinearOperator` — each defines a
-   contract that one crate produces and another consumes.
+2. **Traits are how the layers communicate without coupling.** `BitInt`, `StateTransitions`, `Operator<C>`, `LinearOperator` — each defines a contract that one crate produces and another consumes.
 
-3. **The basis layer is where the physics lives.** BFS + symmetry orbits +
-   the typed `SymElement` split are what make QuSpin-rust faster than a
-   textbook ED loop. Read that code first.
+3. **The basis layer is where the physics lives.** BFS + symmetry orbits + the typed `SymElement` split are what make QuSpin-rust faster than a textbook ED loop. Read that code first.
