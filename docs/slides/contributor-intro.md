@@ -365,36 +365,25 @@ All operator types implement one trait:
 
 ```rust
 // quspin-operator/src/lib.rs
-pub trait Operator<C> {                       // C = term-index width (u8 / u16)
+pub trait Operator<C> {                  // C = term-index width (u8 / u16)
     fn max_site(&self)     -> usize;
     fn lhss(&self)         -> usize;
-    fn num_cindices(&self) -> usize;          // ← number of terms in H
-
-    /// Apply self to `state`, calling `emit(cindex, amplitude, new_state)`
-    /// for every non-zero contribution.
+    fn num_cindices(&self) -> usize;     // ← number of terms in H
     fn apply<B: BitInt, F>(&self, state: B, emit: F)
-    where F: FnMut(C, Complex<f64>, B);
+    where F: FnMut(C, Complex<f64>, B);  // emit(α, amp, σ') per non-zero term
 }
 ```
 
-**`cindex` indexes the terms of `H`.** A Hamiltonian
-$\,H = \sum_\alpha c_\alpha \hat O_\alpha\,$ is stored as a list of
-terms $\{\hat O_\alpha\}$. One `apply(σ, emit)` call walks every term and
-fires the callback once per non-zero contribution — reporting *which*
-term ($\alpha$, the `cindex`), the amplitude
-$c_\alpha\langle\sigma'|\hat O_\alpha|\sigma\rangle$, and the new state
-$|\sigma'\rangle$.
-
-Why a callback instead of a returned iterator? **Allocation-free hot
-path.** The emit closure is inlined into the matrix-fill loop, so each
-contribution is written straight into the CSR buffer with no
-intermediate `Vec`.
+**`cindex` indexes the terms of**
+$\,H = \sum_\alpha c_\alpha \hat O_\alpha$. One `apply(σ, emit)` call
+walks every term, firing the callback per non-zero contribution with
+$(\alpha,\ c_\alpha\langle\sigma'|\hat O_\alpha|\sigma\rangle,\ \sigma')$.
 
 The `C` type parameter is the **only** runtime dispatch in the codebase:
-operators with few terms get `cindex: u8`, larger ones get `u16`. The
-enum `*OperatorInner { Ham8(…), Ham16(…) }` is a **tagged union** — the
-choice is made once at construction, then `match`-dispatched at each
-call site (one branch, predictable, no `dyn`). Everything else is static.
+few-term operators use `cindex: u8`, larger ones `u16`. The enum
+`*OperatorInner { Ham8(…), Ham16(…) }` is a **tagged union** — chosen
+once at construction, then `match`-dispatched (one predictable branch,
+no `dyn`). Everything else is static.
 
 ---
 
