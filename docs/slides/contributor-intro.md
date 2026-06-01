@@ -7,13 +7,16 @@ header: "QuSpin-rust: design patterns for new contributors"
 style: |
   section {
     font-size: 22px; padding: 40px 56px; max-width: none;
-    display: flex; flex-direction: column;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
   }
   section > * { max-width: 100%; }
   section p, section ul, section ol, section table { max-width: 100%; }
-  section > h1:first-child { margin-bottom: auto; }
-  section > *:last-child { margin-bottom: auto; }
-  h1 { font-size: 34px; }
+  /* Title pinned to top; content below it vertically centred in remaining space */
+  section > h1:first-child + * { margin-top: auto !important; }
+  section > *:last-child           { margin-bottom: auto !important; }
+  h1 { font-size: 34px; margin-top: 0 !important; }
   h2 { font-size: 28px; }
   code { font-size: 0.85em; }
   pre { font-size: 0.75em; }
