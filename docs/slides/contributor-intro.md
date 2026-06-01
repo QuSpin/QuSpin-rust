@@ -50,11 +50,6 @@ operators, BFS, symmetry orbits, and the typed `SymElement` split.
 How the basis feeds `QMatrix`, `expm`, and `krylov`. Dev workflow.
 Where to start a first contribution.
 
-<br>
-
-Heisenberg XXZ on `L=8` (translation + $S^z$) threads through every
-crate to anchor the abstractions.
-
 ---
 
 # Act 1 — The problem and the architecture
