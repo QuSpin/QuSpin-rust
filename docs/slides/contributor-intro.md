@@ -459,21 +459,24 @@ calls it.
 A basis is, at heart, a sorted `Vec<B>` plus a way to look up indices:
 
 ```rust
-// quspin-basis/src/space.rs (simplified)
+// quspin-basis/src/space.rs + traits.rs (simplified)
 pub struct FullSpace<B: BitInt> { states: Vec<B> }
 pub struct Subspace<B: BitInt>  { states: Vec<B> }   // BFS output
 
 impl<B: BitInt> Subspace<B> {
     pub fn build<G: StateTransitions>(&mut self, seed: B, graph: &G) -> Result<...>;
-
-    /// Look up index, or report state-leaves-sector.
-    pub fn apply_and_project_to(&self, state: B) -> Option<usize>;
 }
+
+pub trait BasisSpace<B: BitInt> {
+    fn state_at(&self, i: usize) -> B;            // row index → state
+    fn index(&self, state: B) -> Option<usize>;   // state → row index (or None
+}                                                 //   if state left the sector)
 ```
 
-`apply_and_project_to` is the bridge that the matrix layer will use:
-given a state produced by applying `H`, find its row index in the basis,
-or signal "this term left the sector — skip it."
+`index(state)` is the bridge the matrix layer uses: given a state $\sigma'$
+produced by applying `H`, find its column index, or signal "this term
+left the sector — skip it." `state_at(i)` is the reverse direction used
+while walking the rows.
 
 ---
 
