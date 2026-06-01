@@ -279,36 +279,29 @@ and the multiplies / shifts become constants.
 
 # Benes networks — site permutations in $O(\log L)$ time
 
-A translation by 1 site on `L = 8` is a permutation of bit positions:
+A translation by 1 site on `L = 8` permutes bit positions:
 
 ```
 in:    b7 b6 b5 b4 b3 b2 b1 b0
 out:   b6 b5 b4 b3 b2 b1 b0 b7
 ```
 
-Naive: 8 conditional moves. Reflection, point group, sublattice
-permutations — all the same shape, all needed millions of times during BFS.
+Reflection, point group, sublattice permutations are all the same shape,
+all needed millions of times during BFS.
 
 **Benes network:** any permutation factors into $2\log_2 L - 1$ stages of
 "swap masked pairs by a fixed shift." Precompute the masks **once**:
 
 ```rust
 let net: BenesNetwork<u64> = gen_benes(&translation_targets);
-// Hot loop:
-let permuted = benes_fwd(&net, state);  // O(log L) shifts + ANDs + XORs
+let permuted = benes_fwd(&net, state);   // hot loop: O(log L) shifts + ANDs
 ```
 
-This turns symmetry actions into a branchless inner loop — the BFS
-and the orbit traversal both lean on it.
-
-**Cross-lhss reuse.** Because our packing convention uses a *fixed* `b`
-bits per site (previous slide), a site-level permutation $\pi$ on `L`
-sites lifts to a bit-level permutation by tiling: bit $i\cdot b + k$ goes
-to bit $\pi(i)\cdot b + k$, for $k = 0..b$. The Benes engine doesn't
-care — it sees a bit permutation either way. **One Benes implementation
-handles spins, bosons, fermions, and higher-spin alike.** The original
-C++ QuSpin needed separate permutation code paths per local Hilbert space;
-the fixed-width packing collapses them into one.
+**Cross-lhss reuse.** Because our packing uses a *fixed* `b` bits per
+site, a site permutation $\pi$ tiles trivially into a bit permutation
+($i\cdot b + k \mapsto \pi(i)\cdot b + k$). **One Benes implementation
+handles spins, bosons, fermions, higher-spin alike** — the original
+C++ QuSpin needed separate permutation code per local Hilbert space.
 
 ---
 
