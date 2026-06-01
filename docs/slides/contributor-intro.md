@@ -321,22 +321,18 @@ The basis crate does not import the operator crate. It asks for
 // quspin-types/src/state_transitions.rs
 pub trait StateTransitions: Send + Sync {
     fn lhss(&self) -> usize;
-    fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(
-        &self,
-        state: B,
-        visit: F,            // ← callback: visit(amplitude, new_state)
-    );
+    fn neighbors<B: BitInt, F: FnMut(Complex<f64>, B)>(&self, state: B, visit: F);
+    //                                ↑ callback: visit(amplitude, new_state)
 }
 ```
 
-Every operator type — `PauliOperator`, `BondOperator`, `MonomialOperator` —
-implements `StateTransitions`. The basis BFS takes `&impl StateTransitions`.
+Every operator type (`PauliOperator`, `BondOperator`, …) implements
+`StateTransitions`; BFS takes `&impl StateTransitions`.
 
-Two patterns at once: **dependency inversion** (the basis defines the
-contract, the operator crate satisfies it) and the **visitor pattern in
-callback form** (`neighbors` hands each transition to a closure instead
-of returning a collection — no allocation, the closure inlines into the
-caller's hot loop).
+Two patterns at once: **dependency inversion** (basis defines the
+contract, operator crate satisfies it) and the **visitor pattern in
+callback form** (closure inlines into the caller's hot loop, no
+intermediate `Vec`).
 
 ---
 
