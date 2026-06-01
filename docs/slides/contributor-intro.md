@@ -38,15 +38,15 @@ failing test in the right place.
 
 # Overview
 
-**Act 1 — The problem and the architecture** *(~15 min)*
+**Act 1 — The problem and motivating the architecture** *(~15 min)*
 
-**Act 2 — The basis layer in depth** *(~30 min)*
+**Act 2 — Deep Dive: The basis layer component by component** *(~30 min)*
 
-**Act 3 — Matrix, dynamics, contributing** *(~10 min)*
+**Act 3 — Wrapping it up: Matrix, dynamics, contributing** *(~10 min)*
 
 ---
 
-# Act 1 — The problem and the architecture
+# Act 1 — The problem and motivating the architecture
 
 We will spend ~15 minutes here. The aim is to motivate the package
 structure **before** looking at any code.
@@ -188,7 +188,7 @@ E0    = ham.lanczos_eig(...)
 
 ---
 
-# Act 2 — The basis layer in depth
+# Act 2 — Deep Dive: The basis layer component by component
 
 For the next ~30 minutes we walk bottom-up through the three crates that
 actually build a basis:
@@ -623,7 +623,7 @@ compiler. **This is why the type design pays off.**
 
 ---
 
-# Act 3 — Matrix, dynamics, contributing
+# Act 3 — Wrapping it up: Matrix, dynamics, contributing
 
 We are out of the hard part. Six slides on how the basis feeds the rest of
 the library, plus how to find your way around when you start contributing.
