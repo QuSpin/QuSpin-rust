@@ -187,7 +187,7 @@ For the next ~30 minutes we walk bottom-up through the three crates that actuall
 - **`quspin-operator`** — operators as basis-agnostic term lists (3 slides)
 - **`quspin-basis`** — BFS, orbits, symmetry validation (8 slides)
 
-This is the part of the codebase with the most moving parts and the clearest physics payoff. The rest of the library is plumbing around it.
+This is the part of the codebase with the most moving parts. The rest of the library is plumbing around it.
 
 ---
 
