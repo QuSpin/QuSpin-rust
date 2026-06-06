@@ -794,6 +794,11 @@ class QMatrixLinearOperator:
     Construct via ``QMatrix.as_linearoperator(coeffs)`` or
     ``Hamiltonian.as_linearoperator(time)``.  Accepted as the first argument
     to ``ExpmOp``.
+
+    Implements the SciPy ``LinearOperator`` duck-typed interface (``shape``,
+    ``dtype``, ``matvec``, ``matmat``, ``rmatvec``, ``rmatmat``, ``@``) so
+    instances can be passed directly to ``scipy.sparse.linalg`` routines
+    (``eigsh``, ``gmres``, ``expm_multiply``, …).
     """
 
     @property
@@ -801,7 +806,45 @@ class QMatrixLinearOperator:
     @property
     def num_coeff(self) -> int: ...
     @property
-    def dtype(self) -> str: ...
+    def shape(self) -> tuple[int, int]:
+        """``(dim, dim)`` — SciPy ``LinearOperator`` shape."""
+        ...
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        """Always ``numpy.dtype('complex128')`` — matvec runs in complex128."""
+        ...
+
+    def matvec(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]:
+        """Return ``A @ x`` for a 1-D ``complex128`` input."""
+        ...
+
+    def matmat(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]:
+        """Return ``A @ X`` for a 2-D ``complex128`` input of shape ``(dim, k)``."""
+        ...
+
+    def rmatvec(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]:
+        """Return ``A^H @ x`` (Hermitian adjoint) for a 1-D ``complex128`` input."""
+        ...
+
+    def rmatmat(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]:
+        """Return ``A^H @ X`` for a 2-D ``complex128`` input of shape ``(dim, k)``."""
+        ...
+
+    def __matmul__(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]: ...
+    def __rmatmul__(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]: ...
     def __repr__(self) -> str: ...
 
 class ExpmOp:
