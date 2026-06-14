@@ -22,6 +22,7 @@ from quspin_rs._rs import (
     Static,
     SymElement,
 )
+from quspin_rs.ffht import ffht
 from quspin_rs.symmetry import SymmetryGroup
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "BosonBasis",
     "BosonOperator",
     "Composite",
+    "ffht",
     "FermionBasis",
     "FermionOperator",
     "Hamiltonian",
