@@ -900,10 +900,87 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#quspin_rs._rs.QMatrixLinearOperator.shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        shape
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quspin_rs._rs.QMatrixLinearOperator.__matmul__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __matmul__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#quspin_rs._rs.QMatrixLinearOperator.__repr__" class="md-nav__link">
     <span class="md-ellipsis">
       
         __repr__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quspin_rs._rs.QMatrixLinearOperator.__rmatmul__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __rmatmul__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quspin_rs._rs.QMatrixLinearOperator.matmat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        matmat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quspin_rs._rs.QMatrixLinearOperator.matvec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        matvec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quspin_rs._rs.QMatrixLinearOperator.rmatmat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rmatmat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quspin_rs._rs.QMatrixLinearOperator.rmatvec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rmatvec
       
     </span>
   </a>
@@ -1975,6 +2052,9 @@ concrete <code>LinearOperator&lt;Complex&lt;f64&gt;&gt;</code>.</p>
 Constructed via <code>QMatrix.as_linearoperator(coeffs)</code> or
 <code>Hamiltonian.as_linearoperator(time)</code>; not constructible from Python
 directly.</p>
+<p>Exposes the SciPy <code>LinearOperator</code> duck-typed interface (<code>shape</code>,
+<code>dtype</code>, <code>matvec</code>, <code>matmat</code>, <code>rmatvec</code>, <code>rmatmat</code>, <code>@</code>) so instances can
+be passed directly to <code>scipy.sparse.linalg</code> routines.</p>
 
 
 
@@ -2007,7 +2087,7 @@ directly.</p>
   </span>
 
 <a href="#quspin_rs._rs.QMatrixLinearOperator.__doc__" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="vm">__doc__</span> <span class="o">=</span> <span class="s2">&quot;Python-facing snapshot of a `QMatrix` + coefficient vector — i.e. a</span><span class="se">\n</span><span class="s2">concrete `LinearOperator&lt;Complex&lt;f64&gt;&gt;`.</span><span class="se">\n\n</span><span class="s2">Internally an `Arc&lt;OwnedQMatrixOperator&lt;Complex&lt;f64&gt;&gt;&gt;` shared with</span><span class="se">\n</span><span class="s2">`PyExpmOp` so the same matrix allocation backs many `apply` calls.</span><span class="se">\n</span><span class="s2">Constructed via `QMatrix.as_linearoperator(coeffs)` or</span><span class="se">\n</span><span class="s2">`Hamiltonian.as_linearoperator(time)`; not constructible from Python</span><span class="se">\n</span><span class="s2">directly.&quot;</span>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="vm">__doc__</span> <span class="o">=</span> <span class="s2">&quot;Python-facing snapshot of a `QMatrix` + coefficient vector — i.e. a</span><span class="se">\n</span><span class="s2">concrete `LinearOperator&lt;Complex&lt;f64&gt;&gt;`.</span><span class="se">\n\n</span><span class="s2">Internally an `Arc&lt;OwnedQMatrixOperator&lt;Complex&lt;f64&gt;&gt;&gt;` shared with</span><span class="se">\n</span><span class="s2">`PyExpmOp` so the same matrix allocation backs many `apply` calls.</span><span class="se">\n</span><span class="s2">Constructed via `QMatrix.as_linearoperator(coeffs)` or</span><span class="se">\n</span><span class="s2">`Hamiltonian.as_linearoperator(time)`; not constructible from Python</span><span class="se">\n</span><span class="s2">directly.</span><span class="se">\n\n</span><span class="s2">Exposes the SciPy `LinearOperator` duck-typed interface (`shape`,</span><span class="se">\n</span><span class="s2">`dtype`, `matvec`, `matmat`, `rmatvec`, `rmatmat`, `@`) so instances can</span><span class="se">\n</span><span class="s2">be passed directly to `scipy.sparse.linalg` routines.&quot;</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2093,10 +2173,14 @@ errors defaults to 'strict'.</p>
   </span>
 
 <a href="#quspin_rs._rs.QMatrixLinearOperator.dtype" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">dtype</span><span class="p">:</span> <span class="nb">str</span>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">dtype</span><span class="p">:</span> <span class="n">dtype</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
+
+        <p>SciPy-compatible <code>numpy.dtype</code>.  Always <code>complex128</code> — matvec is
+run in complex128 regardless of the matrix's storage dtype because
+<code>as_linearoperator</code> accepts complex coefficients.</p>
 
     </div>
 
@@ -2124,8 +2208,58 @@ errors defaults to 'strict'.</p>
 
 </div>
 
+<div class="doc doc-object doc-attribute">
 
 
+
+<h4 id="quspin_rs._rs.QMatrixLinearOperator.shape" class="doc doc-heading">
+            <span class="doc doc-object-name doc-attribute-name">shape</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#quspin_rs._rs.QMatrixLinearOperator.shape" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>SciPy-compatible <code>(dim, dim)</code> shape tuple.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="quspin_rs._rs.QMatrixLinearOperator.__matmul__" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">__matmul__</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-method descriptor"><code>method descriptor</code></small>
+  </span>
+
+<a href="#quspin_rs._rs.QMatrixLinearOperator.__matmul__" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">__matmul__</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">value</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">npt</span><span class="o">.</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">complexfloating</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Return self@value.</p>
+
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-function">
 
@@ -2145,6 +2279,138 @@ errors defaults to 'strict'.</p>
     <div class="doc doc-contents ">
 
         <p>Return repr(self).</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="quspin_rs._rs.QMatrixLinearOperator.__rmatmul__" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">__rmatmul__</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-method descriptor"><code>method descriptor</code></small>
+  </span>
+
+<a href="#quspin_rs._rs.QMatrixLinearOperator.__rmatmul__" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">__rmatmul__</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">value</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">npt</span><span class="o">.</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">complexfloating</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Return value@self.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="quspin_rs._rs.QMatrixLinearOperator.matmat" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">matmat</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-method descriptor"><code>method descriptor</code></small>
+  </span>
+
+<a href="#quspin_rs._rs.QMatrixLinearOperator.matmat" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">matmat</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">x</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">complexfloating</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">npt</span><span class="o">.</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">complexfloating</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p><code>A @ X</code> for a 2-D complex128 input of shape <code>(dim, k)</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="quspin_rs._rs.QMatrixLinearOperator.matvec" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">matvec</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-method descriptor"><code>method descriptor</code></small>
+  </span>
+
+<a href="#quspin_rs._rs.QMatrixLinearOperator.matvec" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">matvec</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">x</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">complexfloating</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">npt</span><span class="o">.</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">complexfloating</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p><code>A @ x</code> for a 1-D complex128 input.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="quspin_rs._rs.QMatrixLinearOperator.rmatmat" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">rmatmat</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-method descriptor"><code>method descriptor</code></small>
+  </span>
+
+<a href="#quspin_rs._rs.QMatrixLinearOperator.rmatmat" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">rmatmat</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">x</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">complexfloating</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">npt</span><span class="o">.</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">complexfloating</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p><code>A^H @ X</code> for a 2-D input of shape <code>(dim, k)</code> — SciPy <code>rmatmat</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="quspin_rs._rs.QMatrixLinearOperator.rmatvec" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">rmatvec</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-method descriptor"><code>method descriptor</code></small>
+  </span>
+
+<a href="#quspin_rs._rs.QMatrixLinearOperator.rmatvec" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">rmatvec</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">x</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">complexfloating</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">npt</span><span class="o">.</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">complexfloating</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p><code>A^H @ x</code> for a 1-D input — SciPy <code>rmatvec</code>.  Computed as
+<code>conj(A^T @ conj(x))</code> so it matches the Hermitian adjoint even when
+the underlying matrix has complex entries.</p>
 
 
     </div>
