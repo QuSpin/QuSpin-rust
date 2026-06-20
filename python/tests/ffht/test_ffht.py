@@ -16,6 +16,7 @@ EPS_F64 = 1e-12
 # Out-of-place (default): returns a new array, input unchanged.
 # ---------------------------------------------------------------------
 
+
 def test_fht_oop_f32_returns_new_array():
     x = np.arange(1, 9, dtype=np.float32)
     x_copy = x.copy()
@@ -48,6 +49,7 @@ def test_fht_oop_f64_returns_new_array():
 # In-place: mutates input, returns None.
 # ---------------------------------------------------------------------
 
+
 def test_fht_inplace_f32_mutates_and_returns_none():
     x = np.arange(1, 9, dtype=np.float32)
 
@@ -72,6 +74,7 @@ def test_fht_inplace_f64_mutates_and_returns_none():
 # Inplace and out-of-place agree.
 # ---------------------------------------------------------------------
 
+
 def test_fht_inplace_matches_oop_f32():
     x = np.arange(1, 9, dtype=np.float32)
 
@@ -88,6 +91,7 @@ def test_fht_inplace_matches_oop_f32():
 # Dtype dispatch: unsupported dtype raises TypeError.
 # ---------------------------------------------------------------------
 
+
 def test_fht_unsupported_dtype_raises_type_error():
     x = np.arange(8, dtype=np.int32)
     with pytest.raises(TypeError, match="unsupported dtype"):
@@ -103,6 +107,7 @@ def test_fht_unsupported_dtype_raises_type_error_inplace():
 # ---------------------------------------------------------------------
 # Validation errors (contiguity / power-of-two) pass through from _rs.
 # ---------------------------------------------------------------------
+
 
 def test_fht_non_power_of_two_raises_value_error():
     x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
@@ -122,6 +127,7 @@ def test_fht_non_contiguous_raises_value_error():
 # ---------------------------------------------------------------------
 # Larger size sanity check, both dtypes, both modes.
 # ---------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("dtype,eps", [(np.float32, 1e-2), (np.float64, 1e-9)])
 @pytest.mark.parametrize("inplace", [False, True])

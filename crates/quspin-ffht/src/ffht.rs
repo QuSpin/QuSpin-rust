@@ -1,4 +1,5 @@
 use std::os::raw::c_int;
+use std::sync::Once;
 
 mod ffi {
     use std::os::raw::c_int;
@@ -33,6 +34,23 @@ fn log_n_of(len: usize) -> c_int {
     log_n as c_int
 }
 
+static SCALAR_FALLBACK_WARNING: Once = Once::new();
+
+/// Emits a one-time warning to stderr the first time the scalar fallback
+/// is used, so users know SSE2/AVX2 weren't available (either not
+/// compiled in, or not supported by the running CPU) and performance
+/// will be slower than the SIMD path.
+#[inline]
+fn warn_scalar_fallback_once() {
+    SCALAR_FALLBACK_WARNING.call_once(|| {
+        eprintln!(
+            "quspin-ffht: no fast (SSE2/AVX2) implementation available for this \
+             CPU/build; falling back to the scalar implementation. Performance \
+             will be reduced. (This message is shown only once.)"
+        );
+    });
+}
+
 /// In-place Fast Hadamard Transform for f32. `buf.len()` must be a power of two.
 pub fn fht_f32(buf: &mut [f32]) {
     let log_n = log_n_of(buf.len());
@@ -48,6 +66,7 @@ pub fn fht_f32(buf: &mut [f32]) {
                 return;
             }
         }
+        warn_scalar_fallback_once();
         ffi::fht_float_scalar(buf.as_mut_ptr(), log_n);
     }
 }
@@ -67,6 +86,8 @@ pub fn fht_f64(buf: &mut [f64]) {
                 return;
             }
         }
+
+        warn_scalar_fallback_once();
         ffi::fht_double_scalar(buf.as_mut_ptr(), log_n);
     }
 }
@@ -88,6 +109,7 @@ pub fn fht_f32_oop(input: &mut [f32], out: &mut [f32]) {
                 return;
             }
         }
+        warn_scalar_fallback_once();
         ffi::fht_float_oop_scalar(input.as_mut_ptr(), out.as_mut_ptr(), log_n);
     }
 }
@@ -109,6 +131,7 @@ pub fn fht_f64_oop(input: &mut [f64], out: &mut [f64]) {
                 return;
             }
         }
+        warn_scalar_fallback_once();
         ffi::fht_double_oop_scalar(input.as_mut_ptr(), out.as_mut_ptr(), log_n);
     }
 }
