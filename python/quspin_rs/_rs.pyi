@@ -1096,60 +1096,11 @@ class FTLMDynamic:
 # Fast Hadamard Transform
 # ---------------------------------------------------------------------------
 
-def fht_f32(arr: npt.NDArray[np.float32]) -> None:
-    """In-place Fast Hadamard Transform for a 1-D ``float32`` array.
-
-    Args:
-        arr: 1-D ``float32`` array, modified in place. ``arr.shape[0]``
-            must be a power of two and ``arr`` must be C-contiguous.
-
-    Raises:
-        ValueError: If ``arr`` is not C-contiguous or its length is not
-            a power of two.
-    """
+def ffht(
+    arr: npt.NDArray[np.float32] | npt.NDArray[np.float64],
+    inplace: bool = False,
+) -> npt.NDArray[np.float32] | npt.NDArray[np.float64] | None:
+    """Fast Hadamard Transform of a 1-D ``float32`` or ``float64`` array.
     ...
-
-def fht_f64(arr: npt.NDArray[np.float64]) -> None:
-    """In-place Fast Hadamard Transform for a 1-D ``float64`` array.
-
-    Args:
-        arr: 1-D ``float64`` array, modified in place. ``arr.shape[0]``
-            must be a power of two and ``arr`` must be C-contiguous.
-
-    Raises:
-        ValueError: If ``arr`` is not C-contiguous or its length is not
-            a power of two.
-    """
-    ...
-
-def fht_f32_oop(input: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
-    """Out-of-place Fast Hadamard Transform for a 1-D ``float32`` array.
-
-    Args:
-        input: 1-D ``float32`` array, left unchanged. ``input.shape[0]``
-            must be a power of two and ``input`` must be C-contiguous.
-
-    Returns:
-        A new ``float32`` array of the same shape containing the transform.
-
-    Raises:
-        ValueError: If ``input`` is not C-contiguous or its length is not
-            a power of two.
-    """
-    ...
-
-def fht_f64_oop(input: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """Out-of-place Fast Hadamard Transform for a 1-D ``float64`` array.
-
-    Args:
-        input: 1-D ``float64`` array, left unchanged. ``input.shape[0]``
-            must be a power of two and ``input`` must be C-contiguous.
-
-    Returns:
-        A new ``float64`` array of the same shape containing the transform.
-
-    Raises:
-        ValueError: If ``input`` is not C-contiguous or its length is not
-            a power of two.
     """
     ...

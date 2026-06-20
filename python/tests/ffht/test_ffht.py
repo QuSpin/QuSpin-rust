@@ -6,7 +6,7 @@ Run with: pytest test_ffht.py
 import numpy as np
 import pytest
 
-from quspin_rs.ffht import ffht
+from quspin_rs._rs import ffht
 
 EPS_F32 = 1e-5
 EPS_F64 = 1e-12

@@ -12,6 +12,7 @@ from quspin_rs._rs import (
     Composite,
     FermionBasis,
     FermionOperator,
+    ffht,
     Hamiltonian,
     Lattice,
     Local,
@@ -22,7 +23,6 @@ from quspin_rs._rs import (
     Static,
     SymElement,
 )
-from quspin_rs.ffht import ffht
 from quspin_rs.symmetry import SymmetryGroup
 
 __all__ = [

@@ -13,7 +13,7 @@ pub mod schrodinger;
 use basis::sym_element::{_compose, _order, _validate_group, composite, lattice, local};
 use basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis, PySymElement};
 use expm::{PyExpmOp, PyExpmWorker, PyExpmWorker2};
-use ffht::{fht_f32, fht_f32_oop, fht_f64, fht_f64_oop};
+use ffht::ffht;
 use hamiltonian::{PyHamiltonian, PyStatic};
 use krylov::{PyEigSolver, PyFTLM, PyFTLMDynamic, PyLTLM};
 use linear_operator::PyQMatrixLinearOperator;
@@ -61,9 +61,6 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyLTLM>()?;
     m.add_class::<PyFTLMDynamic>()?;
     // FFHT
-    m.add_function(wrap_pyfunction!(fht_f32, m)?)?;
-    m.add_function(wrap_pyfunction!(fht_f64, m)?)?;
-    m.add_function(wrap_pyfunction!(fht_f32_oop, m)?)?;
-    m.add_function(wrap_pyfunction!(fht_f64_oop, m)?)?;
+    m.add_function(wrap_pyfunction!(ffht::ffht, m)?)?;
     Ok(())
 }
