@@ -46,7 +46,7 @@ fn warn_scalar_fallback_once() {
         eprintln!(
             "quspin-ffht: no fast (SSE2/AVX2) implementation available for this \
              CPU/build; falling back to the scalar implementation. Performance \
-             will be reduced. (This message is shown only once.)"
+             will be reduced."
         );
     });
 }
