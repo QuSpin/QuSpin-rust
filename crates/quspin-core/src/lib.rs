@@ -84,3 +84,7 @@ pub mod linear_operator {
     pub use quspin_matrix::QMatrixOperator;
     pub use quspin_types::linear_operator::*;
 }
+
+pub mod ffht {
+    pub use quspin_ffht::*;
+}

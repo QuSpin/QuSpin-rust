@@ -14,6 +14,8 @@ quspin-basis = { path = "../quspin-basis" }
 quspin-matrix = { path = "../quspin-matrix" }
 quspin-expm = { path = "../quspin-expm" }
 quspin-krylov = { path = "../quspin-krylov" }
+quspin-ffht = { path = "../quspin-ffht" }
+
 
 [dev-dependencies]
 num-complex = { workspace = true }

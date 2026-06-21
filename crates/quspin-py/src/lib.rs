@@ -2,6 +2,7 @@ pub mod basis;
 pub mod dtype;
 pub mod error;
 pub mod expm;
+pub mod ffht;
 pub mod hamiltonian;
 pub mod krylov;
 pub mod linear_operator;
@@ -12,6 +13,7 @@ pub mod schrodinger;
 use basis::sym_element::{_compose, _order, _validate_group, composite, lattice, local};
 use basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis, PySymElement};
 use expm::{PyExpmOp, PyExpmWorker, PyExpmWorker2};
+use ffht::ffht_py;
 use hamiltonian::{PyHamiltonian, PyStatic};
 use krylov::{PyEigSolver, PyFTLM, PyFTLMDynamic, PyLTLM};
 use linear_operator::PyQMatrixLinearOperator;
@@ -58,5 +60,7 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyFTLM>()?;
     m.add_class::<PyLTLM>()?;
     m.add_class::<PyFTLMDynamic>()?;
+    // FFHT
+    m.add_function(wrap_pyfunction!(ffht_py, m)?)?;
     Ok(())
 }

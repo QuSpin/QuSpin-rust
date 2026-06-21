@@ -1133,3 +1133,17 @@ class FTLMDynamic:
         ...
 
     def __repr__(self) -> str: ...
+
+
+# ---------------------------------------------------------------------------
+# Fast Hadamard Transform
+# ---------------------------------------------------------------------------
+
+def ffht(
+    arr: npt.NDArray[np.float32] | npt.NDArray[np.float64],
+    inplace: bool = False,
+) -> npt.NDArray[np.float32] | npt.NDArray[np.float64] | None:
+    """Fast Hadamard Transform of a 1-D ``float32`` or ``float64`` array.
+    ...
+    """
+    ...

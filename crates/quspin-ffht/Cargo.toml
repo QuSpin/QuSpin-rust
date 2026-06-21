@@ -1,0 +1,7 @@
+[package]
+name = "quspin-ffht"
+version.workspace = true
+edition.workspace = true
+
+[build-dependencies]
+cc = "1"

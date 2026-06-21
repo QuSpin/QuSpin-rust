@@ -1,7 +1,6 @@
 """Generate reference dense matrices using QuSpin for integration test validation."""
 
 import numpy as np
-
 from quspin.basis import spin_basis_1d
 from quspin.operators import hamiltonian
 
