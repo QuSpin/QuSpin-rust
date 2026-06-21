@@ -1,17 +1,19 @@
-//! Python bindings for the FHT (Fast Hadamard Transform), backed by
+//! Python bindings for the FFHT (Fast Fast Hadamard Transform), backed by
 //! `quspin-ffht` (via the `quspin-core` facade).
 //!
-//! Exposes a single [`ffht`] function that dispatches on the input
+//! Exposes a single [`ffht_py`] function that dispatches on the input
 //! array's dtype (``float32`` / ``float64``) and on the ``inplace``
 //! flag. Inputs are validated (C-contiguity, power-of-two length) and
 //! violations are translated into ``ValueError``/``TypeError`` before
 //! calling into `quspin_core::ffht`, which uses runtime SIMD dispatch
 //! (scalar / SSE2 / AVX2+FMA) under the hood.
 
-use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1, PyReadwriteArray1, PyUntypedArrayMethods};
+use numpy::{
+    PyArray1, PyArrayDescrMethods, PyReadonlyArray1, PyReadwriteArray1, PyUntypedArrayMethods,
+};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use quspin_core::ffht;
+use quspin_core::ffht as ffht_impl;
 
 const CONTIGUITY_ERR: &str =
     "input array must be C-contiguous; use np.ascontiguousarray(arr) first";
@@ -31,7 +33,7 @@ fn ffht_f32_inplace(mut arr: PyReadwriteArray1<f32>) -> PyResult<()> {
         .as_slice_mut()
         .ok_or_else(|| PyValueError::new_err(CONTIGUITY_ERR))?;
     check_power_of_two(slice.len())?;
-    ffht::fht_f32(slice);
+    ffht_impl::fht_f32(slice);
     Ok(())
 }
 
@@ -41,7 +43,7 @@ fn ffht_f64_inplace(mut arr: PyReadwriteArray1<f64>) -> PyResult<()> {
         .as_slice_mut()
         .ok_or_else(|| PyValueError::new_err(CONTIGUITY_ERR))?;
     check_power_of_two(slice.len())?;
-    ffht::fht_f64(slice);
+    ffht_impl::fht_f64(slice);
     Ok(())
 }
 
@@ -59,7 +61,7 @@ fn ffht_f32_oop<'py>(
     check_power_of_two(in_buf.len())?;
 
     let mut out_buf = vec![0f32; in_buf.len()];
-    ffht::fht_f32_oop(&mut in_buf, &mut out_buf);
+    ffht_impl::fht_f32_oop(&mut in_buf, &mut out_buf);
     Ok(PyArray1::from_vec(py, out_buf))
 }
 
@@ -75,7 +77,7 @@ fn ffht_f64_oop<'py>(
     check_power_of_two(in_buf.len())?;
 
     let mut out_buf = vec![0f64; in_buf.len()];
-    ffht::fht_f64_oop(&mut in_buf, &mut out_buf);
+    ffht_impl::fht_f64_oop(&mut in_buf, &mut out_buf);
     Ok(PyArray1::from_vec(py, out_buf))
 }
 
@@ -100,14 +102,14 @@ fn ffht_f64_oop<'py>(
 ///     ValueError: If ``arr`` is not C-contiguous or its length is not
 ///         a power of two.
 #[pyfunction]
-#[pyo3(signature = (arr, inplace=false))]
-pub fn ffht<'py>(
+#[pyo3(name = "ffht", signature = (arr, inplace=false))]
+pub fn ffht_py<'py>(
     py: Python<'py>,
     arr: &Bound<'py, PyAny>,
     inplace: bool,
-) -> PyResult<Option<PyObject>> {
+) -> PyResult<Option<Py<PyAny>>> {
     let array = arr
-        .downcast::<numpy::PyUntypedArray>()
+        .cast::<numpy::PyUntypedArray>()
         .map_err(|_| PyTypeError::new_err("ffht: expected a numpy ndarray"))?;
 
     let dtype = array.dtype();
@@ -119,7 +121,7 @@ pub fn ffht<'py>(
             Ok(None)
         } else {
             let arr: PyReadonlyArray1<f32> = arr.extract()?;
-            Ok(Some(ffht_f32_oop(py, arr)?.into()))
+            Ok(Some(ffht_f32_oop(py, arr)?.unbind().into_any()))
         }
     } else if dtype.is_equiv_to(&numpy::dtype::<f64>(py)) {
         if inplace {
@@ -128,7 +130,7 @@ pub fn ffht<'py>(
             Ok(None)
         } else {
             let arr: PyReadonlyArray1<f64> = arr.extract()?;
-            Ok(Some(ffht_f64_oop(py, arr)?.into()))
+            Ok(Some(ffht_f64_oop(py, arr)?.unbind().into_any()))
         }
     } else {
         Err(PyTypeError::new_err(format!(
