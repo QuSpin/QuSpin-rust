@@ -116,30 +116,87 @@ fn invert_perm(p: &[i32], inv: &mut [i32]) {
 /// `c_tgt[dst]` = the source bit that should appear at output bit `dst`.
 /// Use `None` for "don't care" slots (they default to the identity mapping).
 ///
+/// The network is sized to `c_tgt.len()`, **not** to `B::BITS`. A shorter
+/// slice yields a network with `log2(c_tgt.len())` butterfly stages instead
+/// of `B::LD_BITS`, which is the difference between 6 stages and 12 for a
+/// 64-site permutation held in a 4096-bit integer. Bits at or above
+/// `c_tgt.len()` are left untouched by the resulting network: every stage
+/// mask is confined to the low block and every shift is smaller than it, so
+/// no butterfly step can move a bit across the boundary.
+///
+/// Prefer [`gen_benes_for`] unless the caller already has a power-of-two
+/// slice.
+///
 /// # Panics
 ///
-/// Panics if `c_tgt.len() != B::BITS as usize`.
+/// Panics unless `c_tgt.len()` is a power of two in `2..=B::BITS`, or if any
+/// source index is `>= c_tgt.len()`.
 pub fn gen_benes<B: BitInt>(c_tgt: &[Option<usize>]) -> BenesNetwork<B> {
-    let bits = B::BITS as usize;
+    let bits = c_tgt.len();
 
-    assert_eq!(c_tgt.len(), bits, "c_tgt must have length B::BITS");
+    assert!(
+        bits.is_power_of_two() && (2..=B::BITS as usize).contains(&bits),
+        "c_tgt length must be a power of two in 2..=B::BITS, got {bits}"
+    );
 
     // Convert to the internal i32 representation used by the routing algorithm.
     // Convention: c_int[dst] = src  (EMPTY = don't care).
     let c_int: Vec<i32> = c_tgt
         .iter()
-        .map(|e| e.map_or(EMPTY, |v| v as i32))
+        .map(|e| {
+            e.map_or(EMPTY, |v| {
+                assert!(v < bits, "source index {v} outside network width {bits}");
+                v as i32
+            })
+        })
         .collect();
 
-    gen_benes_inner::<B>(&c_int)
+    gen_benes_inner::<B>(&c_int, bits)
+}
+
+/// Generate a Benes network sized to `n_sites` rather than to `B::BITS`.
+///
+/// `perm[dst]` is the source site feeding output site `dst`, for
+/// `dst < n_sites`. The network is routed over `n_sites.next_power_of_two()`
+/// slots — the smallest block a Benes network can address that still
+/// contains every permuted site — and sites outside `perm` map to identity.
+///
+/// This is the entry point lattice symmetries should use: the stage count
+/// follows the physics instead of the storage width.
+///
+/// # Panics
+///
+/// Panics if `perm` is empty, if `n_sites.next_power_of_two() > B::BITS`, or
+/// if any entry is `>= perm.len()`.
+pub fn gen_benes_for<B: BitInt>(perm: &[usize]) -> BenesNetwork<B> {
+    assert!(!perm.is_empty(), "permutation must be non-empty");
+    // A Benes network addresses a power-of-two block; round up and let the
+    // padding slots route to identity.
+    let bits = perm.len().next_power_of_two().max(2);
+    assert!(
+        bits <= B::BITS as usize,
+        "{} sites need a {bits}-bit network, wider than B::BITS = {}",
+        perm.len(),
+        B::BITS
+    );
+    let mut c_tgt: Vec<Option<usize>> = vec![None; bits];
+    for (dst, &src) in perm.iter().enumerate() {
+        assert!(
+            src < perm.len(),
+            "permutation entry {src} outside 0..{}",
+            perm.len()
+        );
+        c_tgt[dst] = Some(src);
+    }
+    gen_benes::<B>(&c_tgt)
 }
 
 /// Core routing algorithm (gen_benes_ex from the C++ reference).
 ///
-/// Uses the standard stage order: `LD_BITS-1, LD_BITS-2, …, 0`.
-fn gen_benes_inner<B: BitInt>(c_tgt: &[i32]) -> BenesNetwork<B> {
-    let bits = B::BITS as usize;
-    let ld_bits = B::LD_BITS as usize;
+/// Routes over `bits` slots using `log2(bits)` stages, in the standard
+/// order `ld_bits-1, ld_bits-2, …, 0`.
+fn gen_benes_inner<B: BitInt>(c_tgt: &[i32], bits: usize) -> BenesNetwork<B> {
+    let ld_bits = bits.trailing_zeros() as usize;
 
     // Initialise src and tgt routing arrays.
     // src[s] = d  means: in the current routing, source slot s carries element
@@ -264,6 +321,8 @@ fn gen_benes_inner<B: BitInt>(c_tgt: &[i32]) -> BenesNetwork<B> {
 
 #[cfg(test)]
 mod tests {
+    use ruint::Uint;
+
     use super::*;
 
     fn identity_ctgt<B: BitInt>() -> Vec<Option<usize>> {
@@ -410,5 +469,131 @@ mod tests {
                 "reverse perm failed for x={x:#010b}: got {got:#010b}, expected {expected:#010b}"
             );
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Networks sized to the permutation rather than to B::BITS
+    // -----------------------------------------------------------------
+
+    /// Build the same permutation two ways — over `B::BITS` slots and over
+    /// `n` slots — and require identical results on the low `n` bits.
+    /// This is the property the whole optimisation rests on.
+    fn short_matches_full<B: BitInt + std::fmt::Debug>(perm: &[usize], probes: &[u64]) {
+        let n = perm.len();
+        assert!(n.is_power_of_two());
+
+        let mut full: Vec<Option<usize>> = (0..B::BITS as usize).map(Some).collect();
+        for (dst, &src) in perm.iter().enumerate() {
+            full[dst] = Some(src);
+        }
+        let net_full = gen_benes::<B>(&full);
+        let net_short = gen_benes_for::<B>(perm);
+
+        let mask = if n >= 64 { u64::MAX } else { (1u64 << n) - 1 };
+        for &p in probes {
+            let x = B::from_u64(p & mask);
+            assert_eq!(
+                net_short.apply(x),
+                net_full.apply(x),
+                "short network disagrees with full for perm {perm:?} on {p:#x}"
+            );
+        }
+    }
+
+    #[test]
+    fn short_network_matches_full_width() {
+        let probes: Vec<u64> = (0..64u64)
+            .map(|i| i.wrapping_mul(0x9E37_79B9_7F4A_7C15))
+            .chain([0, 1, u64::MAX])
+            .collect();
+
+        // Cyclic shifts at several block sizes, in containers far wider.
+        for &n in &[4usize, 8, 16, 32] {
+            let perm: Vec<usize> = (0..n).map(|d| (d + n - 1) % n).collect();
+            short_matches_full::<u64>(&perm, &probes);
+            short_matches_full::<Uint<256, 4>>(&perm, &probes);
+        }
+
+        // Reversal, which routes every stage rather than just the top one.
+        for &n in &[4usize, 8, 16] {
+            let perm: Vec<usize> = (0..n).map(|d| n - 1 - d).collect();
+            short_matches_full::<u64>(&perm, &probes);
+            short_matches_full::<Uint<256, 4>>(&perm, &probes);
+        }
+    }
+
+    #[test]
+    fn short_network_leaves_high_bits_untouched() {
+        // A 16-site permutation in a 256-bit container must not disturb any
+        // bit at or above 16 — the guarantee that makes a short network
+        // substitutable for a full-width one.
+        let perm: Vec<usize> = (0..16usize).map(|d| (d + 15) % 16).collect();
+        let net = gen_benes_for::<Uint<256, 4>>(&perm);
+        let mut rng: u64 = 0x1234_5678_9ABC_DEF0;
+        for _ in 0..200 {
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            // Set bits both inside and far outside the permuted block.
+            let high: Uint<256, 4> = Uint::<256, 4>::from_u64(rng) << 64;
+            let low = Uint::<256, 4>::from_u64(rng & 0xFFFF);
+            let out = net.apply(low | high);
+            assert_eq!(
+                out >> 16,
+                (low | high) >> 16,
+                "bits above the permuted block were modified"
+            );
+        }
+    }
+
+    #[test]
+    fn short_network_uses_fewer_stages() {
+        // The point of the exercise: stage count follows the permutation,
+        // not the container. 64 sites in a 4096-bit integer should cost 6
+        // stages per butterfly, not 12.
+        let perm: Vec<usize> = (0..64usize).map(|d| (d + 63) % 64).collect();
+        let short = gen_benes_for::<Uint<4096, 64>>(&perm);
+        assert_eq!(short.b1.cfg.len(), 6, "short network stage count");
+
+        let full: Vec<Option<usize>> = (0..4096usize).map(Some).collect();
+        let wide = gen_benes::<Uint<4096, 64>>(&full);
+        assert_eq!(wide.b1.cfg.len(), 12, "full-width network stage count");
+    }
+
+    #[test]
+    fn non_power_of_two_site_count_rounds_up() {
+        // 20 sites route over a 32-slot network; the 12 padding slots are
+        // identity and must not perturb the result.
+        let perm: Vec<usize> = (0..20usize).map(|d| (d + 19) % 20).collect();
+        let net = gen_benes_for::<u64>(&perm);
+        assert_eq!(net.b1.cfg.len(), 5, "20 sites -> 32-slot network");
+
+        let mut full: Vec<Option<usize>> = (0..64usize).map(Some).collect();
+        for (dst, &src) in perm.iter().enumerate() {
+            full[dst] = Some(src);
+        }
+        let reference = gen_benes::<u64>(&full);
+        for i in 0..1000u64 {
+            let x = i.wrapping_mul(0x9E37_79B9_7F4A_7C15) & 0xF_FFFF;
+            assert_eq!(
+                net.apply(x),
+                reference.apply(x),
+                "padded network for {x:#x}"
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "wider than B::BITS")]
+    fn rejects_permutation_wider_than_container() {
+        let perm: Vec<usize> = (0..100usize).collect();
+        let _ = gen_benes_for::<u64>(&perm);
+    }
+
+    #[test]
+    #[should_panic(expected = "power of two")]
+    fn rejects_non_power_of_two_slice() {
+        let c_tgt: Vec<Option<usize>> = vec![None; 20];
+        let _ = gen_benes::<u64>(&c_tgt);
     }
 }

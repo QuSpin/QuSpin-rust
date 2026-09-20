@@ -382,7 +382,23 @@ impl<B: BitInt> BenesPermDitLocations<B> {
             (usize::BITS - (lhss - 1).leading_zeros()) as usize
         };
 
-        let bits = B::BITS as usize;
+        // Size the network to the bits the permutation actually reaches, not
+        // to the storage width. The permuted region is the low
+        // `n_sites * bits_per_dit` bits; a Benes network addresses a
+        // power-of-two block, so round that up. Bits above the block are
+        // left untouched by construction (see `gen_benes`), which is what
+        // makes the short network substitutable for a full-width one.
+        //
+        // This is worth roughly 2x on wide integers: a 64-site permutation
+        // in a 4096-bit container costs 6 butterfly stages here instead of
+        // `B::LD_BITS` = 12.
+        let bits = (n_sites * bits_per_dit).next_power_of_two().max(2);
+        assert!(
+            bits <= B::BITS as usize,
+            "{n_sites} sites x {bits_per_dit} bits/dit need a {bits}-bit network, \
+             wider than B::BITS = {}",
+            B::BITS
+        );
 
         // Build bit-level target permutation.
         // Convention: c_tgt[dst_bit] = src_bit (output bit dst comes from input bit src).

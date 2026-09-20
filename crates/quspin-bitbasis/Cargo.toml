@@ -36,3 +36,7 @@ harness = false
 [[bench]]
 name = "benes_stages"
 harness = false
+
+[[bench]]
+name = "network_sizing"
+harness = false
