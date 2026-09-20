@@ -2,6 +2,7 @@ use crate::basis::boson::PyBosonBasis;
 use crate::basis::fermion::PyFermionBasis;
 use crate::basis::generic::PyGenericBasis;
 use crate::basis::spin::PySpinBasis;
+use crate::basis::validate_op_max_site;
 use crate::dtype::FromPyDescr;
 use crate::error::Error;
 use crate::linear_operator::PyQMatrixLinearOperator;
@@ -50,6 +51,52 @@ fn dtype_from_py<'py>(py: Python<'py>, descr: &Bound<'py, PyArrayDescr>) -> PyRe
 }
 
 // ---------------------------------------------------------------------------
+// Operator/basis compatibility
+// ---------------------------------------------------------------------------
+
+/// Check an operator against the basis it is about to be assembled over.
+///
+/// The build kernels perform no such check: a mismatched `lhss` makes them
+/// read the basis' dit digits with the wrong local dimension, and a site
+/// index past the end of the lattice reads as 0 and folds back in as a
+/// phantom diagonal term. Both produce wrong numbers with no error, so the
+/// pair is validated here before dispatching.
+fn validate_op_basis(
+    op_lhss: usize,
+    op_max_site: usize,
+    basis_lhss: usize,
+    basis_n_sites: usize,
+) -> PyResult<()> {
+    if op_lhss != basis_lhss {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "operator lhss={op_lhss} does not match basis lhss={basis_lhss}",
+        )));
+    }
+    validate_op_max_site(op_max_site, basis_n_sites)
+}
+
+/// `(lhss, n_sites)` of whichever concrete basis `basis` holds.
+fn basis_shape(basis: &Bound<'_, PyAny>) -> Option<(usize, usize)> {
+    if let Ok(b) = basis.cast::<PyFermionBasis>() {
+        let b = b.borrow();
+        return Some((b.inner.inner.lhss(), b.inner.inner.n_sites()));
+    }
+    if let Ok(b) = basis.cast::<PySpinBasis>() {
+        let b = b.borrow();
+        return Some((b.inner.inner.lhss(), b.inner.inner.n_sites()));
+    }
+    if let Ok(b) = basis.cast::<PyBosonBasis>() {
+        let b = b.borrow();
+        return Some((b.inner.inner.lhss(), b.inner.inner.n_sites()));
+    }
+    if let Ok(b) = basis.cast::<PyGenericBasis>() {
+        let b = b.borrow();
+        return Some((b.inner.lhss(), b.inner.n_sites()));
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
 // PyQMatrix pymethods
 // ---------------------------------------------------------------------------
 
@@ -69,6 +116,17 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
+        let (basis_lhss, basis_n_sites) = basis_shape(basis).ok_or_else(|| {
+            pyo3::exceptions::PyTypeError::new_err(
+                "basis must be SpinBasis, FermionBasis, BosonBasis, or GenericBasis",
+            )
+        })?;
+        validate_op_basis(
+            op.inner.lhss(),
+            op.inner.max_site(),
+            basis_lhss,
+            basis_n_sites,
+        )?;
         let inner = if let Ok(b) = basis.cast::<PyFermionBasis>() {
             QMatrixInner::build_hardcore_bit(&op.inner, &b.borrow().inner.inner, vdtype)
         } else if let Ok(b) = basis.cast::<PySpinBasis>() {
@@ -93,6 +151,17 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
+        let (basis_lhss, basis_n_sites) = basis_shape(basis).ok_or_else(|| {
+            pyo3::exceptions::PyTypeError::new_err(
+                "basis must be SpinBasis, FermionBasis, BosonBasis, or GenericBasis",
+            )
+        })?;
+        validate_op_basis(
+            op.inner.lhss(),
+            op.inner.max_site(),
+            basis_lhss,
+            basis_n_sites,
+        )?;
         let inner = if let Ok(b) = basis.cast::<PyFermionBasis>() {
             QMatrixInner::build_bond_bit(&op.inner, &b.borrow().inner.inner, vdtype)
         } else if let Ok(b) = basis.cast::<PySpinBasis>() {
@@ -119,6 +188,12 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
+        validate_op_basis(
+            op.inner.lhss(),
+            op.inner.max_site(),
+            basis.inner.inner.lhss(),
+            basis.inner.inner.n_sites(),
+        )?;
         let inner = QMatrixInner::build_spin(&op.inner, &basis.inner.inner, vdtype);
         Ok(PyQMatrix {
             inner: Arc::new(inner),
@@ -135,6 +210,12 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
+        validate_op_basis(
+            op.inner.lhss(),
+            op.inner.max_site(),
+            basis.inner.inner.lhss(),
+            basis.inner.inner.n_sites(),
+        )?;
         let inner = QMatrixInner::build_boson(&op.inner, &basis.inner.inner, vdtype);
         Ok(PyQMatrix {
             inner: Arc::new(inner),
@@ -153,6 +234,12 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
+        validate_op_basis(
+            op.inner.lhss(),
+            op.inner.max_site(),
+            basis.inner.inner.lhss(),
+            basis.inner.inner.n_sites(),
+        )?;
         let inner = QMatrixInner::build_fermion_bit(&op.inner, &basis.inner.inner, vdtype);
         Ok(PyQMatrix {
             inner: Arc::new(inner),
@@ -170,6 +257,17 @@ impl PyQMatrix {
         dtype: &Bound<'_, PyArrayDescr>,
     ) -> PyResult<Self> {
         let vdtype = dtype_from_py(py, dtype)?;
+        let (basis_lhss, basis_n_sites) = basis_shape(basis).ok_or_else(|| {
+            pyo3::exceptions::PyTypeError::new_err(
+                "basis must be SpinBasis, FermionBasis, BosonBasis, or GenericBasis",
+            )
+        })?;
+        validate_op_basis(
+            op.inner.lhss(),
+            op.inner.max_site(),
+            basis_lhss,
+            basis_n_sites,
+        )?;
         let inner = if let Ok(b) = basis.cast::<PyFermionBasis>() {
             QMatrixInner::build_monomial_bit(&op.inner, &b.borrow().inner.inner, vdtype)
         } else if let Ok(b) = basis.cast::<PySpinBasis>() {

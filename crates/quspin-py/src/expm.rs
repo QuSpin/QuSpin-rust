@@ -55,7 +55,7 @@ impl PyExpmOp {
     /// `qop` may be a `QMatrixLinearOperator` (assembled) or an
     /// `OperatorLinearOperator` (matrix-free).
     #[new]
-    fn new(qop: &Bound<'_, PyAny>, a: Complex<f64>) -> PyResult<Self> {
+    fn new(py: Python<'_>, qop: &Bound<'_, PyAny>, a: Complex<f64>) -> PyResult<Self> {
         let op: PyExpmOperand = if let Ok(q) = qop.cast::<PyQMatrixLinearOperator>() {
             Arc::clone(&q.borrow().inner) as PyExpmOperand
         } else if let Ok(q) = qop.cast::<PyOperatorLinearOperator>() {
@@ -65,7 +65,10 @@ impl PyExpmOp {
                 "qop must be a QMatrixLinearOperator or an OperatorLinearOperator",
             ));
         };
-        let expm_op = ExpmOp::new(op, a).map_err(Error::from)?;
+        // Parameter selection calls `trace` and `onenorm`, which on the
+        // matrix-free operand are two full basis sweeps — long enough to
+        // freeze every other Python thread if the GIL were held.
+        let expm_op = py.detach(|| ExpmOp::new(op, a)).map_err(Error::from)?;
         Ok(Self {
             inner: Arc::new(expm_op),
         })

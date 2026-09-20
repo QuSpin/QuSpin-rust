@@ -6,9 +6,10 @@
 //! `operator.as_linearoperator(basis, coeffs)` and is the right choice when
 //! the `QMatrix` would not fit in memory.
 //!
-//! The concrete `OperatorOnBasis<OP, B>` stays statically dispatched inside
-//! `quspin-matrix`; the type erasure to `dyn LinearOperator` happens here, at
-//! the FFI boundary, where `DynLinearOperator` already lives.
+//! Both the operator and the basis are downcast to concrete Rust types
+//! before `OperatorOnBasis` is built, so the wrapper is fully monomorphized.
+//! The only type erasure is the finished operator, as `DynLinearOperator` —
+//! the one trait object the crate-split rules sanction.
 
 use std::sync::Arc;
 
@@ -20,7 +21,7 @@ use numpy::{
 };
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use quspin_core::{BasisSource, LinearOperator, OperatorOnBasis};
+use quspin_core::{LinearOperator, OperatorOnBasis};
 
 use crate::basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis};
 use crate::error::Error;
@@ -38,57 +39,64 @@ pub type SharedLinearOperator = Arc<dyn LinearOperator<C64> + Send + Sync>;
 // Construction
 // ---------------------------------------------------------------------------
 
-/// Resolve a Python basis object to a shared [`BasisSource`].
-fn basis_source(basis: &Bound<'_, PyAny>) -> PyResult<Arc<dyn BasisSource>> {
-    if let Ok(b) = basis.cast::<PySpinBasis>() {
-        return Ok(Arc::clone(&b.borrow().inner) as Arc<dyn BasisSource>);
-    }
-    if let Ok(b) = basis.cast::<PyBosonBasis>() {
-        return Ok(Arc::clone(&b.borrow().inner) as Arc<dyn BasisSource>);
-    }
-    if let Ok(b) = basis.cast::<PyFermionBasis>() {
-        return Ok(Arc::clone(&b.borrow().inner) as Arc<dyn BasisSource>);
-    }
-    if let Ok(b) = basis.cast::<PyGenericBasis>() {
-        return Ok(Arc::clone(&b.borrow().inner) as Arc<dyn BasisSource>);
-    }
-    Err(PyTypeError::new_err(
-        "basis must be SpinBasis, FermionBasis, BosonBasis, or GenericBasis",
-    ))
-}
-
 /// Bundle a Python operator + basis + coefficient snapshot into a shared,
 /// type-erased matrix-free [`LinearOperator`].
+///
+/// Both operands are downcast to their concrete Rust types before
+/// `OperatorOnBasis` is instantiated, so the wrapper is fully monomorphized
+/// and only the finished `LinearOperator` is erased — keeping
+/// `DynLinearOperator` the sole trait object, per the crate-split rules.
+///
+/// That is 6 operator types × 4 basis types of instantiation, but each one is
+/// a near-empty shim: `OperatorDispatch` is itself non-generic (its methods
+/// take the already-erased `&GenericBasis` / `&BitBasis`), so none of the
+/// expensive per-space kernels are duplicated by this expansion.
 pub(crate) fn build_matrix_free(
     op: &Bound<'_, PyAny>,
     basis: &Bound<'_, PyAny>,
     coeffs: Vec<C64>,
 ) -> PyResult<SharedLinearOperator> {
-    let source = basis_source(basis)?;
-
-    // One arm per operator type keeps operator dispatch static; the basis is
-    // already erased behind `dyn BasisSource`.
-    macro_rules! try_op {
-        ($($py_ty:ty),+ $(,)?) => {
+    /// Pair one downcast operator with every supported basis type.
+    macro_rules! with_each_basis {
+        ($inner:expr, $basis:expr, $coeffs:expr, [$($py_basis:ty),+ $(,)?]) => {{
             $(
-                if let Ok(o) = op.cast::<$py_ty>() {
-                    let inner = o.borrow().inner.clone();
-                    let wrapped = OperatorOnBasis::new(inner, source, coeffs)
+                if let Ok(b) = $basis.cast::<$py_basis>() {
+                    let shared = Arc::clone(&b.borrow().inner);
+                    let wrapped = OperatorOnBasis::new($inner, shared, $coeffs)
                         .map_err(Error::from)?;
                     return Ok(Arc::new(wrapped) as SharedLinearOperator);
+                }
+            )+
+            return Err(PyTypeError::new_err(
+                "basis must be SpinBasis, FermionBasis, BosonBasis, or GenericBasis",
+            ));
+        }};
+    }
+
+    macro_rules! with_each_operator {
+        ([$($py_op:ty),+ $(,)?]) => {
+            $(
+                if let Ok(o) = op.cast::<$py_op>() {
+                    let inner = o.borrow().inner.clone();
+                    with_each_basis!(
+                        inner,
+                        basis,
+                        coeffs,
+                        [PySpinBasis, PyBosonBasis, PyFermionBasis, PyGenericBasis]
+                    );
                 }
             )+
         };
     }
 
-    try_op!(
+    with_each_operator!([
         PyPauliOperator,
         PySpinOperator,
         PyBosonOperator,
         PyFermionOperator,
         PyBondOperator,
         PyMonomialOperator,
-    );
+    ]);
 
     Err(PyTypeError::new_err(
         "op must be a PauliOperator, SpinOperator, BosonOperator, FermionOperator, \
@@ -153,14 +161,19 @@ impl PyOperatorLinearOperator {
     }
 
     /// ``trace(A)``, computed in one sweep over the basis.
-    fn trace(&self) -> Complex64 {
-        self.inner.trace()
+    ///
+    /// Releases the GIL: on the large bases this API targets the sweep is
+    /// long-running and uses rayon internally.
+    fn trace(&self, py: Python<'_>) -> Complex64 {
+        py.detach(|| self.inner.trace())
     }
 
     /// ``‖A − shift·I‖₁`` (column 1-norm), computed in one sweep.
+    ///
+    /// Releases the GIL, as [`trace`](Self::trace) does.
     #[pyo3(signature = (shift = Complex64::new(0.0, 0.0)))]
-    fn onenorm(&self, shift: Complex64) -> f64 {
-        self.inner.onenorm(shift)
+    fn onenorm(&self, py: Python<'_>, shift: Complex64) -> f64 {
+        py.detach(|| self.inner.onenorm(shift))
     }
 
     /// ``A @ x`` for a 1-D complex128 input.

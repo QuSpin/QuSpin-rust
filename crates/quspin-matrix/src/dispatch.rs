@@ -63,6 +63,12 @@ pub trait OperatorDispatch {
     /// Number of distinct cindex values — the required `coeffs` length.
     fn num_cindices(&self) -> usize;
 
+    /// Local Hilbert-space size the operator's matrix elements assume.
+    fn lhss(&self) -> usize;
+
+    /// Largest site index appearing in any operator string.
+    fn max_site(&self) -> usize;
+
     // -----------------------------------------------------------------
     // Matrix-free `LinearOperator` support
     //
@@ -201,6 +207,14 @@ macro_rules! impl_operator_dispatch {
 
             fn num_cindices(&self) -> usize {
                 Self::num_cindices(self)
+            }
+
+            fn lhss(&self) -> usize {
+                Self::lhss(self)
+            }
+
+            fn max_site(&self) -> usize {
+                Self::max_site(self)
             }
 
             fn dot_transpose(

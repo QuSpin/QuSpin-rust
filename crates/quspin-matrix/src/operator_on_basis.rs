@@ -71,6 +71,12 @@ pub trait BasisSource: Send + Sync {
 
     /// Number of basis states.
     fn size(&self) -> usize;
+
+    /// Number of lattice sites.
+    fn n_sites(&self) -> usize;
+
+    /// Local Hilbert-space size.
+    fn lhss(&self) -> usize;
 }
 
 impl BasisSource for GenericBasis {
@@ -82,6 +88,12 @@ impl BasisSource for GenericBasis {
     }
     fn size(&self) -> usize {
         GenericBasis::size(self)
+    }
+    fn n_sites(&self) -> usize {
+        GenericBasis::n_sites(self)
+    }
+    fn lhss(&self) -> usize {
+        GenericBasis::lhss(self)
     }
 }
 
@@ -95,6 +107,12 @@ impl BasisSource for SpinBasis {
     fn size(&self) -> usize {
         self.inner.size()
     }
+    fn n_sites(&self) -> usize {
+        self.inner.n_sites()
+    }
+    fn lhss(&self) -> usize {
+        self.inner.lhss()
+    }
 }
 
 impl BasisSource for BosonBasis {
@@ -106,6 +124,12 @@ impl BasisSource for BosonBasis {
     }
     fn size(&self) -> usize {
         self.inner.size()
+    }
+    fn n_sites(&self) -> usize {
+        self.inner.n_sites()
+    }
+    fn lhss(&self) -> usize {
+        self.inner.lhss()
     }
 }
 
@@ -119,6 +143,12 @@ impl BasisSource for FermionBasis {
     fn size(&self) -> usize {
         self.inner.size()
     }
+    fn n_sites(&self) -> usize {
+        self.inner.n_sites()
+    }
+    fn lhss(&self) -> usize {
+        self.inner.lhss()
+    }
 }
 
 impl<T: BasisSource + ?Sized> BasisSource for Arc<T> {
@@ -131,6 +161,12 @@ impl<T: BasisSource + ?Sized> BasisSource for Arc<T> {
     fn size(&self) -> usize {
         (**self).size()
     }
+    fn n_sites(&self) -> usize {
+        (**self).n_sites()
+    }
+    fn lhss(&self) -> usize {
+        (**self).lhss()
+    }
 }
 
 impl<T: BasisSource + ?Sized> BasisSource for &T {
@@ -142,6 +178,12 @@ impl<T: BasisSource + ?Sized> BasisSource for &T {
     }
     fn size(&self) -> usize {
         (**self).size()
+    }
+    fn n_sites(&self) -> usize {
+        (**self).n_sites()
+    }
+    fn lhss(&self) -> usize {
+        (**self).lhss()
     }
 }
 
@@ -171,13 +213,34 @@ where
     /// Bundle `op` and `basis` with a coefficient snapshot.
     ///
     /// # Errors
-    /// Returns `ValueError` when `coeffs.len() != op.num_cindices()`.
+    /// Returns `ValueError` when the coefficient count, the local
+    /// Hilbert-space size, or the site range disagree with the basis.
+    ///
+    /// The `lhss` and `max_site` checks matter because nothing downstream
+    /// performs them: `apply` would happily read base-4 digits with
+    /// spin-1 matrix elements, or index a site past the end of the lattice
+    /// and fold the result back in as a phantom diagonal term — wrong
+    /// numbers, no error.
     pub fn new(op: OP, basis: B, coeffs: Vec<C64>) -> Result<Self, QuSpinError> {
         let expected = op.num_cindices();
         if coeffs.len() != expected {
             return Err(QuSpinError::ValueError(format!(
                 "coeffs.len()={} must equal operator num_cindices={expected}",
                 coeffs.len(),
+            )));
+        }
+        if op.lhss() != basis.lhss() {
+            return Err(QuSpinError::ValueError(format!(
+                "operator lhss={} does not match basis lhss={}",
+                op.lhss(),
+                basis.lhss(),
+            )));
+        }
+        if basis.n_sites() > 0 && op.max_site() >= basis.n_sites() {
+            return Err(QuSpinError::ValueError(format!(
+                "operator acts on site {} but basis has only {} sites",
+                op.max_site(),
+                basis.n_sites(),
             )));
         }
         Ok(Self { op, basis, coeffs })
@@ -440,6 +503,54 @@ mod tests {
         let basis = spin_basis(2, 3);
         let err = OperatorOnBasis::new(ladder_op(3), basis, vec![c(1.0), c(1.0)]);
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn rejects_lhss_mismatch() {
+        // A spin-1 operator on a spin-3/2 basis would read base-4 digits
+        // with base-3 matrix elements and return silently wrong numbers.
+        let err = OperatorOnBasis::new(ladder_op(3), spin_basis(2, 4), vec![c(1.0)]);
+        assert!(err.is_err());
+        let msg = err.err().unwrap().to_string();
+        assert!(msg.contains("lhss"), "{msg}");
+    }
+
+    #[test]
+    fn accepts_matching_lhss() {
+        for lhss in [2, 3, 4] {
+            assert!(
+                OperatorOnBasis::new(ladder_op(lhss), spin_basis(2, lhss), vec![c(1.0)]).is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_site_past_end_of_lattice() {
+        // Without this check the out-of-range dit reads as 0 and becomes a
+        // phantom diagonal term rather than an error.
+        let terms = vec![SpinOpEntry::new(0u8, c(1.0), smallvec![(SpinOp::Z, 7)])];
+        let op = SpinOperatorInner::Ham8(SpinOperator::new(terms, 3));
+        let err = OperatorOnBasis::new(op, spin_basis(2, 3), vec![c(1.0)]);
+        assert!(err.is_err());
+        let msg = err.err().unwrap().to_string();
+        assert!(msg.contains("site"), "{msg}");
+    }
+
+    #[test]
+    fn accepts_highest_valid_site() {
+        let terms = vec![SpinOpEntry::new(0u8, c(1.0), smallvec![(SpinOp::Z, 1)])];
+        let op = SpinOperatorInner::Ham8(SpinOperator::new(terms, 3));
+        assert!(OperatorOnBasis::new(op, spin_basis(2, 3), vec![c(1.0)]).is_ok());
+    }
+
+    #[test]
+    fn validates_lhss_on_the_bit_path_too() {
+        // xx_op() is lhss=2; a FermionBasis is lhss=2, so this must pass.
+        let basis = FermionBasis::new(2, SpaceKind::Full).unwrap();
+        assert!(OperatorOnBasis::new(xx_op(), basis, vec![c(1.0)]).is_ok());
+        // A spin-1 operator against the same lhss=2 basis must not.
+        let basis = FermionBasis::new(2, SpaceKind::Full).unwrap();
+        assert!(OperatorOnBasis::new(ladder_op(3), basis, vec![c(1.0)]).is_err());
     }
 
     #[test]
