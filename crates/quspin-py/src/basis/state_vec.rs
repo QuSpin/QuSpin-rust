@@ -208,9 +208,14 @@ pub(crate) fn reject_sparse(sparse: bool) -> PyResult<()> {
 
 /// Shared body of `project_to` / `project_from`: unpack the Python state,
 /// run `project_col` once per column, and repack the result.
+///
+/// The row count is checked here rather than left to `project_col`, which
+/// never runs for a zero-column matrix — otherwise `(wrong_rows, 0)` would be
+/// silently accepted while every non-empty matrix of the same shape errors.
 fn project_columns<F>(
     py: Python<'_>,
     state: &Bound<'_, PyAny>,
+    in_rows: usize,
     out_rows: usize,
     project_col: F,
 ) -> PyResult<Py<PyAny>>
@@ -219,9 +224,16 @@ where
 {
     let in_vec = py_any_to_c64_vec(state)?;
 
+    if in_vec.nrows != in_rows {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "state has {} rows but the input basis has size {in_rows}",
+            in_vec.nrows,
+        )));
+    }
+
     let mut out = vec![C64::new(0.0, 0.0); out_rows * in_vec.ncols];
     for col in 0..in_vec.ncols {
-        let in_col = &in_vec.data[col * in_vec.nrows..(col + 1) * in_vec.nrows];
+        let in_col = &in_vec.data[col * in_rows..(col + 1) * in_rows];
         let out_col = &mut out[col * out_rows..(col + 1) * out_rows];
         project_col(in_col, out_col).map_err(Error::from)?;
     }
@@ -243,7 +255,7 @@ pub(crate) fn project_generic(
     output: &GenericBasis,
     state: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    project_columns(py, state, output.size(), |i, o| {
+    project_columns(py, state, input.size(), output.size(), |i, o| {
         quspin_core::project_to(input, output, i, o, true)
     })
 }
@@ -255,7 +267,7 @@ pub(crate) fn project_bit(
     output: &BitBasis,
     state: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    project_columns(py, state, output.size(), |i, o| {
+    project_columns(py, state, input.size(), output.size(), |i, o| {
         quspin_core::project_to_bit(input, output, i, o, true)
     })
 }

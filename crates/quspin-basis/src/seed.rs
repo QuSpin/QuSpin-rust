@@ -151,19 +151,47 @@ pub fn strip_ket_notation(state_str: &str) -> Result<&str, QuSpinError> {
     }
 }
 
+/// Largest local Hilbert-space size the dit encoding supports.
+///
+/// One site occupation must fit in a `u8`, and
+/// [`DynamicDitManip`]'s bit/mask lookup tables are indexed by `lhss`.
+pub const MAX_LHSS: usize = 255;
+
+/// Reject an `lhss` outside the range the dit encoding can represent.
+///
+/// Without this the occupation bound check (`value < lhss`) would admit
+/// values that do not fit in a `u8`, and [`DynamicDitManip::new`] would
+/// panic further down.
+fn validate_lhss(lhss: usize) -> Result<(), QuSpinError> {
+    if !(2..=MAX_LHSS).contains(&lhss) {
+        return Err(QuSpinError::ValueError(format!(
+            "lhss={lhss} is out of range; the dit encoding supports 2..={MAX_LHSS}"
+        )));
+    }
+    Ok(())
+}
+
 /// Parse a whitespace- or comma-separated state string into occupation bytes.
 ///
-/// Returns `Ok(None)` when `state_str` contains no separator, signalling that
-/// the caller should fall back to the one-character-per-site forms
-/// ([`seed_from_str`] / [`dit_seed_from_str`]). The tokenised form is the only
-/// way to express per-site occupations of 10 or more.
+/// Returns `Ok(None)` when `state_str` has no separator to split on and the
+/// basis has more than one site, signalling that the caller should fall back
+/// to the one-character-per-site forms ([`seed_from_str`] /
+/// [`dit_seed_from_str`]). The tokenised form is the only way to express
+/// per-site occupations of 10 or more.
+///
+/// A single-site basis is the one case where a separator cannot appear yet
+/// the token form is still needed — `"10"` on one site is unambiguously the
+/// occupation 10 — so it is parsed as one token.
 pub fn tokenized_state_from_str(
     state_str: &str,
     n_sites: usize,
     lhss: usize,
 ) -> Result<Option<Vec<u8>>, QuSpinError> {
+    validate_lhss(lhss)?;
+
     let is_sep = |c: char| c.is_whitespace() || c == ',';
-    if !state_str.contains(is_sep) {
+    let single_wide_site = n_sites == 1 && state_str.trim().chars().count() > 1;
+    if !state_str.contains(is_sep) && !single_wide_site {
         return Ok(None);
     }
 
@@ -189,7 +217,13 @@ pub fn tokenized_state_from_str(
                     "invalid site value {value} at site {site} for lhss={lhss}"
                 )));
             }
-            Ok(value as u8)
+            // `value < lhss <= MAX_LHSS` already guarantees this fits, but
+            // convert fallibly rather than truncating if that ever changes.
+            u8::try_from(value).map_err(|_| {
+                QuSpinError::ValueError(format!(
+                    "site value {value} at site {site} does not fit in a u8"
+                ))
+            })
         })
         .collect::<Result<Vec<u8>, _>>()
         .map(Some)
@@ -209,7 +243,10 @@ pub fn tokenized_state_from_str(
 ///
 /// `bytes[i]` is the occupation of site `i`, so the result can be handed
 /// straight to [`seed_from_bytes`] / [`dit_seed_from_bytes`].
+///
+/// Errors when `lhss` is outside `2..=`[`MAX_LHSS`].
 pub fn state_from_str(s: &str, n_sites: usize, lhss: usize) -> Result<Vec<u8>, QuSpinError> {
+    validate_lhss(lhss)?;
     let s = strip_ket_notation(s)?;
 
     if let Some(bytes) = tokenized_state_from_str(s, n_sites, lhss)? {
@@ -345,6 +382,25 @@ mod tests {
         assert!(matches!(err, QuSpinError::ValueError(ref m) if m.contains("'x'")));
     }
 
+    #[test]
+    fn tokenized_state_reads_a_lone_wide_site() {
+        // One site has no separator to split on, but "10" is unambiguous.
+        assert_eq!(
+            tokenized_state_from_str("10", 1, 11).unwrap(),
+            Some(vec![10])
+        );
+        // A single digit still falls through to the per-character forms.
+        assert_eq!(tokenized_state_from_str("1", 1, 11).unwrap(), None);
+    }
+
+    #[test]
+    fn tokenized_state_rejects_lhss_wider_than_a_byte() {
+        // Without the guard, `256 >= lhss` is false and `256 as u8` wraps to 0.
+        let err = tokenized_state_from_str("256 1", 2, 300).unwrap_err();
+        assert!(matches!(err, QuSpinError::ValueError(ref m) if m.contains("out of range")));
+        assert!(tokenized_state_from_str("1 1", 2, 1).is_err());
+    }
+
     // --- state_from_str ------------------------------------------------------
 
     #[test]
@@ -364,6 +420,17 @@ mod tests {
         assert!(state_from_str("0102", 4, 2).is_err());
     }
 
+    #[test]
+    fn state_from_str_rejects_unsupported_lhss() {
+        for lhss in [0, 1, MAX_LHSS + 1, 300] {
+            let err = state_from_str("0 1", 2, lhss).unwrap_err();
+            assert!(
+                matches!(err, QuSpinError::ValueError(ref m) if m.contains("out of range")),
+                "lhss={lhss}"
+            );
+        }
+    }
+
     // --- state_to_display_str ------------------------------------------------
 
     #[test]
@@ -372,6 +439,12 @@ mod tests {
             (vec![0u8, 1, 0, 1], 2usize),
             (vec![0, 1, 2, 3], 4),
             (vec![0, 10, 3], 11),
+            // Single site: no separator is emitted, so the parser has to
+            // recognise the lone token on its own.
+            (vec![1], 2),
+            (vec![9], 10),
+            (vec![10], 11),
+            (vec![254], MAX_LHSS),
         ] {
             for bracket in [true, false] {
                 let s = state_to_display_str(&bytes, bracket);

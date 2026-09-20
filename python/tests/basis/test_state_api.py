@@ -175,12 +175,20 @@ class TestProjection:
         assert out.shape == (sym.Ns,)
         np.testing.assert_allclose(np.abs(out), [1 / np.sqrt(2)], atol=1e-14)
 
-        # lifting the normalised projection back gives the singlet
+        # Lifting the normalised projection back gives the singlet. Compare via
+        # the overlap magnitude rather than elementwise: that tolerates an
+        # overall sign/phase convention but still requires the *relative* minus
+        # sign that distinguishes the singlet from the triplet.
         lifted = sym.project_from(out / np.linalg.norm(out))
-        expected = np.zeros(full.Ns)
-        expected[full.index(full.state_to_int("01"))] = 1 / np.sqrt(2)
-        expected[full.index(full.state_to_int("10"))] = -1 / np.sqrt(2)
-        np.testing.assert_allclose(np.abs(lifted), np.abs(expected), atol=1e-14)
+        singlet = np.zeros(full.Ns)
+        singlet[full.index(full.state_to_int("01"))] = 1 / np.sqrt(2)
+        singlet[full.index(full.state_to_int("10"))] = -1 / np.sqrt(2)
+        triplet = np.abs(singlet)
+
+        np.testing.assert_allclose(np.linalg.norm(lifted), 1.0, atol=1e-14)
+        np.testing.assert_allclose(abs(np.vdot(singlet, lifted)), 1.0, atol=1e-14)
+        # the symmetric combination must NOT pass
+        assert abs(np.vdot(triplet, lifted)) < 1e-14
 
     def test_round_trip_is_identity_on_the_sector(self):
         sym, _ = parity_bases(+1)
@@ -221,6 +229,20 @@ class TestProjection:
     def test_rejects_wrong_length_input(self, basis, n_sites, lhss):
         with pytest.raises(ValueError):
             basis.project_from(np.zeros(basis.Ns + 3))
+
+    @pytest.mark.parametrize("basis,n_sites,lhss", BASES)
+    def test_rejects_wrong_row_count_even_with_zero_columns(self, basis, n_sites, lhss):
+        # No column means the per-column projection never runs, so the row
+        # count has to be checked up front.
+        with pytest.raises(ValueError):
+            basis.project_from(np.zeros((basis.Ns + 1, 0)))
+
+    @pytest.mark.parametrize("basis,n_sites,lhss", BASES)
+    def test_accepts_a_zero_column_matrix_of_the_right_height(
+        self, basis, n_sites, lhss
+    ):
+        out = basis.project_from(np.zeros((basis.Ns, 0)))
+        assert out.shape == (basis.Ns, 0)
 
     @pytest.mark.parametrize("basis,n_sites,lhss", BASES)
     def test_sparse_true_raises_not_implemented(self, basis, n_sites, lhss):
