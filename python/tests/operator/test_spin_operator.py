@@ -370,3 +370,54 @@ class TestSpinBasisWithSpinOperator:
     def test_bad_ham_type_rejected(self):
         with pytest.raises(TypeError):
             SpinBasis.subspace(N, "not an operator", ["100"], 3)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Operator/basis compatibility for the SpinOperator surfaces added here
+#
+# The generic cases live in test_operator_basis_validation.py; these cover
+# SpinOperator and QMatrix.build_spin specifically.
+# ---------------------------------------------------------------------------
+
+
+class TestSpinOperatorValidation:
+    def test_build_spin_rejects_lhss_mismatch(self):
+        op = SpinOperator([("z", [[1.0, 0]])], lhss=3)
+        with pytest.raises(ValueError, match="lhss"):
+            QMatrix.build_spin(op, SpinBasis.full(2, 4), np.dtype("complex128"))
+
+    def test_build_spin_rejects_site_past_end(self):
+        op = SpinOperator([("z", [[1.0, 7]])], lhss=3)
+        with pytest.raises(ValueError, match="site"):
+            QMatrix.build_spin(op, SpinBasis.full(2, 3), np.dtype("complex128"))
+
+    @pytest.mark.parametrize("lhss", [2, 3, 4])
+    def test_build_spin_accepts_matching_lhss(self, lhss: int):
+        op = SpinOperator([("z", [[1.0, 0]])], lhss=lhss)
+        basis = SpinBasis.full(2, lhss)
+        assert QMatrix.build_spin(op, basis, np.dtype("complex128")).dim == lhss**2
+
+    def test_apply_rejects_lhss_mismatch(self):
+        op = SpinOperator([("z", [[1.0, 0]])], lhss=3)
+        basis = SpinBasis.full(1, 4)
+        out = np.zeros(basis.size, dtype=np.complex128)
+        with pytest.raises(ValueError, match="lhss"):
+            op.apply(
+                basis,
+                np.ones(1, dtype=np.complex128),
+                np.ones(basis.size, dtype=np.complex128),
+                out,
+                True,
+            )
+
+    def test_rejects_empty_coefficient_group(self):
+        with pytest.raises(ValueError, match="no bonds"):
+            SpinOperator([], [("z", [[1.0, 0]])], lhss=3)
+
+    @pytest.mark.parametrize("lhss", [0, 1, 256, 1000])
+    def test_rejects_lhss_outside_the_encoding_range(self, lhss: int):
+        with pytest.raises(ValueError, match="2..=255"):
+            SpinOperator([("z", [[1.0, 0]])], lhss=lhss)
+
+    def test_accepts_lhss_at_the_limit(self):
+        assert SpinOperator([("z", [[1.0, 0]])], lhss=255).lhss == 255

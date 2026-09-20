@@ -221,11 +221,9 @@ pub(crate) fn extract_coeff(py: Python<'_>, obj: &Py<PyAny>) -> PyResult<Complex
 /// Generic parsing of `*terms` for any operator type that implements `ParseOp`.
 ///
 /// Each positional group becomes one cindex, so a group that produces no
-/// entries would leave a hole in the cindex sequence. `num_cindices()` counts
-/// *distinct* cindices present, so a hole makes it under-report and every
-/// later `coeffs[cindex]` lookup runs off the end of the coefficient slice —
-/// a panic out of `apply`, not an error. Empty groups are rejected here, in
-/// the one place all six operator types share.
+/// entries would leave a hole in the cindex sequence and shift every later
+/// coefficient off by one relative to what the caller wrote. Empty groups are
+/// rejected here, in the one place all the string-based operator types share.
 pub(crate) fn parse_terms_generic<C, Op, E, F>(
     py: Python<'_>,
     terms: &[Term],

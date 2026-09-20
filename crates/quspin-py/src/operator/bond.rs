@@ -176,8 +176,8 @@ where
                 "cindex {cindex_usize} out of range for chosen index type"
             ))
         })?;
-        // An empty group would leave a hole in the cindex sequence and make
-        // `num_cindices()` under-report — see `parse_terms_generic`.
+        // An empty group would leave a hole in the cindex sequence — see
+        // `parse_terms_generic`.
         if term.is_empty() || term.iter().all(|(_, bonds)| bonds.is_empty()) {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "term group {cindex_usize} contains no bonds; every group maps to one \

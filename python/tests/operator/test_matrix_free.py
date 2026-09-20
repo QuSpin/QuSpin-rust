@@ -385,3 +385,53 @@ class TestMatrixFreeConsumers:
         x, info = sla.gmres(wrapped, b, rtol=1e-10, restart=n)
         assert info == 0
         assert np.max(np.abs((a + shift * np.eye(n)) @ x - b)) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Operator/basis compatibility at wrapper-construction time
+#
+# OperatorOnBasis::new validates up front rather than letting the first
+# matvec fail, so a mismatched pair is caught where it is created.
+# ---------------------------------------------------------------------------
+
+
+class TestAsLinearOperatorValidation:
+    def test_rejects_lhss_mismatch(self):
+        op = SpinOperator([("z", [[1.0, 0]])], lhss=3)
+        basis = SpinBasis.full(2, 4)
+        with pytest.raises(ValueError, match="lhss"):
+            op.as_linearoperator(basis, np.ones(1, dtype=np.complex128))
+
+    def test_rejects_site_past_end_of_lattice(self):
+        op = SpinOperator([("z", [[1.0, 7]])], lhss=3)
+        basis = SpinBasis.full(2, 3)
+        with pytest.raises(ValueError, match="site"):
+            op.as_linearoperator(basis, np.ones(1, dtype=np.complex128))
+
+    def test_rejects_pauli_operator_on_a_higher_lhss_basis(self):
+        op = PauliOperator([("z", [[1.0, 0]])])
+        basis = SpinBasis.full(2, 3)
+        with pytest.raises(ValueError, match="lhss"):
+            op.as_linearoperator(basis, np.ones(1, dtype=np.complex128))
+
+    @pytest.mark.parametrize("lhss", [2, 3, 4])
+    def test_accepts_matching_lhss(self, lhss: int):
+        op = SpinOperator([("z", [[1.0, 0]])], lhss=lhss)
+        basis = SpinBasis.full(2, lhss)
+        lo = op.as_linearoperator(basis, np.ones(1, dtype=np.complex128))
+        assert lo.shape == (lhss**2, lhss**2)
+
+    def test_accepts_highest_valid_site(self):
+        op = SpinOperator([("z", [[1.0, 1]])], lhss=3)
+        basis = SpinBasis.full(2, 3)
+        assert op.as_linearoperator(basis, np.ones(1, dtype=np.complex128)).shape == (
+            9,
+            9,
+        )
+
+    def test_matching_lhss_gives_correct_sz_eigenvalues(self):
+        """The values the unvalidated path used to get wrong."""
+        op = SpinOperator([("z", [[1.0, 0]])], lhss=4)  # spin-3/2
+        lo = op.as_linearoperator(SpinBasis.full(1, 4), np.ones(1, dtype=np.complex128))
+        diag = np.real(np.diag(dense_from_matvec(lo)))
+        assert sorted(np.round(diag, 6)) == [-1.5, -0.5, 0.5, 1.5]
