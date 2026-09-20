@@ -17,3 +17,14 @@ ruint = { workspace = true }
 bytemuck = { workspace = true }
 smallvec = { workspace = true }
 num-complex = { workspace = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "bitint_width"
+harness = false
+
+[[bench]]
+name = "multiword"
+harness = false
