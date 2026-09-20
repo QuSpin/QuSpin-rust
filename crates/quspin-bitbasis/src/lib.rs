@@ -12,7 +12,7 @@ pub mod manip;
 pub mod test_graphs;
 pub mod transform;
 
-pub use benes::{BenesNetwork, benes_fwd, gen_benes, gen_benes_for};
+pub use benes::{BenesNetwork, benes_fwd, gen_benes};
 pub use manip::{DitManip, DynamicDitManip};
 pub use quspin_types::{BitInt, StateTransitions};
 pub use transform::{

@@ -1,4 +1,4 @@
-use super::rowsource::{BasisRows, SymRows, build_raw_rows, raw_rows_to_qmatrix};
+use super::rowsource::{BasisRows, SymRows, build_qmatrix};
 use super::{CIndex, Index, QMatrix};
 use quspin_basis::dispatch::{
     B128, B256, BitBasis, BitBasisDefault, DitBasis, DynDitBasis, DynDitBasisDefault, GenericBasis,
@@ -33,10 +33,8 @@ where
     C: CIndex + Copy + Ord,
     S: BasisSpace<B> + Sync,
 {
-    let dim = basis.size();
     let src = BasisRows::<H, B, C, S>::new(ham, basis);
-    let rows = build_raw_rows(&src);
-    raw_rows_to_qmatrix(dim, rows)
+    build_qmatrix(&src)
 }
 
 // ---------------------------------------------------------------------------
@@ -57,10 +55,8 @@ where
     I: Index,
     C: CIndex + Copy + Ord,
 {
-    let dim = basis.size();
     let src = SymRows::<H, B, L, N, C>::new(ham, basis);
-    let rows = build_raw_rows(&src);
-    raw_rows_to_qmatrix(dim, rows)
+    build_qmatrix(&src)
 }
 
 // ---------------------------------------------------------------------------

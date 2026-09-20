@@ -124,8 +124,8 @@ fn invert_perm(p: &[i32], inv: &mut [i32]) {
 /// mask is confined to the low block and every shift is smaller than it, so
 /// no butterfly step can move a bit across the boundary.
 ///
-/// Prefer [`gen_benes_for`] unless the caller already has a power-of-two
-/// slice.
+/// Callers pass a full-width or short power-of-two slice directly; see the
+/// test-only `gen_benes_for` for the site-permutation convention.
 ///
 /// # Panics
 ///
@@ -147,18 +147,21 @@ pub fn gen_benes<B: BitInt>(c_tgt: &[Option<usize>]) -> BenesNetwork<B> {
     // assigns `src[c_tgt[s]] = s`, so the second occurrence overwrites the
     // first and the resulting bijective network cannot satisfy the request.
     // Reject it here rather than letting routing fail or silently misroute.
-    let mut seen = vec![false; bits];
+    // Bitset rather than `Vec<bool>`: `bits` reaches 8192 under the
+    // `large-int` feature, so this is 1 KiB instead of 8 KiB.
+    let mut seen = vec![0u64; bits.div_ceil(64)];
     let c_int: Vec<i32> = c_tgt
         .iter()
         .map(|e| {
             e.map_or(EMPTY, |v| {
                 assert!(v < bits, "source index {v} outside network width {bits}");
+                let (word, bit) = (v / 64, 1u64 << (v % 64));
                 assert!(
-                    !seen[v],
+                    seen[word] & bit == 0,
                     "source index {v} appears more than once in c_tgt; \
                      each source may feed at most one destination"
                 );
-                seen[v] = true;
+                seen[word] |= bit;
                 v as i32
             })
         })
@@ -181,14 +184,21 @@ pub fn gen_benes<B: BitInt>(c_tgt: &[Option<usize>]) -> BenesNetwork<B> {
 /// smallest block a Benes network can address that still contains every
 /// permuted site — and sites outside `perm` map to identity.
 ///
-/// This is the entry point lattice symmetries should use: the stage count
-/// follows the physics instead of the storage width.
+/// Test-only for now, and deliberately not exported. There is no
+/// production caller: `BenesPermDitLocations` builds its target map at bit
+/// granularity (`bits_per_dit` may exceed 1) and so calls [`gen_benes`]
+/// directly. Shipping a public constructor whose permutation convention is
+/// the *inverse* of `gen_benes`'s, with nothing in-tree depending on it,
+/// would put that inversion risk on external callers — an earlier revision
+/// had the two inverted and no test caught it. Promote it to `pub` once a
+/// production caller exists to keep it honest.
 ///
 /// # Panics
 ///
 /// Panics if `perm` is empty, if `n_sites.next_power_of_two() > B::BITS`, if
 /// any entry is `>= perm.len()`, or if any destination appears twice.
-pub fn gen_benes_for<B: BitInt>(perm: &[usize]) -> BenesNetwork<B> {
+#[cfg(test)]
+pub(crate) fn gen_benes_for<B: BitInt>(perm: &[usize]) -> BenesNetwork<B> {
     assert!(!perm.is_empty(), "permutation must be non-empty");
     // A Benes network addresses a power-of-two block, so round `n_sites` up.
     let bits = perm.len().next_power_of_two().max(2);
@@ -516,7 +526,6 @@ mod tests {
     /// This is the property the whole optimisation rests on.
     fn short_matches_full<B: BitInt + std::fmt::Debug>(perm: &[usize], probes: &[u64]) {
         let n = perm.len();
-        assert!(n.is_power_of_two());
 
         // `perm[src] = dst` (the crate convention); `gen_benes` wants the
         // inverse bit map, so invert while filling.
@@ -655,14 +664,16 @@ mod tests {
             .collect();
 
         // Cyclic shifts at several block sizes, in containers far wider.
-        for &n in &[4usize, 8, 16, 32] {
+        // The non-power-of-two sizes exercise identity padding, which is
+        // where a multi-limb `B` could diverge from a full-width network.
+        for &n in &[4usize, 5, 8, 12, 16, 20, 32] {
             let perm: Vec<usize> = (0..n).map(|d| (d + n - 1) % n).collect();
             short_matches_full::<u64>(&perm, &probes);
             short_matches_full::<Uint<256, 4>>(&perm, &probes);
         }
 
         // Reversal, which routes every stage rather than just the top one.
-        for &n in &[4usize, 8, 16] {
+        for &n in &[4usize, 5, 8, 12, 16] {
             let perm: Vec<usize> = (0..n).map(|d| n - 1 - d).collect();
             short_matches_full::<u64>(&perm, &probes);
             short_matches_full::<Uint<256, 4>>(&perm, &probes);

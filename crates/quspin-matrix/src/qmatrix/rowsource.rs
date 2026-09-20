@@ -56,6 +56,23 @@ pub struct RawEntry {
     pub amp: Complex<f64>,
 }
 
+/// Narrow a `CIndex` into [`RawEntry`]'s carrier width.
+///
+/// `CIndex` is sealed to `u8` and `u16` (`impl_cindex!(u8, u16)`), so this
+/// is exact today. The assert is the tripwire for a future wider impl:
+/// `RawEntry.cindex` round-trips back through `C::from_usize`, so a silent
+/// truncation here would reconstruct the wrong operator-string index and
+/// mis-assign coefficients in matrix-vector products.
+#[inline]
+fn narrow_cindex<C: CIndex>(cindex: C) -> u32 {
+    let raw = cindex.as_usize();
+    debug_assert!(
+        raw <= u32::MAX as usize,
+        "cindex {raw} exceeds RawEntry's u32 carrier; widen RawEntry.cindex"
+    );
+    raw as u32
+}
+
 /// A per-row producer with the state integer and basis space erased.
 ///
 /// Object-safe by construction: every parameter and return is concrete.
@@ -66,8 +83,8 @@ pub trait RowSource: Sync {
     /// Append every non-zero contribution in row `row_idx` to `out`.
     ///
     /// Duplicates are allowed: the row is sorted in [`build_raw_rows`] and
-    /// duplicates are summed later, in [`raw_rows_to_qmatrix`], where the
-    /// element type is known. Implementations must push in the operator's
+    /// duplicates are summed later, in [`append_row`], where the element
+    /// type is known. Implementations must push in the operator's
     /// natural emission order — the sort is stable, so that order survives
     /// and fixes the floating-point summation order.
     fn row_into(&self, row_idx: usize, out: &mut Vec<RawEntry>);
@@ -118,7 +135,7 @@ where
             };
             out.push(RawEntry {
                 col,
-                cindex: cindex.as_usize() as u32,
+                cindex: narrow_cindex(cindex),
                 amp,
             });
         });
@@ -193,7 +210,7 @@ where
             let scale = grp_char * (new_norm / norm).sqrt();
             out.push(RawEntry {
                 col,
-                cindex: cindex.as_usize() as u32,
+                cindex: narrow_cindex(*cindex),
                 amp: amp * scale,
             });
         }
@@ -213,14 +230,17 @@ fn sort_row(row: &mut [RawEntry]) {
     row.sort_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));
 }
 
-/// Build every row through a type-erased source.
+/// How many rows the erased stage builds before the typed stage drains
+/// them. Bounds the uncoalesced intermediate: see [`build_qmatrix`].
+const ROW_CHUNK: usize = 4096;
+
+/// Build rows `start..end` through a type-erased source.
 ///
 /// Takes `&dyn RowSource`, so the closure handed to rayon and the slice
 /// handed to the sort both have exactly one type no matter how many
 /// `(H, B, C, S)` combinations exist upstream. This is where the
 /// instantiation count collapses: one rayon copy, one pdqsort copy.
-pub fn build_raw_rows(src: &dyn RowSource) -> Vec<Vec<RawEntry>> {
-    let dim = src.dim();
+fn build_raw_rows(src: &dyn RowSource, start: usize, end: usize) -> Vec<Vec<RawEntry>> {
     let build_row = |row_idx: usize| -> Vec<RawEntry> {
         let mut row = Vec::new();
         src.row_into(row_idx, &mut row);
@@ -228,28 +248,16 @@ pub fn build_raw_rows(src: &dyn RowSource) -> Vec<Vec<RawEntry>> {
         row
     };
 
-    if dim >= PARALLEL_DIM_THRESHOLD {
-        (0..dim).into_par_iter().map(build_row).collect()
+    // Threshold on the whole matrix, not the chunk, so chunking does not
+    // change which matrices take the parallel path.
+    if src.dim() >= PARALLEL_DIM_THRESHOLD {
+        (start..end).into_par_iter().map(build_row).collect()
     } else {
-        (0..dim).map(build_row).collect()
+        (start..end).map(build_row).collect()
     }
 }
 
-/// Number of distinct `(col, cindex)` keys in an already-sorted row, i.e.
-/// how many entries survive coalescing.
-fn distinct_keys(row: &[RawEntry]) -> usize {
-    let boundaries = row
-        .windows(2)
-        .filter(|w| w[0].col != w[1].col || w[0].cindex != w[1].cindex)
-        .count();
-    boundaries + usize::from(!row.is_empty())
-}
-
-/// Assemble sorted erased rows into a typed `QMatrix`, summing duplicates.
-///
-/// Generic over `M`, `I` and `C`, but contains no parallelism and no sort —
-/// those stayed in [`build_raw_rows`], so the element-type axes multiply
-/// only this small loop.
+/// Append one sorted erased row to `data`, summing duplicate keys.
 ///
 /// # Why coalescing lives here and not in the erased stage
 ///
@@ -260,42 +268,66 @@ fn distinct_keys(row: &[RawEntry]) -> usize {
 /// because `16_777_217` is not representable in `f32`; integer `M` can
 /// diverge further. Accumulating through `M` here keeps the stored values
 /// bit-identical to the pre-refactor behaviour.
-pub fn raw_rows_to_qmatrix<M: Primitive, I: Index, C: CIndex>(
-    dim: usize,
-    rows: Vec<Vec<RawEntry>>,
-) -> QMatrix<M, I, C> {
-    // Reserve the *coalesced* count, not the emitted one. Rows arrive
-    // sorted, so the number of surviving entries is the number of distinct
-    // `(col, cindex)` runs; an operator that emits many contributions per
-    // key would otherwise leave the returned `QMatrix` holding the raw
-    // count as dead capacity for its whole lifetime.
-    let total_nnz: usize = rows.iter().map(|row| distinct_keys(row)).sum();
-    let mut indptr = Vec::with_capacity(dim + 1);
-    let mut data: Vec<Entry<M, I, C>> = Vec::with_capacity(total_nnz);
-    indptr.push(I::from_usize(0));
-    for row in rows {
-        let row_start = data.len();
-        for e in row {
-            // Rows arrive sorted, so duplicates are adjacent and comparing
-            // against the entry just written is enough. `row_start` stops a
-            // merge from reaching back into the previous row.
-            let col = I::from_usize(e.col);
-            let cindex = C::from_usize(e.cindex as usize);
-            let merged = if data.len() > row_start {
-                let last = data.last_mut().expect("non-empty by the length check");
-                let same = last.col == col && last.cindex == cindex;
-                if same {
-                    last.value = M::from_complex(last.value.to_complex() + e.amp);
-                }
-                same
-            } else {
-                false
-            };
-            if !merged {
-                data.push(Entry::new(M::from_complex(e.amp), col, cindex));
+fn append_row<M: Primitive, I: Index, C: CIndex>(data: &mut Vec<Entry<M, I, C>>, row: &[RawEntry]) {
+    let row_start = data.len();
+    for e in row {
+        // Rows arrive sorted, so duplicates are adjacent and comparing
+        // against the entry just written is enough. `row_start` stops a
+        // merge from reaching back into the previous row.
+        let col = I::from_usize(e.col);
+        let cindex = C::from_usize(e.cindex as usize);
+        let merged = if data.len() > row_start {
+            let last = data.last_mut().expect("non-empty by the length check");
+            let same = last.col == col && last.cindex == cindex;
+            if same {
+                last.value = M::from_complex(last.value.to_complex() + e.amp);
             }
+            same
+        } else {
+            false
+        };
+        if !merged {
+            data.push(Entry::new(M::from_complex(e.amp), col, cindex));
         }
-        indptr.push(I::from_usize(data.len()));
+    }
+}
+
+/// Build a typed `QMatrix` from a type-erased row source.
+///
+/// Rows are produced in chunks of [`ROW_CHUNK`] and drained into `data`
+/// immediately, so the uncoalesced `RawEntry` intermediate never holds more
+/// than one chunk. That matters because `row_into` emits *every*
+/// contribution while the old implementation deduplicated on insert: a
+/// diagonal-heavy operator emits one contribution per term for the same
+/// `(col, cindex)`, so the uncoalesced count scales with the term count —
+/// measured at 8x/16x/24x the coalesced count for an Ising chain at
+/// n = 8/16/24. Materialising the whole matrix uncoalesced would multiply
+/// peak memory by that factor on top of `RawEntry` being wider than
+/// `Entry`.
+///
+/// `dim` comes from the source rather than a separate argument, so the row
+/// count and the declared dimension cannot disagree.
+///
+/// Generic over `M`, `I` and `C`, but contains no parallelism and no sort —
+/// those stay in [`build_raw_rows`] behind `&dyn RowSource`, so the
+/// element-type axes multiply only this small loop.
+pub fn build_qmatrix<M: Primitive, I: Index, C: CIndex>(src: &dyn RowSource) -> QMatrix<M, I, C> {
+    let dim = src.dim();
+    let mut indptr = Vec::with_capacity(dim + 1);
+    // One entry per row is the floor for any operator with a non-empty
+    // diagonal; growth from here is amortised. Counting exactly would mean
+    // a second full pass over every emitted contribution.
+    let mut data: Vec<Entry<M, I, C>> = Vec::with_capacity(dim);
+    indptr.push(I::from_usize(0));
+
+    let mut start = 0usize;
+    while start < dim {
+        let end = (start + ROW_CHUNK).min(dim);
+        for row in build_raw_rows(src, start, end) {
+            append_row(&mut data, &row);
+            indptr.push(I::from_usize(data.len()));
+        }
+        start = end;
     }
     QMatrix::from_csr(indptr, data)
 }
@@ -316,6 +348,24 @@ mod tests {
         }
     }
 
+    /// Serves pre-built rows so the coalescing tests drive the real
+    /// `build_qmatrix` path rather than a stand-in for it.
+    struct FakeRows(Vec<Vec<RawEntry>>);
+
+    impl RowSource for FakeRows {
+        fn dim(&self) -> usize {
+            self.0.len()
+        }
+
+        fn row_into(&self, row_idx: usize, out: &mut Vec<RawEntry>) {
+            out.extend_from_slice(&self.0[row_idx]);
+        }
+    }
+
+    fn build<M: Primitive>(rows: Vec<Vec<RawEntry>>) -> QMatrix<M, i64, u8> {
+        build_qmatrix(&FakeRows(rows))
+    }
+
     /// Regression: coalescing must narrow to `M` at *every* addition, not
     /// sum in `Complex<f64>` and narrow once.
     ///
@@ -331,7 +381,7 @@ mod tests {
             entry(0, 0, 1.0),
             entry(0, 0, -16_777_216.0),
         ];
-        let m: QMatrix<f32, i64, u8> = raw_rows_to_qmatrix(1, vec![row]);
+        let m: QMatrix<f32, i64, u8> = build(vec![row]);
         assert_eq!(m.row(0).len(), 1, "duplicates must coalesce to one entry");
         assert_eq!(
             m.row(0)[0].value,
@@ -350,7 +400,7 @@ mod tests {
             entry(0, 0, 1.0),
             entry(0, 0, -16_777_216.0),
         ];
-        let m: QMatrix<f64, i64, u8> = raw_rows_to_qmatrix(1, vec![row]);
+        let m: QMatrix<f64, i64, u8> = build(vec![row]);
         assert_eq!(m.row(0)[0].value, 1.0f64);
     }
 
@@ -363,7 +413,7 @@ mod tests {
             entry(1, 0, 4.0),
             entry(1, 0, 8.0),
         ];
-        let m: QMatrix<f64, i64, u8> = raw_rows_to_qmatrix(1, vec![row]);
+        let m: QMatrix<f64, i64, u8> = build(vec![row]);
         assert_eq!(m.row(0).len(), 3);
         assert_eq!(m.row(0)[0].value, 1.0);
         assert_eq!(m.row(0)[1].value, 2.0);
@@ -375,7 +425,7 @@ mod tests {
     #[test]
     fn coalescing_does_not_cross_row_boundaries() {
         let rows = vec![vec![entry(3, 0, 1.0)], vec![entry(3, 0, 2.0)]];
-        let m: QMatrix<f64, i64, u8> = raw_rows_to_qmatrix(2, rows);
+        let m: QMatrix<f64, i64, u8> = build(rows);
         assert_eq!(m.row(0).len(), 1);
         assert_eq!(m.row(1).len(), 1);
         assert_eq!(m.row(0)[0].value, 1.0);
@@ -386,18 +436,16 @@ mod tests {
     #[test]
     fn empty_rows_keep_indptr_aligned() {
         let rows = vec![vec![], vec![entry(0, 0, 5.0)], vec![]];
-        let m: QMatrix<f64, i64, u8> = raw_rows_to_qmatrix(3, rows);
+        let m: QMatrix<f64, i64, u8> = build(rows);
         assert_eq!(m.row(0).len(), 0);
         assert_eq!(m.row(1).len(), 1);
         assert_eq!(m.row(2).len(), 0);
         assert_eq!(m.row(1)[0].value, 5.0);
     }
 
-    /// `distinct_keys` must predict exactly what coalescing produces,
-    /// otherwise the reserved capacity is either short (reallocation) or
-    /// long (dead memory retained in the returned matrix).
+    /// Many contributions on one key must collapse to a single entry.
     #[test]
-    fn reserved_capacity_matches_coalesced_length() {
+    fn many_contributions_collapse_to_one_entry() {
         // Ten emitted contributions collapsing to three surviving entries.
         let row = vec![
             entry(0, 0, 1.0),
@@ -411,26 +459,74 @@ mod tests {
             entry(5, 0, 1.0),
             entry(5, 0, 1.0),
         ];
-        assert_eq!(distinct_keys(&row), 3);
-
-        let m: QMatrix<f64, i64, u8> = raw_rows_to_qmatrix(1, vec![row]);
+        let m: QMatrix<f64, i64, u8> = build(vec![row]);
         assert_eq!(
             m.row(0).len(),
             3,
-            "coalesced length must match the estimate"
+            "ten contributions must collapse to three entries"
         );
         assert_eq!(m.row(0)[0].value, 3.0);
         assert_eq!(m.row(0)[1].value, 2.0);
         assert_eq!(m.row(0)[2].value, 5.0);
     }
 
+    /// Rows must be built in bounded chunks, so the uncoalesced
+    /// intermediate never scales with the whole matrix. A diagonal-heavy
+    /// operator emits one contribution per term for the same key, so
+    /// materialising every row before coalescing would multiply peak memory
+    /// by the term count.
+    ///
+    /// The peak itself is not observable through `RowSource`, so this pins
+    /// the two properties that are: the chunk helper never returns more
+    /// than one chunk, and driving a matrix several chunks wide still
+    /// visits every row exactly once and reproduces every entry.
     #[test]
-    fn distinct_keys_handles_edges() {
-        assert_eq!(distinct_keys(&[]), 0);
-        assert_eq!(distinct_keys(&[entry(0, 0, 1.0)]), 1);
-        assert_eq!(distinct_keys(&[entry(0, 0, 1.0), entry(0, 0, 2.0)]), 1);
-        assert_eq!(distinct_keys(&[entry(0, 0, 1.0), entry(0, 1, 2.0)]), 2);
-        assert_eq!(distinct_keys(&[entry(0, 0, 1.0), entry(1, 0, 2.0)]), 2);
+    fn rows_are_built_in_bounded_chunks() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Counting {
+            dim: usize,
+            calls: AtomicUsize,
+        }
+
+        impl RowSource for Counting {
+            fn dim(&self) -> usize {
+                self.dim
+            }
+
+            fn row_into(&self, row_idx: usize, out: &mut Vec<RawEntry>) {
+                self.calls.fetch_add(1, Ordering::Relaxed);
+                // One entry per row, valued by its index, so a dropped or
+                // duplicated row is visible in the result.
+                out.push(entry(row_idx, 0, row_idx as f64));
+            }
+        }
+
+        let dim = ROW_CHUNK * 3 + 7;
+        let src = Counting {
+            dim,
+            calls: AtomicUsize::new(0),
+        };
+
+        // The erased stage hands back one chunk at a time, which is what
+        // bounds the live `RawEntry` intermediate.
+        let chunk = build_raw_rows(&src, 0, ROW_CHUNK.min(dim));
+        assert_eq!(chunk.len(), ROW_CHUNK.min(dim));
+        src.calls.store(0, Ordering::Relaxed);
+
+        let m: QMatrix<f64, i64, u8> = build_qmatrix(&src);
+        assert_eq!(m.dim(), dim, "every row must reach the matrix");
+        assert_eq!(
+            src.calls.load(Ordering::Relaxed),
+            dim,
+            "each row must be built exactly once across all chunks"
+        );
+        // Spot-check rows either side of every chunk boundary.
+        for r in [0, 1, ROW_CHUNK - 1, ROW_CHUNK, ROW_CHUNK + 1, dim - 1] {
+            assert_eq!(m.row(r).len(), 1, "row {r}");
+            assert_eq!(m.row(r)[0].value, r as f64, "row {r} value");
+            assert_eq!(m.row(r)[0].col, r as i64, "row {r} col");
+        }
     }
 
     /// `sort_row` must be stable: equal keys keep emission order, which is
