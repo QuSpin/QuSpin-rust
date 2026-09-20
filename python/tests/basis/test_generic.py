@@ -119,13 +119,18 @@ class TestGenericBasisFull:
         s = basis.state_at(0)
         assert isinstance(s, str)
 
-    def test_index_roundtrip_lhss2(self):
+    def test_index_str_roundtrip_lhss2(self):
         # FullSpace uses consecutive integers; index roundtrip is consistent
         # when lhss is a power of 2 (bit-packed = base-lhss).
         basis = GenericBasis.full(3, 2)
         for i in range(basis.size):
             s = basis.state_at(i)
-            assert basis.index(s) == i
+            assert basis.index_str(s) == i
+
+    def test_index_roundtrip_lhss2(self):
+        basis = GenericBasis.full(3, 2)
+        for i in range(basis.size):
+            assert basis.index(basis.states[i]) == i
 
     def test_repr(self):
         basis = GenericBasis.full(3, 2)

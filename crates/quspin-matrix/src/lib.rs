@@ -16,7 +16,7 @@ pub mod qmatrix;
 mod qmatrix_helpers;
 mod qmatrix_op;
 
-pub use apply::apply_and_project_to;
+pub use apply::{apply_and_project_to, project_to, project_to_bit, project_to_dit};
 pub use dispatch::OperatorDispatch;
 pub use hamiltonian::{Hamiltonian, HamiltonianInner, IntoHamiltonianInner, SchrodingerEq};
 pub use owned_qmatrix_op::OwnedQMatrixOperator;
