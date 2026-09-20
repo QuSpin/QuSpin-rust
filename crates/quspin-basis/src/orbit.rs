@@ -91,7 +91,12 @@ where
 
 /// Return the orbit representative and the orbit norm.
 ///
-/// The norm is the number of orbit images that equal `state`.
+/// The norm is the character-weighted stabilizer sum
+/// `Σ_{g : g(state)=state} χ(g)`.
+///
+/// For a valid 1D representation restricted to the stabilizer subgroup,
+/// this sum is either zero (state projected out of the sector) or the
+/// stabilizer size (state survives with positive norm).
 pub(crate) fn check_refstate<B, L>(
     lattice_only: &[BenesLatticeElement<B>],
     local_only: &[LocalElement<L>],
@@ -103,12 +108,44 @@ where
     L: FermionicBitStateOp<B>,
 {
     let mut ref_state = state;
-    let mut norm = 0u32;
-    for (s, _) in iter_images(lattice_only, local_only, composite, state) {
+    let mut norm_sum = Complex::new(0.0, 0.0);
+    for (s, c) in iter_images(lattice_only, local_only, composite, state) {
         ref_state = ref_state.max(s);
-        norm += (s == state) as u32;
+        if s == state {
+            norm_sum += c;
+        }
     }
-    (ref_state, norm as f64)
+    (ref_state, collapse_norm(norm_sum))
+}
+
+/// Tolerance below which a character-weighted stabilizer sum counts as zero.
+///
+/// A non-zero sum equals the stabilizer size, i.e. at least 1, so anything
+/// near zero is a state the sector projects out.
+const NORM_ZERO_TOL: f64 = 1e-10;
+
+/// Collapse a character-weighted stabilizer sum to the stored orbit norm.
+///
+/// `Σ_{g : g(s)=s} χ(g)` is a sum over a subgroup of a 1D character, so it is
+/// either zero or the (real, positive, integral) stabilizer size. Anything
+/// else means the character table is not a valid 1D representation, which
+/// [`SymBasis::validate_group`](super::SymBasis::validate_group) rejects at
+/// build time; the assertions below catch a group that slipped through.
+#[inline]
+fn collapse_norm(norm_sum: Complex<f64>) -> f64 {
+    if norm_sum.norm() <= NORM_ZERO_TOL {
+        return 0.0;
+    }
+    debug_assert!(
+        norm_sum.im.abs() <= NORM_ZERO_TOL.max(norm_sum.re.abs() * 1e-8),
+        "stabilizer character sum {norm_sum} is not real; group characters are \
+         not a valid 1D representation",
+    );
+    debug_assert!(
+        norm_sum.re > 0.0,
+        "stabilizer character sum {norm_sum} is not positive",
+    );
+    norm_sum.re.round()
 }
 
 // ---------------------------------------------------------------------------
@@ -132,18 +169,20 @@ where
     }
 }
 
-/// Apply one element to the whole batch, accumulating self-image counts
-/// into `norms` and tracking the running max representative.
+/// Apply one element to the whole batch, accumulating character-weighted
+/// stabilizer sums into `norms` and tracking the running max representative.
 #[inline]
-fn batch_update_count<B, E>(states: &[B], out: &mut [(B, f64)], norms: &mut [u32], el: &E)
+fn batch_update_count<B, E>(states: &[B], out: &mut [(B, f64)], norms: &mut [Complex<f64>], el: &E)
 where
     B: BitInt,
     E: OrbitImage<B>,
 {
     for ((state, o), norm) in states.iter().zip(out.iter_mut()).zip(norms.iter_mut()) {
-        let (s, _) = el.apply(*state);
+        let (s, c) = el.apply(*state);
         o.0 = o.0.max(s);
-        *norm += (s == *state) as u32;
+        if s == *state {
+            *norm += c;
+        }
     }
 }
 
@@ -199,12 +238,11 @@ pub(crate) fn check_refstate_batch<B, L>(
     let n = states.len();
     assert_eq!(n, out.len());
 
-    // Init representatives; norms start at 1 (the implicit identity is
-    // every state's first self-image).
+    // Init representatives; norms start at 1 from the implicit identity.
     for (state, o) in states.iter().zip(out.iter_mut()) {
         o.0 = *state;
     }
-    let mut norms = vec![1u32; n];
+    let mut norms = vec![Complex::new(1.0, 0.0); n];
 
     for el in lattice_only {
         batch_update_count(states, out, &mut norms, el);
@@ -217,7 +255,7 @@ pub(crate) fn check_refstate_batch<B, L>(
     }
 
     for (o, norm) in out.iter_mut().zip(norms.iter()) {
-        o.1 = *norm as f64;
+        o.1 = collapse_norm(*norm);
     }
 }
 
@@ -344,6 +382,16 @@ mod tests {
         let (ref_s, norm) = check_refstate::<u32, PermDitMask<u32>>(&lattice, &[], &[], 0b11u32);
         assert_eq!(ref_s, 0b11u32);
         assert_eq!(norm, 2.0);
+    }
+
+    #[test]
+    fn check_refstate_odd_parity_invariant_has_zero_norm() {
+        // P = swap with odd character -1. Invariant state 0b11 should be
+        // projected out because 1 + (-1) = 0.
+        let lattice = vec![lat(minus_one(), &[1, 0])];
+        let (ref_s, norm) = check_refstate::<u32, PermDitMask<u32>>(&lattice, &[], &[], 0b11u32);
+        assert_eq!(ref_s, 0b11u32);
+        assert_eq!(norm, 0.0);
     }
 
     // --- batch matches scalar -----------------------------------------------
