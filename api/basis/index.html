@@ -1031,7 +1031,7 @@ Hamiltonian), and symmetric (symmetry-projected) construction.</p>
 <a href="#quspin_rs._rs.SpinBasis.subspace" class="headerlink" title="Permanent link">&para;</a></h4>
 <div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">subspace</span><span class="p">(</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">n_sites</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">ham</span><span class="p">:</span> <span class="n">PauliOperator</span> <span class="o">|</span> <span class="n">BondOperator</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">ham</span><span class="p">:</span> <span class="n">PauliOperator</span> <span class="o">|</span> <span class="n">SpinOperator</span> <span class="o">|</span> <span class="n">BondOperator</span><span class="p">,</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">seeds</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">lhss</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SpinBasis</span>
@@ -1091,7 +1091,7 @@ Hamiltonian), and symmetric (symmetry-projected) construction.</p>
 <a href="#quspin_rs._rs.SpinBasis.symmetric" class="headerlink" title="Permanent link">&para;</a></h4>
 <div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">symmetric</span><span class="p">(</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">group</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">ham</span><span class="p">:</span> <span class="n">PauliOperator</span> <span class="o">|</span> <span class="n">BondOperator</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">ham</span><span class="p">:</span> <span class="n">PauliOperator</span> <span class="o">|</span> <span class="n">SpinOperator</span> <span class="o">|</span> <span class="n">BondOperator</span><span class="p">,</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">seeds</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SpinBasis</span>
 </code></pre></div>
@@ -1134,11 +1134,12 @@ read from <code>group.n_sites</code> / <code>group.lhss</code>.</p>
                 <code>ham</code>
             </td>
             <td>
-                  <code><a class="autorefs autorefs-internal" title="PauliOperator (quspin_rs._rs.PauliOperator)" href="../operators/#quspin_rs._rs.PauliOperator">PauliOperator</a> | <a class="autorefs autorefs-internal" title="BondOperator (quspin_rs._rs.BondOperator)" href="../operators/#quspin_rs._rs.BondOperator">BondOperator</a></code>
+                  <code><a class="autorefs autorefs-internal" title="PauliOperator (quspin_rs._rs.PauliOperator)" href="../operators/#quspin_rs._rs.PauliOperator">PauliOperator</a> | <span title="quspin_rs._rs.SpinOperator">SpinOperator</span> | <a class="autorefs autorefs-internal" title="BondOperator (quspin_rs._rs.BondOperator)" href="../operators/#quspin_rs._rs.BondOperator">BondOperator</a></code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p><code>PauliOperator</code> (LHSS=2) or <code>BondOperator</code> for BFS.</p>
+                <p><code>PauliOperator</code> (LHSS=2), <code>SpinOperator</code>, or
+<code>BondOperator</code> for BFS.</p>
               </div>
             </td>
             <td>

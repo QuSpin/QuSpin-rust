@@ -650,6 +650,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#quspin_rs._rs.QMatrix.build_spin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_spin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#quspin_rs._rs.QMatrix.build_boson" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1468,6 +1479,32 @@ Schrödinger-equation integrator (<code>SchrodingerEq</code>).</p>
     <div class="doc doc-contents ">
 
         <p>Build from a BondOperator and any basis type.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="quspin_rs._rs.QMatrix.build_spin" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">build_spin</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-staticmethod"><code>staticmethod</code></small>
+  </span>
+
+<a href="#quspin_rs._rs.QMatrix.build_spin" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">build_spin</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">op</span><span class="p">:</span> <span class="n">SpinOperator</span><span class="p">,</span> <span class="n">basis</span><span class="p">:</span> <span class="n">SpinBasis</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">dtype</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">QMatrix</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Build from a SpinOperator and a SpinBasis.</p>
 
 
     </div>
@@ -2435,7 +2472,10 @@ the underlying matrix has complex entries.</p>
 
 
 <a href="#quspin_rs._rs.ExpmOp" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">ExpmOp</span><span class="p">(</span><span class="n">qop</span><span class="p">:</span> <span class="n">QMatrixLinearOperator</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="nb">complex</span><span class="p">)</span>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">ExpmOp</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">qop</span><span class="p">:</span> <span class="n">QMatrixLinearOperator</span> <span class="o">|</span> <span class="n">OperatorLinearOperator</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">a</span><span class="p">:</span> <span class="nb">complex</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents first">
