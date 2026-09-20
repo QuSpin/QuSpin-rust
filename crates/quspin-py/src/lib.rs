@@ -6,6 +6,7 @@ pub mod ffht;
 pub mod hamiltonian;
 pub mod krylov;
 pub mod linear_operator;
+pub mod matrix_free;
 pub mod operator;
 pub mod qmatrix;
 pub mod schrodinger;
@@ -17,8 +18,10 @@ use ffht::ffht_py;
 use hamiltonian::{PyHamiltonian, PyStatic};
 use krylov::{PyEigSolver, PyFTLM, PyFTLMDynamic, PyLTLM};
 use linear_operator::PyQMatrixLinearOperator;
+use matrix_free::PyOperatorLinearOperator;
 use operator::{
     PyBondOperator, PyBosonOperator, PyFermionOperator, PyMonomialOperator, PyPauliOperator,
+    PySpinOperator,
 };
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
@@ -43,6 +46,7 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Operator types
     m.add_class::<PyPauliOperator>()?;
     m.add_class::<PyBondOperator>()?;
+    m.add_class::<PySpinOperator>()?;
     m.add_class::<PyBosonOperator>()?;
     m.add_class::<PyFermionOperator>()?;
     m.add_class::<PyMonomialOperator>()?;
@@ -51,6 +55,7 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStatic>()?;
     m.add_class::<PyHamiltonian>()?;
     m.add_class::<PyQMatrixLinearOperator>()?;
+    m.add_class::<PyOperatorLinearOperator>()?;
     m.add_class::<PyExpmOp>()?;
     m.add_class::<PyExpmWorker>()?;
     m.add_class::<PyExpmWorker2>()?;

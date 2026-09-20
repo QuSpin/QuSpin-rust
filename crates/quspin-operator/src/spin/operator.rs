@@ -30,6 +30,7 @@ impl SpinOp {
         match c {
             '+' => Some(SpinOp::Plus),
             '-' => Some(SpinOp::Minus),
+            'z' => Some(SpinOp::Z),
             _ => None,
         }
     }
@@ -254,6 +255,22 @@ mod tests {
     // Helpers
     fn manip(lhss: usize) -> DynamicDitManip {
         DynamicDitManip::new(lhss)
+    }
+
+    // --- SpinOp::from_char ---
+
+    #[test]
+    fn from_char_covers_every_documented_op() {
+        assert_eq!(SpinOp::from_char('+'), Some(SpinOp::Plus));
+        assert_eq!(SpinOp::from_char('-'), Some(SpinOp::Minus));
+        assert_eq!(SpinOp::from_char('z'), Some(SpinOp::Z));
+        assert_eq!(SpinOp::from_char('x'), None);
+    }
+
+    #[test]
+    fn parse_op_accepts_z() {
+        assert_eq!(<SpinOp as ParseOp>::from_char('z').unwrap(), SpinOp::Z);
+        assert!(<SpinOp as ParseOp>::from_char('n').is_err());
     }
 
     // --- SpinOp::apply: spin-1/2 (lhss=2, S=1/2) ---

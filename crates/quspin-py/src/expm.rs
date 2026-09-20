@@ -19,14 +19,20 @@ use numpy::{
     PyUntypedArrayMethods,
 };
 use pyo3::prelude::*;
-use quspin_core::OwnedQMatrixOperator;
 use quspin_core::expm::{ExpmOp, ExpmWorker, ExpmWorker2};
 
 use crate::error::Error;
 use crate::linear_operator::PyQMatrixLinearOperator;
+use crate::matrix_free::{PyOperatorLinearOperator, SharedLinearOperator};
+
+/// Operand type stored by the Python wrappers.
+///
+/// Type-erased so a single `ExpmOp` monomorphization serves both the
+/// `QMatrix`-backed operator and the matrix-free `(operator, basis)` one.
+type PyExpmOperand = SharedLinearOperator;
 
 /// Concrete `ExpmOp` type stored by the Python wrappers.
-type PyExpmOpInner = ExpmOp<Complex<f64>, Arc<OwnedQMatrixOperator<Complex<f64>>>>;
+type PyExpmOpInner = ExpmOp<Complex<f64>, PyExpmOperand>;
 
 // ---------------------------------------------------------------------------
 // PyExpmOp
@@ -44,11 +50,25 @@ pub struct PyExpmOp {
 
 #[pymethods]
 impl PyExpmOp {
-    /// Construct from a `QMatrixLinearOperator` and scalar `a`.
+    /// Construct from a linear operator and scalar `a`.
+    ///
+    /// `qop` may be a `QMatrixLinearOperator` (assembled) or an
+    /// `OperatorLinearOperator` (matrix-free).
     #[new]
-    fn new(qop: &PyQMatrixLinearOperator, a: Complex<f64>) -> PyResult<Self> {
-        let op = Arc::clone(&qop.inner);
-        let expm_op = ExpmOp::new(op, a).map_err(Error::from)?;
+    fn new(py: Python<'_>, qop: &Bound<'_, PyAny>, a: Complex<f64>) -> PyResult<Self> {
+        let op: PyExpmOperand = if let Ok(q) = qop.cast::<PyQMatrixLinearOperator>() {
+            Arc::clone(&q.borrow().inner) as PyExpmOperand
+        } else if let Ok(q) = qop.cast::<PyOperatorLinearOperator>() {
+            Arc::clone(&q.borrow().inner)
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "qop must be a QMatrixLinearOperator or an OperatorLinearOperator",
+            ));
+        };
+        // Parameter selection calls `trace` and `onenorm`, which on the
+        // matrix-free operand are two full basis sweeps — long enough to
+        // freeze every other Python thread if the GIL were held.
+        let expm_op = py.detach(|| ExpmOp::new(op, a)).map_err(Error::from)?;
         Ok(Self {
             inner: Arc::new(expm_op),
         })
@@ -131,7 +151,7 @@ impl PyExpmOp {
 /// 1-D worker bound to an `ExpmOp`.  Holds `2 * dim` complex128 scratch.
 #[pyclass(name = "ExpmWorker", module = "quspin_rs._rs")]
 pub struct PyExpmWorker {
-    inner: ExpmWorker<Complex<f64>, Arc<OwnedQMatrixOperator<Complex<f64>>>>,
+    inner: ExpmWorker<Complex<f64>, PyExpmOperand>,
 }
 
 #[pymethods]
@@ -170,7 +190,7 @@ impl PyExpmWorker {
 /// 2-D batch worker bound to an `ExpmOp`.
 #[pyclass(name = "ExpmWorker2", module = "quspin_rs._rs")]
 pub struct PyExpmWorker2 {
-    inner: ExpmWorker2<Complex<f64>, Arc<OwnedQMatrixOperator<Complex<f64>>>>,
+    inner: ExpmWorker2<Complex<f64>, PyExpmOperand>,
 }
 
 #[pymethods]

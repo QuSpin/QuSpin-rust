@@ -6,19 +6,23 @@ use crate::operator::{
 use numpy::PyReadonlyArray1;
 use numpy::{Complex64, PyArray1};
 use pyo3::prelude::*;
-use quspin_core::operator::boson::{BosonOp, BosonOpEntry, BosonOperator, BosonOperatorInner};
+use quspin_core::operator::spin::{SpinOp, SpinOpEntry, SpinOperator, SpinOperatorInner};
 
-/// Python-facing bosonic operator (truncated harmonic oscillator).
+/// Python-facing spin-S operator.
 ///
-/// Same variadic `*terms` format as `PauliOperator`, using boson op strings
-/// (`+`, `-`, `n`).  `lhss` (local Hilbert-space size) is keyword-only.
-#[pyclass(name = "BosonOperator", module = "quspin._rs")]
-pub struct PyBosonOperator {
-    pub inner: BosonOperatorInner,
+/// Same variadic `*terms` format as `PauliOperator`, using spin op strings
+/// (`+`, `-`, `z`).  `lhss` (local Hilbert-space size, `2S + 1`) is
+/// keyword-only.
+///
+/// State encoding: dit value `n` represents spin projection `m = S - n`, so
+/// `n = 0` is the highest-weight state `m = +S`.
+#[pyclass(name = "SpinOperator", module = "quspin._rs")]
+pub struct PySpinOperator {
+    pub inner: SpinOperatorInner,
 }
 
 #[pymethods]
-impl PyBosonOperator {
+impl PySpinOperator {
     #[new]
     #[pyo3(signature = (*terms, lhss))]
     fn new(py: Python<'_>, terms: Terms, lhss: usize) -> PyResult<Self> {
@@ -36,16 +40,16 @@ impl PyBosonOperator {
         let use_u8 = max_cindex <= 255 && max_site <= 255;
 
         if use_u8 {
-            let entries = parse_terms_generic::<u8, BosonOp, _, _>(py, &terms, BosonOpEntry::new)
+            let entries = parse_terms_generic::<u8, SpinOp, _, _>(py, &terms, SpinOpEntry::new)
                 .map_err(Error::from)?;
-            Ok(PyBosonOperator {
-                inner: BosonOperatorInner::Ham8(BosonOperator::new(entries, lhss)),
+            Ok(PySpinOperator {
+                inner: SpinOperatorInner::Ham8(SpinOperator::new(entries, lhss)),
             })
         } else if max_cindex <= 65535 && max_site <= 65535 {
-            let entries = parse_terms_generic::<u16, BosonOp, _, _>(py, &terms, BosonOpEntry::new)
+            let entries = parse_terms_generic::<u16, SpinOp, _, _>(py, &terms, SpinOpEntry::new)
                 .map_err(Error::from)?;
-            Ok(PyBosonOperator {
-                inner: BosonOperatorInner::Ham16(BosonOperator::new(entries, lhss)),
+            Ok(PySpinOperator {
+                inner: SpinOperatorInner::Ham16(SpinOperator::new(entries, lhss)),
             })
         } else {
             Err(pyo3::exceptions::PyValueError::new_err(
@@ -141,7 +145,7 @@ impl PyBosonOperator {
 
     fn __repr__(&self) -> String {
         format!(
-            "BosonOperator(max_site={}, lhss={}, num_cindices={})",
+            "SpinOperator(max_site={}, lhss={}, num_cindices={})",
             self.inner.max_site(),
             self.inner.lhss(),
             self.inner.num_cindices(),

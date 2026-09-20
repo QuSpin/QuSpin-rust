@@ -36,7 +36,7 @@ class SpinBasis:
     def subspace(
         cls,
         n_sites: int,
-        ham: PauliOperator | BondOperator,
+        ham: PauliOperator | SpinOperator | BondOperator,
         seeds: list[str],
         lhss: int = 2,
     ) -> SpinBasis:
@@ -51,7 +51,7 @@ class SpinBasis:
     def symmetric(
         cls,
         group: Any,
-        ham: PauliOperator | BondOperator,
+        ham: PauliOperator | SpinOperator | BondOperator,
         seeds: list[str],
     ) -> SpinBasis:
         """Symmetry-projected subspace.
@@ -59,7 +59,8 @@ class SpinBasis:
         Args:
             group: a ``SymmetryGroup``; ``n_sites`` and ``lhss`` are
                 read from ``group.n_sites`` / ``group.lhss``.
-            ham:   ``PauliOperator`` (LHSS=2) or ``BondOperator`` for BFS.
+            ham:   ``PauliOperator`` (LHSS=2), ``SpinOperator``, or
+                ``BondOperator`` for BFS.
             seeds: list of seed state strings.
         """
         ...
@@ -474,6 +475,14 @@ class PauliOperator:
         """
         ...
 
+    def as_linearoperator(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+    ) -> OperatorLinearOperator:
+        """Matrix-free ``LinearOperator`` over ``basis`` with ``coeffs`` baked in."""
+        ...
+
     def __repr__(self) -> str: ...
 
 class BondOperator:
@@ -526,6 +535,68 @@ class BondOperator:
         """Apply operator to ``input``, projecting back into the same ``basis``."""
         ...
 
+    def as_linearoperator(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+    ) -> OperatorLinearOperator:
+        """Matrix-free ``LinearOperator`` over ``basis`` with ``coeffs`` baked in."""
+        ...
+
+    def __repr__(self) -> str: ...
+
+class SpinOperator:
+    """Spin-S operator.
+
+    Same variadic ``*terms`` format as ``PauliOperator``, using spin op
+    strings (``+``, ``-``, ``z``).  ``lhss`` (= ``2S + 1``) is keyword-only.
+
+    State encoding: dit value ``n`` represents spin projection ``m = S - n``,
+    so ``n = 0`` is the highest-weight state ``m = +S``.
+    """
+
+    def __init__(
+        self,
+        *terms: list[tuple[str, list[list[Any]]]],
+        lhss: int,
+    ) -> None: ...
+    @property
+    def max_site(self) -> int: ...
+    @property
+    def num_cindices(self) -> int: ...
+    @property
+    def lhss(self) -> int: ...
+    def apply_and_project_to(
+        self,
+        input_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        output_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input`` in ``input_basis``, project into ``output_basis``."""
+        ...
+
+    def apply(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input``, projecting back into the same ``basis``."""
+        ...
+
+    def as_linearoperator(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+    ) -> OperatorLinearOperator:
+        """Matrix-free ``LinearOperator`` over ``basis`` with ``coeffs`` baked in."""
+        ...
+
     def __repr__(self) -> str: ...
 
 class BosonOperator:
@@ -569,6 +640,14 @@ class BosonOperator:
         """Apply operator to ``input``, projecting back into the same ``basis``."""
         ...
 
+    def as_linearoperator(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+    ) -> OperatorLinearOperator:
+        """Matrix-free ``LinearOperator`` over ``basis`` with ``coeffs`` baked in."""
+        ...
+
     def __repr__(self) -> str: ...
 
 class FermionOperator:
@@ -610,6 +689,14 @@ class FermionOperator:
         overwrite: bool = True,
     ) -> None:
         """Apply operator to ``input``, projecting back into the same ``basis``."""
+        ...
+
+    def as_linearoperator(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+    ) -> OperatorLinearOperator:
+        """Matrix-free ``LinearOperator`` over ``basis`` with ``coeffs`` baked in."""
         ...
 
     def __repr__(self) -> str: ...
@@ -685,6 +772,14 @@ class MonomialOperator:
         """Apply operator to ``input``, projecting back into the same ``basis``."""
         ...
 
+    def as_linearoperator(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+    ) -> OperatorLinearOperator:
+        """Matrix-free ``LinearOperator`` over ``basis`` with ``coeffs`` baked in."""
+        ...
+
     def __repr__(self) -> str: ...
 
 # ---------------------------------------------------------------------------
@@ -713,6 +808,15 @@ class QMatrix:
         dtype: np.dtype[Any],
     ) -> QMatrix:
         """Build from a BondOperator and any basis type."""
+        ...
+
+    @staticmethod
+    def build_spin(
+        op: SpinOperator,
+        basis: SpinBasis,
+        dtype: np.dtype[Any],
+    ) -> QMatrix:
+        """Build from a SpinOperator and a SpinBasis."""
         ...
 
     @staticmethod
@@ -961,19 +1065,88 @@ class QMatrixLinearOperator:
     ) -> npt.NDArray[np.complexfloating[Any, Any]]: ...
     def __repr__(self) -> str: ...
 
+class OperatorLinearOperator:
+    """Matrix-free linear operator over an ``(operator, basis)`` pair.
+
+    Construct via ``<Operator>.as_linearoperator(basis, coeffs)``.  Unlike
+    ``QMatrixLinearOperator`` nothing is assembled — matrix elements are
+    recomputed inside every product — so this is the right choice when the
+    ``QMatrix`` would not fit in memory.
+
+    Implements the same SciPy ``LinearOperator`` duck-typed interface
+    (``shape``, ``dtype``, ``matvec``, ``matmat``, ``rmatvec``, ``rmatmat``,
+    ``@``), plus ``trace`` and ``onenorm``.  Accepted as the first argument
+    to ``ExpmOp``.
+    """
+
+    @property
+    def dim(self) -> int: ...
+    @property
+    def shape(self) -> tuple[int, int]:
+        """``(dim, dim)`` — SciPy ``LinearOperator`` shape."""
+        ...
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        """Always ``numpy.dtype('complex128')``."""
+        ...
+
+    def trace(self) -> complex:
+        """Return ``trace(A)``, computed in one sweep over the basis."""
+        ...
+
+    def onenorm(self, shift: complex = 0j) -> float:
+        """Return ``‖A − shift·I‖₁`` (column 1-norm), computed in one sweep."""
+        ...
+
+    def matvec(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]:
+        """Return ``A @ x`` for a 1-D ``complex128`` input."""
+        ...
+
+    def matmat(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]:
+        """Return ``A @ X`` for a 2-D ``complex128`` input of shape ``(dim, k)``."""
+        ...
+
+    def rmatvec(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]:
+        """Return ``A^H @ x`` (Hermitian adjoint) for a 1-D ``complex128`` input."""
+        ...
+
+    def rmatmat(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]:
+        """Return ``A^H @ X`` for a 2-D ``complex128`` input of shape ``(dim, k)``."""
+        ...
+
+    def __matmul__(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]: ...
+    def __rmatmul__(
+        self, x: npt.NDArray[np.complexfloating[Any, Any]]
+    ) -> npt.NDArray[np.complexfloating[Any, Any]]: ...
+    def __repr__(self) -> str: ...
+
 class ExpmOp:
-    """Cached ``exp(a · A) · v`` action over a ``QMatrixLinearOperator``.
+    """Cached ``exp(a · A) · v`` action over a linear operator.
 
     Construction runs the partitioned-Taylor parameter selection once and
     caches the resulting ``(μ, s, m_star, tol)`` scalars.  Use ``worker(...)``
     to obtain a worker that reuses scratch memory across ``apply`` calls.
 
     Args:
-        qop: Linear-operator snapshot.
+        qop: A ``QMatrixLinearOperator`` (assembled) or an
+            ``OperatorLinearOperator`` (matrix-free).
         a:   Scalar multiplier on ``A``.  E.g. ``-1j * dt`` for time evolution.
     """
 
-    def __init__(self, qop: QMatrixLinearOperator, a: complex) -> None: ...
+    def __init__(
+        self, qop: QMatrixLinearOperator | OperatorLinearOperator, a: complex
+    ) -> None: ...
     @property
     def dim(self) -> int: ...
     @property

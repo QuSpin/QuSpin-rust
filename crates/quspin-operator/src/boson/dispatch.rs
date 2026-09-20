@@ -1,6 +1,7 @@
 use super::BosonOperator;
 
 /// Type-erased `BosonOperator`: either u8 or u16 cindex type.
+#[derive(Clone)]
 pub enum BosonOperatorInner {
     Ham8(BosonOperator<u8>),
     Ham16(BosonOperator<u16>),

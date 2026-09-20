@@ -21,6 +21,7 @@ bytemuck = { workspace = true }
 rayon = { workspace = true }
 ruint = { workspace = true }
 smallvec = { workspace = true }
+paste = { workspace = true }
 ode_solvers = { workspace = true }
 nalgebra = { workspace = true }
 

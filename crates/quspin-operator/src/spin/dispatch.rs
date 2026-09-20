@@ -1,6 +1,7 @@
 use super::SpinOperator;
 
 /// Type-erased `SpinOperator`: either u8 or u16 cindex type.
+#[derive(Clone)]
 pub enum SpinOperatorInner {
     Ham8(SpinOperator<u8>),
     Ham16(SpinOperator<u16>),

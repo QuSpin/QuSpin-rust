@@ -171,6 +171,19 @@ impl PyMonomialOperator {
         Ok(())
     }
 
+    /// Matrix-free ``LinearOperator`` over ``basis`` with ``coeffs`` baked in.
+    ///
+    /// Unlike ``QMatrix.build_*(...).as_linearoperator(...)`` nothing is
+    /// assembled: matrix elements are recomputed inside every product.
+    #[pyo3(signature = (basis, coeffs))]
+    fn as_linearoperator(
+        slf: &Bound<'_, Self>,
+        basis: &Bound<'_, PyAny>,
+        coeffs: PyReadonlyArray1<'_, Complex64>,
+    ) -> PyResult<crate::matrix_free::PyOperatorLinearOperator> {
+        crate::matrix_free::as_linearoperator(slf.as_any(), basis, coeffs)
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "MonomialOperator(lhss={}, max_site={}, num_coeffs={})",

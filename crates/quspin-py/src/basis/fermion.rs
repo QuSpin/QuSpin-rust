@@ -11,13 +11,14 @@ use pyo3::types::PyType;
 use quspin_core::basis::dispatch::BitBasis;
 use quspin_core::basis::seed::state_to_display_str;
 use quspin_core::basis::{FermionBasis, SpaceKind};
+use std::sync::Arc;
 
 /// Python-facing fermionic basis.
 ///
 /// Fermions are always LHSS=2 (one bit per orbital).
 #[pyclass(name = "FermionBasis", module = "quspin._rs")]
 pub struct PyFermionBasis {
-    pub inner: FermionBasis,
+    pub inner: Arc<FermionBasis>,
 }
 
 fn build_fermion_basis(
@@ -61,7 +62,9 @@ impl PyFermionBasis {
     #[classmethod]
     fn full(_cls: &Bound<'_, PyType>, n_sites: usize) -> PyResult<Self> {
         let inner = FermionBasis::new(n_sites, SpaceKind::Full).map_err(Error::from)?;
-        Ok(PyFermionBasis { inner })
+        Ok(PyFermionBasis {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Particle-number sector subspace.
@@ -80,7 +83,9 @@ impl PyFermionBasis {
         let byte_seeds = parse_seeds(&seeds, n_sites, 2)?;
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Sub).map_err(Error::from)?;
         build_fermion_basis(&mut basis, ham, n_sites, &byte_seeds)?;
-        Ok(PyFermionBasis { inner: basis })
+        Ok(PyFermionBasis {
+            inner: Arc::new(basis),
+        })
     }
 
     /// Symmetry-reduced subspace.
@@ -109,7 +114,9 @@ impl PyFermionBasis {
         let mut basis = FermionBasis::new(n_sites, SpaceKind::Symm).map_err(Error::from)?;
         replay_group_into_bit(group, &mut basis.inner)?;
         build_fermion_basis(&mut basis, ham, n_sites, &byte_seeds)?;
-        Ok(PyFermionBasis { inner: basis })
+        Ok(PyFermionBasis {
+            inner: Arc::new(basis),
+        })
     }
 
     // ------------------------------------------------------------------
