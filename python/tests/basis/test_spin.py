@@ -31,11 +31,16 @@ class TestSpinBasisFull:
         assert isinstance(s, str)
         assert len(s) == 2
 
-    def test_index_roundtrip(self):
+    def test_index_str_roundtrip(self):
         b = SpinBasis.full(3)
         for i in range(b.size):
             s = b.state_at(i)
-            assert b.index(s) == i
+            assert b.index_str(s) == i
+
+    def test_index_roundtrip(self):
+        b = SpinBasis.full(3)
+        for i in range(b.size):
+            assert b.index(b.states[i]) == i
 
 
 class TestSpinBasisSubspace:
