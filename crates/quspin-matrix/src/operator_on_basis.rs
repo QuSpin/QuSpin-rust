@@ -554,6 +554,24 @@ mod tests {
     }
 
     #[test]
+    fn coeff_check_covers_a_cindex_gap() {
+        // `num_cindices()` reports max+1, so a one-element coeffs slice is
+        // rejected rather than being accepted and indexed at [7] in `apply`.
+        let terms = vec![SpinOpEntry::new(7u8, c(1.0), smallvec![(SpinOp::Z, 0)])];
+        let op = SpinOperatorInner::Ham8(SpinOperator::new(terms, 3));
+        assert!(OperatorOnBasis::new(op, spin_basis(2, 3), vec![c(1.0)]).is_err());
+
+        let terms = vec![SpinOpEntry::new(7u8, c(1.0), smallvec![(SpinOp::Z, 0)])];
+        let op = SpinOperatorInner::Ham8(SpinOperator::new(terms, 3));
+        let wrapped = OperatorOnBasis::new(op, spin_basis(2, 3), vec![c(0.0); 8]).unwrap();
+        // And the sparse operator actually runs instead of panicking.
+        let n = wrapped.dim();
+        let mut out = vec![C64::default(); n];
+        wrapped.dot(true, &vec![c(1.0); n], &mut out).unwrap();
+        assert_eq!(wrapped.trace(), C64::default());
+    }
+
+    #[test]
     fn dim_matches_basis_size() {
         let basis = spin_basis(2, 3);
         let expected = basis.inner.size();

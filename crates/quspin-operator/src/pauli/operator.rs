@@ -154,22 +154,22 @@ pub struct HardcoreOperator<C> {
     num_cindices: usize,
 }
 
-impl<C: Copy + Ord> HardcoreOperator<C> {
+impl<C: Copy + Ord + Into<usize>> HardcoreOperator<C> {
     /// Construct from a list of `OpEntry` terms.  Terms are sorted by `cindex`.
     /// `max_site` is inferred as the largest site index appearing in any op.
     pub fn new(mut terms: Vec<OpEntry<C>>) -> Self {
         terms.sort_by_key(|e| e.cindex);
-        let num_cindices = {
-            let mut count = 0;
-            let mut last: Option<C> = None;
-            for t in &terms {
-                if Some(t.cindex) != last {
-                    count += 1;
-                    last = Some(t.cindex);
-                }
-            }
-            count
-        };
+        // Required coefficient-slice length: the largest cindex plus one, not
+        // the number of distinct values. Cindices are contiguous for anything
+        // built through the Python layer, but this constructor is public, and
+        // a gap would otherwise make `num_cindices()` under-report — every
+        // consumer then sizes `coeffs` too small and `coeffs[cindex]` indexes
+        // out of bounds inside `apply`.
+        let num_cindices = terms
+            .iter()
+            .map(|t| t.cindex)
+            .max()
+            .map_or(0, |c| Into::<usize>::into(c) + 1);
         let max_site = terms
             .iter()
             .flat_map(|t| t.ops.iter())

@@ -147,22 +147,22 @@ pub struct SpinOperator<C> {
     num_cindices: usize,
 }
 
-impl<C: Copy + Ord> SpinOperator<C> {
+impl<C: Copy + Ord + Into<usize>> SpinOperator<C> {
     /// Construct from a list of `SpinOpEntry` terms and the LHSS.
     /// Terms are sorted by `cindex`.
     pub fn new(mut terms: Vec<SpinOpEntry<C>>, lhss: usize) -> Self {
         terms.sort_by_key(|e| e.cindex);
-        let num_cindices = {
-            let mut count = 0;
-            let mut last: Option<C> = None;
-            for t in &terms {
-                if Some(t.cindex) != last {
-                    count += 1;
-                    last = Some(t.cindex);
-                }
-            }
-            count
-        };
+        // Required coefficient-slice length: the largest cindex plus one, not
+        // the number of distinct values. Cindices are contiguous for anything
+        // built through the Python layer, but this constructor is public, and
+        // a gap would otherwise make `num_cindices()` under-report — every
+        // consumer then sizes `coeffs` too small and `coeffs[cindex]` indexes
+        // out of bounds inside `apply`.
+        let num_cindices = terms
+            .iter()
+            .map(|t| t.cindex)
+            .max()
+            .map_or(0, |c| Into::<usize>::into(c) + 1);
         let max_site = terms
             .iter()
             .flat_map(|t| t.ops.iter())
@@ -373,6 +373,37 @@ mod tests {
             assert_eq!(ns, state);
             assert!((amp - Complex::new(expected_m, 0.0)).norm() < 1e-12);
         }
+    }
+
+    // --- num_cindices covers the coefficient slice ---
+
+    #[test]
+    fn num_cindices_is_max_index_plus_one_not_distinct_count() {
+        // A gap in the cindex sequence used to make `num_cindices()` report
+        // the count of distinct values (1 here), so consumers sized `coeffs`
+        // to 1 and then indexed `coeffs[7]` inside `apply`.
+        let terms = vec![SpinOpEntry::new(
+            7u8,
+            Complex::new(1.0, 0.0),
+            smallvec![(SpinOp::Z, 0)],
+        )];
+        assert_eq!(SpinOperator::new(terms, 3).num_cindices(), 8);
+    }
+
+    #[test]
+    fn num_cindices_unchanged_for_contiguous_cindices() {
+        let terms = vec![
+            SpinOpEntry::new(0u8, Complex::new(1.0, 0.0), smallvec![(SpinOp::Z, 0)]),
+            SpinOpEntry::new(1u8, Complex::new(1.0, 0.0), smallvec![(SpinOp::Z, 1)]),
+            SpinOpEntry::new(1u8, Complex::new(1.0, 0.0), smallvec![(SpinOp::Z, 0)]),
+        ];
+        assert_eq!(SpinOperator::new(terms, 3).num_cindices(), 2);
+    }
+
+    #[test]
+    fn num_cindices_is_zero_for_an_empty_operator() {
+        let terms: Vec<SpinOpEntry<u8>> = vec![];
+        assert_eq!(SpinOperator::new(terms, 3).num_cindices(), 0);
     }
 
     // --- SpinOperator integration: S+_0 S-_1 + S-_0 S+_1 hopping for S=1 ---
