@@ -110,6 +110,7 @@ fn bench_benes(c: &mut Criterion) {
     }
 
     run::<u64>(&mut g, "u64");
+    run::<u128>(&mut g, "u128");
     run::<U128>(&mut g, "Uint<128>");
     run::<U256>(&mut g, "Uint<256>");
     g.finish();
@@ -143,6 +144,7 @@ fn bench_dit_sweep(c: &mut Criterion) {
     }
 
     run::<u64>(&mut g, "u64");
+    run::<u128>(&mut g, "u128");
     run::<U128>(&mut g, "Uint<128>");
     run::<U256>(&mut g, "Uint<256>");
     g.finish();
@@ -173,6 +175,7 @@ fn bench_hashmap(c: &mut Criterion) {
     }
 
     run::<u64>(&mut g, "u64");
+    run::<u128>(&mut g, "u128");
     run::<U128>(&mut g, "Uint<128>");
     run::<U256>(&mut g, "Uint<256>");
     g.finish();
@@ -201,6 +204,7 @@ fn bench_sort_search(c: &mut Criterion) {
     }
 
     run::<u64>(&mut g, "u64");
+    run::<u128>(&mut g, "u128");
     run::<U128>(&mut g, "Uint<128>");
     run::<U256>(&mut g, "Uint<256>");
     g.finish();

@@ -100,6 +100,35 @@ impl BitInt for u64 {
     }
 }
 
+// --- u128 ---
+//
+// Not a native register width on any mainstream target -- LLVM lowers it to
+// a 64-bit register pair -- but it is a first-class type the optimiser
+// models directly, rather than an array of limbs behind a generic. That
+// makes it a strictly better choice than `Uint<128, 2>` for the 65..=128
+// bit tier; see `benches/bitint_width.rs`.
+
+impl BitInt for u128 {
+    const BITS: u32 = 128;
+    const LD_BITS: u32 = 7;
+    const BYTES: u32 = 16;
+
+    #[inline]
+    fn from_u64(v: u64) -> Self {
+        v as u128
+    }
+
+    #[inline]
+    fn to_usize(self) -> usize {
+        self as usize
+    }
+
+    #[inline]
+    fn count_ones(self) -> u32 {
+        u128::count_ones(self)
+    }
+}
+
 // --- ruint::Uint<N, LIMBS> ---
 
 impl<const N: usize, const LIMBS: usize> BitInt for Uint<N, LIMBS> {
