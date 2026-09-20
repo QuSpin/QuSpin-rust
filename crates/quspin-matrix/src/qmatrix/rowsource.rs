@@ -232,7 +232,19 @@ fn sort_row(row: &mut [RawEntry]) {
 
 /// How many rows the erased stage builds before the typed stage drains
 /// them. Bounds the uncoalesced intermediate: see [`build_qmatrix`].
-const ROW_CHUNK: usize = 4096;
+///
+/// Each chunk boundary is a synchronisation point — the parallel build
+/// finishes, then the typed drain runs single-threaded — so this trades
+/// bounded memory against lost parallelism. The bound is generous because
+/// it is cheap: for a 24-site Ising chain (24 contributions per row before
+/// coalescing) this caps the intermediate near 50 MB, against 12.9 GB
+/// unchunked, while paying 16x fewer synchronisation points than a 4096-row
+/// chunk would.
+///
+/// Not yet tuned against a clean measurement — tracked in #127. If the
+/// drain proves costly, double-buffering the chunks with `rayon::join`
+/// would overlap it with the next build.
+const ROW_CHUNK: usize = 65536;
 
 /// Build rows `start..end` through a type-erased source.
 ///
