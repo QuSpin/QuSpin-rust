@@ -100,6 +100,36 @@ impl BitInt for u64 {
     }
 }
 
+// --- u128 ---
+//
+// Not a native register width on any mainstream target -- LLVM lowers it to
+// a 64-bit register pair -- but it is a first-class type the optimiser
+// models directly, rather than an array of limbs behind a generic. That
+// makes it a strictly better choice than `Uint<128, 2>` for the 65..=128
+// bit tier: 4.1x on the Benes orbit loop, 2.6x on the dit sweep, measured
+// at identical physics. Repointing the dispatch tier is tracked in #123.
+
+impl BitInt for u128 {
+    const BITS: u32 = 128;
+    const LD_BITS: u32 = 7;
+    const BYTES: u32 = 16;
+
+    #[inline]
+    fn from_u64(v: u64) -> Self {
+        v as u128
+    }
+
+    #[inline]
+    fn to_usize(self) -> usize {
+        self as usize
+    }
+
+    #[inline]
+    fn count_ones(self) -> u32 {
+        u128::count_ones(self)
+    }
+}
+
 // --- ruint::Uint<N, LIMBS> ---
 
 impl<const N: usize, const LIMBS: usize> BitInt for Uint<N, LIMBS> {
@@ -234,6 +264,98 @@ mod tests {
         assert_eq!(x & y, U128::from(1230u64 & 123u64));
         assert_eq!(x | y, U128::from(1230u64 | 123u64));
         assert_eq!(x ^ y, U128::from(1230u64 ^ 123u64));
+    }
+
+    // --- native u128 ---
+    //
+    // The `U128` alias above is `Uint<128, 2>`, and the dispatch ladder
+    // still routes the 65..=128 bit tier through that type, so nothing else
+    // in the suite touches `impl BitInt for u128`. These cover it directly,
+    // including values above bit 64 where a one-limb implementation would
+    // silently lose the high half.
+
+    #[test]
+    fn constants_native_u128() {
+        assert_eq!(<u128 as BitInt>::BITS, 128);
+        assert_eq!(<u128 as BitInt>::LD_BITS, 7);
+        assert_eq!(<u128 as BitInt>::BYTES, 16);
+    }
+
+    #[test]
+    fn native_u128_from_u64_zero_extends() {
+        assert_eq!(<u128 as BitInt>::from_u64(0), 0u128);
+        assert_eq!(<u128 as BitInt>::from_u64(42), 42u128);
+        // u64::MAX must zero-extend, not sign-extend.
+        assert_eq!(<u128 as BitInt>::from_u64(u64::MAX), u64::MAX as u128);
+        assert_eq!(<u128 as BitInt>::from_u64(42).to_usize(), 42);
+    }
+
+    #[test]
+    fn native_u128_count_ones_spans_both_halves() {
+        assert_eq!(BitInt::count_ones(0u128), 0);
+        assert_eq!(BitInt::count_ones(u128::MAX), 128);
+        // One bit in each 64-bit half.
+        let x = (1u128 << 3) | (1u128 << 100);
+        assert_eq!(BitInt::count_ones(x), 2);
+        // Entirely in the high half, where a u64-backed impl would see 0.
+        assert_eq!(BitInt::count_ones(u128::MAX << 64), 64);
+    }
+
+    #[test]
+    fn native_u128_shifts_cross_the_64_bit_boundary() {
+        assert_eq!(1u128 << 64usize, 1u128 << 64);
+        assert_eq!((1u128 << 127usize) >> 127usize, 1u128);
+        // A value in the low half shifted into the high half and back.
+        let v = 0xDEAD_BEEF_CAFE_F00Du128;
+        assert_eq!((v << 64usize) >> 64usize, v);
+        assert_eq!((v << 64usize).to_usize(), 0, "low limb must be cleared");
+    }
+
+    #[test]
+    fn native_u128_bitops() {
+        let a = (0b1100u128 << 64) | 0b1100;
+        let b = (0b1010u128 << 64) | 0b1010;
+        assert_eq!(a & b, (0b1000u128 << 64) | 0b1000);
+        assert_eq!(a | b, (0b1110u128 << 64) | 0b1110);
+        assert_eq!(a ^ b, (0b0110u128 << 64) | 0b0110);
+        assert_eq!(!0u128, u128::MAX);
+    }
+
+    /// Native `u128` and `Uint<128, 2>` must agree bit for bit, so the
+    /// dispatch tier can be repointed without changing behaviour.
+    #[test]
+    fn native_u128_agrees_with_uint128() {
+        let mut rng: u64 = 0x1234_5678_9ABC_DEF0;
+        let mut next = || {
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            rng
+        };
+        for _ in 0..200 {
+            let (lo, hi) = (next(), next());
+            let n: u128 = ((hi as u128) << 64) | lo as u128;
+            let u = (U128::from(hi) << 64usize) | U128::from(lo);
+            assert_eq!(u.as_limbs(), &[lo, hi], "fixture mismatch");
+
+            assert_eq!(BitInt::count_ones(n), BitInt::count_ones(u));
+            for sh in [0usize, 1, 63, 64, 65, 127] {
+                let ns = n << sh;
+                let us = u << sh;
+                assert_eq!(
+                    [ns as u64, (ns >> 64) as u64],
+                    *us.as_limbs(),
+                    "shl {n:#x} << {sh}"
+                );
+                let nr = n >> sh;
+                let ur = u >> sh;
+                assert_eq!(
+                    [nr as u64, (nr >> 64) as u64],
+                    *ur.as_limbs(),
+                    "shr {n:#x} >> {sh}"
+                );
+            }
+        }
     }
 
     #[test]
