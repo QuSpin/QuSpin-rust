@@ -34,9 +34,11 @@ use std::marker::PhantomData;
 
 use num_complex::Complex;
 use quspin_basis::BasisSpace;
-use quspin_bitbasis::BitInt;
+use quspin_basis::sym::{NormInt, SymBasis};
+use quspin_bitbasis::{BitInt, FermionicBitStateOp};
 use quspin_operator::Operator;
 use rayon::prelude::*;
+use smallvec::SmallVec;
 
 use super::matrix::PARALLEL_DIM_THRESHOLD;
 use super::{CIndex, Entry, Index, QMatrix};
@@ -118,6 +120,81 @@ where
                 amp,
             });
         });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Adapter: symmetry-reduced basis
+// ---------------------------------------------------------------------------
+
+/// Adapts a `Hamiltonian` + [`SymBasis`] pair to [`RowSource`].
+///
+/// Same containment argument as [`BasisRows`], with one extra hop: the
+/// emitted states go through `get_refstate_batch` to find their orbit
+/// representatives before `index` turns them into row numbers. `B` still
+/// never leaves the method.
+pub struct SymRows<'a, H, B: BitInt, L, N: NormInt, C> {
+    ham: &'a H,
+    basis: &'a SymBasis<B, L, N>,
+    _pd: PhantomData<fn() -> C>,
+}
+
+impl<'a, H, B: BitInt, L, N: NormInt, C> SymRows<'a, H, B, L, N, C> {
+    pub fn new(ham: &'a H, basis: &'a SymBasis<B, L, N>) -> Self {
+        SymRows {
+            ham,
+            basis,
+            _pd: PhantomData,
+        }
+    }
+}
+
+/// Inline capacity for the per-row scratch buffers.
+const ROW_CAP: usize = 64;
+
+impl<H, B, L, N, C> RowSource for SymRows<'_, H, B, L, N, C>
+where
+    H: Operator<C> + Sync,
+    B: BitInt,
+    L: FermionicBitStateOp<B> + Sync,
+    N: NormInt,
+    C: CIndex,
+{
+    #[inline]
+    fn dim(&self) -> usize {
+        self.basis.size()
+    }
+
+    fn row_into(&self, row_idx: usize, out: &mut Vec<RawEntry>) {
+        let (state, norm) = self.basis.entry(row_idx);
+        let mut row_buf: SmallVec<[(C, Complex<f64>); ROW_CAP]> = SmallVec::new();
+        let mut new_states: SmallVec<[B; ROW_CAP]> = SmallVec::new();
+        let mut ref_out: SmallVec<[(B, Complex<f64>); ROW_CAP]> = SmallVec::new();
+
+        self.ham.apply(state, |cindex, amp, new_state| {
+            row_buf.push((cindex, amp));
+            new_states.push(new_state);
+        });
+
+        if new_states.is_empty() {
+            return;
+        }
+        ref_out.resize(new_states.len(), (new_states[0], Complex::new(1.0, 0.0)));
+        self.basis.get_refstate_batch(&new_states, &mut ref_out);
+
+        for ((cindex, amp), (ref_state, grp_char)) in row_buf.iter().zip(ref_out.iter()) {
+            // `B` dies here, same as in the plain path.
+            let Some(col) = self.basis.index(*ref_state) else {
+                continue;
+            };
+            let (_, new_norm) = self.basis.entry(col);
+            let scale = grp_char * (new_norm / norm).sqrt();
+            out.push(RawEntry {
+                col,
+                cindex: cindex.as_usize() as u32,
+                amp: amp * scale,
+            });
+        }
     }
 }
 
