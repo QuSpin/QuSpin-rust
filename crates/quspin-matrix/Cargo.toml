@@ -27,3 +27,8 @@ nalgebra = { workspace = true }
 [dev-dependencies]
 quspin-bitbasis = { path = "../quspin-bitbasis", features = ["test-graphs"] }
 quspin-core = { path = "../quspin-core" }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "build_matrix"
+harness = false

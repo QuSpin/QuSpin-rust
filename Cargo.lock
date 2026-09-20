@@ -1226,6 +1226,7 @@ name = "quspin-matrix"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "criterion",
  "nalgebra",
  "ndarray",
  "num-complex",
