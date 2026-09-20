@@ -86,7 +86,7 @@ pub use trit::TritBasisLargeInt;
 #[cfg(feature = "large-int")]
 pub use types::{B512, B1024, B2048, B4096, B8192};
 
-use crate::seed::{dit_state_to_str, state_to_str};
+use crate::seed::{MAX_LHSS, dit_state_to_str, state_to_str};
 use crate::space::{FullSpace, Subspace};
 use crate::spin::SpaceKind;
 use crate::sym::SymBasis;
@@ -390,9 +390,12 @@ impl GenericBasis {
         space_kind: SpaceKind,
         fermionic: bool,
     ) -> Result<Self, QuSpinError> {
-        if lhss < 2 {
+        // Upper bound as well as lower: `BITS_TABLE` / `MASK_TABLE` are
+        // `[_; 256]` indexed by `lhss`, so anything above `MAX_LHSS` indexes
+        // out of bounds and panics deep inside construction.
+        if !(2..=MAX_LHSS).contains(&lhss) {
             return Err(QuSpinError::ValueError(format!(
-                "lhss must be >= 2, got {lhss}"
+                "lhss must be in 2..={MAX_LHSS}, got {lhss}"
             )));
         }
         if fermionic && lhss != 2 {
@@ -1421,6 +1424,22 @@ mod tests {
     #[test]
     fn generic_basis_lhss1_errors() {
         assert!(GenericBasis::new(4, 1, SpaceKind::Sub, false).is_err());
+    }
+
+    #[test]
+    fn generic_basis_lhss_above_max_errors() {
+        // `BITS_TABLE` is `[_; 256]` indexed by `lhss`, so these used to panic
+        // with "index out of bounds" instead of returning an error.
+        assert!(GenericBasis::new(2, MAX_LHSS, SpaceKind::Full, false).is_ok());
+        for lhss in [MAX_LHSS + 1, 300, usize::MAX] {
+            match GenericBasis::new(2, lhss, SpaceKind::Sub, false) {
+                Err(QuSpinError::ValueError(m)) => {
+                    assert!(m.contains("lhss must be in"), "lhss={lhss}: {m}")
+                }
+                Err(e) => panic!("lhss={lhss}: unexpected error {e:?}"),
+                Ok(_) => panic!("lhss={lhss} should be rejected"),
+            }
+        }
     }
 
     #[test]

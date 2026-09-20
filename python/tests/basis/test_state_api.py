@@ -95,6 +95,35 @@ class TestStateIntRoundTrip:
         with pytest.raises(ValueError):
             basis.state_to_int("03")
 
+    def test_single_site_wide_occupation_round_trips(self):
+        # One site leaves no separator to split on, so "10" has to be read as
+        # a single token rather than two one-digit sites.
+        basis = BosonBasis.full(1, 12)
+        for s in basis.states:
+            assert basis.state_to_int(basis.int_to_state(s)) == s
+        assert basis.state_to_int("|11>") == 11
+
+
+class TestLhssBounds:
+    """`BITS_TABLE` / `MASK_TABLE` are `[_; 256]` indexed by ``lhss``."""
+
+    @pytest.mark.parametrize("lhss", [256, 300, 10_000])
+    @pytest.mark.parametrize("ctor", [GenericBasis.full, BosonBasis.full])
+    def test_construction_rejects_lhss_above_the_max(self, ctor, lhss):
+        # These used to panic with "index out of bounds" rather than raise.
+        with pytest.raises(ValueError, match="lhss must be in"):
+            ctor(2, lhss)
+
+    @pytest.mark.parametrize("ctor", [GenericBasis.full, BosonBasis.full])
+    def test_construction_accepts_the_max(self, ctor):
+        assert ctor(1, 255).Ns == 255
+
+    @pytest.mark.parametrize("lhss", [0, 1])
+    @pytest.mark.parametrize("ctor", [GenericBasis.full, BosonBasis.full])
+    def test_construction_rejects_lhss_below_two(self, ctor, lhss):
+        with pytest.raises(ValueError, match="lhss must be in"):
+            ctor(2, lhss)
+
 
 class TestIndex:
     @pytest.mark.parametrize("basis,n_sites,lhss", BASES)

@@ -15,6 +15,26 @@
 use quspin_bitbasis::{BitInt, manip::DynamicDitManip};
 use quspin_types::QuSpinError;
 
+/// Largest local Hilbert-space size the dit encoding supports.
+///
+/// One site occupation must fit in a `u8`, and
+/// [`DynamicDitManip`]'s bit/mask lookup tables are indexed by `lhss`.
+pub const MAX_LHSS: usize = 255;
+
+/// Reject an `lhss` outside the range the dit encoding can represent.
+///
+/// Without this the occupation bound check (`value < lhss`) would admit
+/// values that do not fit in a `u8`, and [`DynamicDitManip::new`] would
+/// panic further down.
+fn validate_lhss(lhss: usize) -> Result<(), QuSpinError> {
+    if !(2..=MAX_LHSS).contains(&lhss) {
+        return Err(QuSpinError::ValueError(format!(
+            "lhss={lhss} is out of range; the dit encoding supports 2..={MAX_LHSS}"
+        )));
+    }
+    Ok(())
+}
+
 /// Convert a `B` basis state to a `'0'`/`'1'` string.
 ///
 /// `output[i]` is `'1'` if bit `i` of `state` is set, `'0'` otherwise.
@@ -103,9 +123,12 @@ pub fn dit_seed_from_bytes<B: BitInt>(bytes: &[u8], manip: &DynamicDitManip) -> 
 /// Parse a decimal ASCII string into a site-occupation byte vector.
 ///
 /// `n_sites` is the expected length of `s`. Returns
-/// `QuSpinError::ValueError` if the length doesn't match, or if any
-/// character is not a valid decimal digit in range `0..lhss`.
+/// `QuSpinError::ValueError` if `lhss` is outside `2..=`[`MAX_LHSS`], if the
+/// length doesn't match, or if any character is not a valid decimal digit in
+/// range `0..lhss`.
 pub fn dit_seed_from_str(s: &str, n_sites: usize, lhss: usize) -> Result<Vec<u8>, QuSpinError> {
+    validate_lhss(lhss)?;
+
     let len = s.chars().count();
     if len != n_sites {
         return Err(QuSpinError::ValueError(format!(
@@ -149,26 +172,6 @@ pub fn strip_ket_notation(state_str: &str) -> Result<&str, QuSpinError> {
         (None, None) => Ok(trimmed),
         _ => Err(QuSpinError::ValueError(MISMATCH.to_string())),
     }
-}
-
-/// Largest local Hilbert-space size the dit encoding supports.
-///
-/// One site occupation must fit in a `u8`, and
-/// [`DynamicDitManip`]'s bit/mask lookup tables are indexed by `lhss`.
-pub const MAX_LHSS: usize = 255;
-
-/// Reject an `lhss` outside the range the dit encoding can represent.
-///
-/// Without this the occupation bound check (`value < lhss`) would admit
-/// values that do not fit in a `u8`, and [`DynamicDitManip::new`] would
-/// panic further down.
-fn validate_lhss(lhss: usize) -> Result<(), QuSpinError> {
-    if !(2..=MAX_LHSS).contains(&lhss) {
-        return Err(QuSpinError::ValueError(format!(
-            "lhss={lhss} is out of range; the dit encoding supports 2..={MAX_LHSS}"
-        )));
-    }
-    Ok(())
 }
 
 /// Parse a whitespace- or comma-separated state string into occupation bytes.
