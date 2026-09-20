@@ -34,235 +34,20 @@ use std::collections::HashMap;
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group};
-use quspin_bitbasis::benes::{BenesNetwork, gen_benes};
 use quspin_bitbasis::manip::DynamicDitManip;
 use quspin_types::BitInt;
 use ruint::Uint;
 
+mod common;
+use common::{Dyn, Rng, cyclic_network, states};
+
 const N_STATES: usize = 1024;
-
-// ===========================================================================
-// Dyn<CAP> -- runtime limb count, CAP limbs of inline capacity
-// ===========================================================================
-//
-// Same invariant as `multiword.rs`: `l[i] == 0` for all `i >= n`, with `n`
-// an upper bound rather than an exact count. `Eq`/`Ord`/`Hash` run over all
-// CAP limbs so identity never depends on the bound.
-
-#[derive(Clone, Copy, Debug)]
-pub struct Dyn<const CAP: usize> {
-    l: [u64; CAP],
-    n: u16,
-}
-
-impl<const CAP: usize> Default for Dyn<CAP> {
-    #[inline]
-    fn default() -> Self {
-        Dyn {
-            l: [0u64; CAP],
-            n: 0,
-        }
-    }
-}
-
-impl<const CAP: usize> PartialEq for Dyn<CAP> {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.l == other.l
-    }
-}
-impl<const CAP: usize> Eq for Dyn<CAP> {}
-impl<const CAP: usize> std::hash::Hash for Dyn<CAP> {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.l.hash(state);
-    }
-}
-impl<const CAP: usize> Ord for Dyn<CAP> {
-    #[inline]
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        for i in (0..CAP).rev() {
-            match self.l[i].cmp(&other.l[i]) {
-                std::cmp::Ordering::Equal => continue,
-                ord => return ord,
-            }
-        }
-        std::cmp::Ordering::Equal
-    }
-}
-impl<const CAP: usize> PartialOrd for Dyn<CAP> {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-macro_rules! dyn_bitop {
-    ($tr:ident, $m:ident, $op:tt, $bound:expr) => {
-        impl<const CAP: usize> std::ops::$tr for Dyn<CAP> {
-            type Output = Self;
-            #[inline]
-            fn $m(self, rhs: Self) -> Self {
-                let f: fn(u16, u16) -> u16 = $bound;
-                let n = f(self.n, rhs.n);
-                let mut o = [0u64; CAP];
-                for i in 0..(n as usize) {
-                    o[i] = self.l[i] $op rhs.l[i];
-                }
-                Dyn { l: o, n }
-            }
-        }
-    };
-}
-dyn_bitop!(BitAnd, bitand, &, |a, b| a.min(b));
-dyn_bitop!(BitOr, bitor, |, |a, b| a.max(b));
-dyn_bitop!(BitXor, bitxor, ^, |a, b| a.max(b));
-
-impl<const CAP: usize> std::ops::Not for Dyn<CAP> {
-    type Output = Self;
-    #[inline]
-    fn not(self) -> Self {
-        let mut o = [0u64; CAP];
-        for i in 0..CAP {
-            o[i] = !self.l[i];
-        }
-        Dyn {
-            l: o,
-            n: CAP as u16,
-        }
-    }
-}
-
-impl<const CAP: usize> std::ops::Shl<usize> for Dyn<CAP> {
-    type Output = Self;
-    #[inline]
-    fn shl(self, s: usize) -> Self {
-        let (ls, bs) = (s / 64, s % 64);
-        let n = ((self.n as usize + ls + 1).min(CAP)) as u16;
-        let mut o = [0u64; CAP];
-        for i in (0..(n as usize)).rev() {
-            if i < ls {
-                break;
-            }
-            let lo = self.l[i - ls];
-            let hi = if bs == 0 || i == ls {
-                0
-            } else {
-                self.l[i - ls - 1] >> (64 - bs)
-            };
-            o[i] = (lo << bs) | hi;
-        }
-        Dyn { l: o, n }
-    }
-}
-
-impl<const CAP: usize> std::ops::Shr<usize> for Dyn<CAP> {
-    type Output = Self;
-    #[inline]
-    fn shr(self, s: usize) -> Self {
-        let (ls, bs) = (s / 64, s % 64);
-        let n = self.n;
-        let mut o = [0u64; CAP];
-        for i in 0..(n as usize) {
-            if i + ls >= CAP {
-                break;
-            }
-            let lo = self.l[i + ls];
-            let hi = if bs == 0 || i + ls + 1 >= CAP {
-                0
-            } else {
-                self.l[i + ls + 1] << (64 - bs)
-            };
-            o[i] = (lo >> bs) | hi;
-        }
-        Dyn { l: o, n }
-    }
-}
-
-macro_rules! impl_bitint_dyn {
-    ($cap:expr, $bits:expr, $ld:expr) => {
-        impl BitInt for Dyn<$cap> {
-            const BITS: u32 = $bits;
-            const LD_BITS: u32 = $ld;
-            const BYTES: u32 = $bits / 8;
-            #[inline]
-            fn from_u64(v: u64) -> Self {
-                let mut l = [0u64; $cap];
-                l[0] = v;
-                Dyn {
-                    l,
-                    n: if v == 0 { 0 } else { 1 },
-                }
-            }
-            #[inline]
-            fn to_usize(self) -> usize {
-                self.l[0] as usize
-            }
-            #[inline]
-            fn count_ones(self) -> u32 {
-                self.l[..self.n as usize]
-                    .iter()
-                    .map(|x| x.count_ones())
-                    .sum()
-            }
-        }
-    };
-}
-impl_bitint_dyn!(8, 512, 9);
-impl_bitint_dyn!(16, 1024, 10);
-impl_bitint_dyn!(32, 2048, 11);
-impl_bitint_dyn!(64, 4096, 12);
-
-// ===========================================================================
-// Fixtures
-// ===========================================================================
-
-struct Rng(u64);
-impl Rng {
-    fn next(&mut self) -> u64 {
-        let mut x = self.0;
-        x ^= x >> 12;
-        x ^= x << 25;
-        x ^= x >> 27;
-        self.0 = x;
-        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
-    }
-}
-
-/// States occupying the low `n_sites` bits, spread across limbs.
-fn states<B: BitInt>(n_sites: usize) -> Vec<B> {
-    let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
-    let mut out = Vec::with_capacity(N_STATES);
-    for _ in 0..N_STATES {
-        let mut s = B::from_u64(0);
-        // Fill every 64-bit window the site count reaches.
-        for w in 0..n_sites.div_ceil(64) {
-            let bits_here = (n_sites - w * 64).min(64);
-            let mask = if bits_here == 64 {
-                u64::MAX
-            } else {
-                (1u64 << bits_here) - 1
-            };
-            s = s | (B::from_u64(rng.next() & mask) << (w * 64));
-        }
-        out.push(s);
-    }
-    out
-}
-
-fn cyclic_network<B: BitInt>(n_sites: usize) -> BenesNetwork<B> {
-    let mut tgt: Vec<Option<usize>> = vec![None; B::BITS as usize];
-    for dst in 0..n_sites {
-        tgt[dst] = Some((dst + n_sites - 1) % n_sites);
-    }
-    gen_benes::<B>(&tgt)
-}
 
 type G<'a> = criterion::BenchmarkGroup<'a, criterion::measurement::WallTime>;
 
 fn run_benes<B: BitInt>(g: &mut G<'_>, name: &str, n_sites: usize) {
     let net = cyclic_network::<B>(n_sites);
-    let st = states::<B>(n_sites);
+    let st = states::<B>(n_sites, N_STATES);
     g.bench_with_input(BenchmarkId::from_parameter(name), &st, |b, st| {
         b.iter(|| {
             let mut acc = B::from_u64(0);
@@ -276,7 +61,7 @@ fn run_benes<B: BitInt>(g: &mut G<'_>, name: &str, n_sites: usize) {
 
 fn run_dit<B: BitInt>(g: &mut G<'_>, name: &str, n_sites: usize) {
     let manip = DynamicDitManip::new(2);
-    let st = states::<B>(n_sites);
+    let st = states::<B>(n_sites, N_STATES);
     g.bench_with_input(BenchmarkId::from_parameter(name), &st, |b, st| {
         b.iter(|| {
             let mut acc = 0usize;
@@ -295,7 +80,7 @@ fn run_dit<B: BitInt>(g: &mut G<'_>, name: &str, n_sites: usize) {
 }
 
 fn run_map<B: BitInt>(g: &mut G<'_>, name: &str, n_sites: usize) {
-    let st = states::<B>(n_sites);
+    let st = states::<B>(n_sites, N_STATES);
     g.bench_with_input(BenchmarkId::from_parameter(name), &st, |b, st| {
         b.iter(|| {
             let mut m: HashMap<B, usize> = HashMap::with_capacity(st.len());
@@ -425,8 +210,8 @@ where
     for &n_sites in &[64usize, W / 2] {
         let nu = cyclic_network::<Uint<W, L>>(n_sites);
         let nd = cyclic_network::<Dyn<L>>(n_sites);
-        let su = states::<Uint<W, L>>(n_sites);
-        let sd = states::<Dyn<L>>(n_sites);
+        let su = states::<Uint<W, L>>(n_sites, N_STATES);
+        let sd = states::<Dyn<L>>(n_sites, N_STATES);
         assert_eq!(su.len(), sd.len());
         for (u, d) in su.iter().zip(sd.iter()) {
             assert_eq!(*u.as_limbs(), d.l, "fixture mismatch @ W={W}");
