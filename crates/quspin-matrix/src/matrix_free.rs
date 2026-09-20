@@ -73,6 +73,8 @@ where
 fn validate<B, S>(
     num_cindices: usize,
     coeffs_len: usize,
+    op_lhss: usize,
+    op_max_site: usize,
     space: &S,
     vec_lens: &[(usize, &str)],
 ) -> Result<(), QuSpinError>
@@ -83,6 +85,18 @@ where
     if coeffs_len != num_cindices {
         return Err(QuSpinError::ValueError(format!(
             "coeffs.len() = {coeffs_len} but operator has {num_cindices} cindices"
+        )));
+    }
+    if op_lhss != space.lhss() {
+        return Err(QuSpinError::ValueError(format!(
+            "operator lhss={op_lhss} does not match basis lhss={}",
+            space.lhss()
+        )));
+    }
+    if op_max_site >= space.n_sites() {
+        return Err(QuSpinError::ValueError(format!(
+            "operator references site {op_max_site} but basis has only {} sites",
+            space.n_sites()
         )));
     }
     for &(len, name) in vec_lens {
@@ -120,6 +134,8 @@ where
     validate(
         op.num_cindices(),
         coeffs.len(),
+        op.lhss(),
+        op.max_site(),
         space,
         &[(input.len(), "input"), (output.len(), "output")],
     )?;
@@ -172,7 +188,14 @@ where
     C: CIndex,
     S: BasisSpace<B> + ExpandRefState<B, C64, C64> + ProjectState<B> + Sync,
 {
-    validate(op.num_cindices(), coeffs.len(), space, &[])?;
+    validate(
+        op.num_cindices(),
+        coeffs.len(),
+        op.lhss(),
+        op.max_site(),
+        space,
+        &[],
+    )?;
 
     let diag = |i: usize| {
         let mut acc = C64::default();
@@ -218,7 +241,14 @@ where
     C: CIndex,
     S: BasisSpace<B> + ExpandRefState<B, C64, C64> + ProjectState<B> + Sync,
 {
-    validate(op.num_cindices(), coeffs.len(), space, &[])?;
+    validate(
+        op.num_cindices(),
+        coeffs.len(),
+        op.lhss(),
+        op.max_site(),
+        space,
+        &[],
+    )?;
 
     let col_sum = |i: usize| {
         let mut entries: SmallVec<[(usize, C64); 16]> = SmallVec::new();

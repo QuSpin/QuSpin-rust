@@ -177,3 +177,92 @@ class TestEmptyCoefficientGroups:
         """The error message points here; make sure it actually works."""
         op = SpinOperator([("z", [[0.0, 0]])], [("z", [[1.0, 1]])], lhss=3)
         assert op.num_cindices == 2
+
+
+# ---------------------------------------------------------------------------
+# apply() / apply_and_project_to() — validated in the Rust kernel, so every
+# operator wrapper is covered, not just the ones with a Python-side check
+# ---------------------------------------------------------------------------
+
+
+class TestApplyValidation:
+    @staticmethod
+    def _run(op, basis, n_coeffs=1):
+        out = np.zeros(basis.size, dtype=np.complex128)
+        op.apply(
+            basis,
+            np.ones(n_coeffs, dtype=np.complex128),
+            np.ones(basis.size, dtype=np.complex128),
+            out,
+            True,
+        )
+        return out
+
+    def test_apply_rejects_lhss_mismatch(self):
+        op = SpinOperator([("z", [[1.0, 0]])], lhss=3)
+        with pytest.raises(ValueError, match="lhss"):
+            self._run(op, SpinBasis.full(1, 4))
+
+    def test_apply_rejects_lhss_mismatch_for_pauli(self):
+        """Pauli assumes two levels; an lhss=3 basis must not be accepted."""
+        op = PauliOperator([("z", [[1.0, 0]])])
+        with pytest.raises(ValueError, match="lhss"):
+            self._run(op, SpinBasis.full(1, 3))
+
+    def test_apply_rejects_site_past_end(self):
+        op = SpinOperator([("z", [[1.0, 9]])], lhss=3)
+        with pytest.raises(ValueError, match="site"):
+            self._run(op, SpinBasis.full(2, 3))
+
+    def test_apply_still_works_when_compatible(self):
+        op = SpinOperator([("z", [[1.0, 0]])], lhss=3)
+        out = self._run(op, SpinBasis.full(2, 3))
+        assert np.isfinite(out).all()
+
+    def test_apply_and_project_to_rejects_lhss_mismatch(self):
+        op = SpinOperator([("z", [[1.0, 0]])], lhss=3)
+        basis = SpinBasis.full(1, 4)
+        out = np.zeros(basis.size, dtype=np.complex128)
+        with pytest.raises(ValueError, match="lhss"):
+            op.apply_and_project_to(
+                basis,
+                basis,
+                np.ones(1, dtype=np.complex128),
+                np.ones(basis.size, dtype=np.complex128),
+                out,
+                True,
+            )
+
+
+# ---------------------------------------------------------------------------
+# lhss upper bound
+# ---------------------------------------------------------------------------
+
+
+class TestLhssUpperBound:
+    """Above 255 the dit encoding asserts; that used to surface as a panic."""
+
+    @pytest.mark.parametrize("lhss", [256, 300, 1000])
+    def test_spin_operator_rejects_lhss_above_limit(self, lhss: int):
+        with pytest.raises(ValueError, match="2..=255"):
+            SpinOperator([("z", [[1.0, 0]])], lhss=lhss)
+
+    @pytest.mark.parametrize("lhss", [256, 1000])
+    def test_boson_operator_rejects_lhss_above_limit(self, lhss: int):
+        with pytest.raises(ValueError, match="2..=255"):
+            BosonOperator([("n", [[1.0, 0]])], lhss=lhss)
+
+    @pytest.mark.parametrize("lhss", [0, 1])
+    def test_lhss_below_two_still_rejected(self, lhss: int):
+        with pytest.raises(ValueError, match="2..=255"):
+            SpinOperator([("z", [[1.0, 0]])], lhss=lhss)
+
+    def test_lhss_at_the_limit_is_accepted(self):
+        assert SpinOperator([("z", [[1.0, 0]])], lhss=255).lhss == 255
+
+    def test_matches_the_basis_constructors(self):
+        """Operators and bases now reject the same range."""
+        with pytest.raises(ValueError, match="2..=255"):
+            SpinBasis.full(1, 256)
+        with pytest.raises(ValueError, match="2..=255"):
+            SpinOperator([("z", [[1.0, 0]])], lhss=256)

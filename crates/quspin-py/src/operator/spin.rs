@@ -26,8 +26,13 @@ impl PySpinOperator {
     #[new]
     #[pyo3(signature = (*terms, lhss))]
     fn new(py: Python<'_>, terms: Terms, lhss: usize) -> PyResult<Self> {
-        if lhss < 2 {
-            return Err(pyo3::exceptions::PyValueError::new_err("lhss must be >= 2"));
+        // Upper bound matches `DynamicDitManip`, which asserts rather than
+        // erroring — without this the constructor raises a PanicException.
+        // The `*Basis` constructors already reject the same range.
+        if !(2..=255).contains(&lhss) {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "lhss must be in 2..=255, got {lhss}"
+            )));
         }
         let max_cindex = terms.len().saturating_sub(1);
         let max_site = max_site_from_terms(py, &terms)?;

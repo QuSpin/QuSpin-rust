@@ -60,7 +60,11 @@ pub trait OperatorDispatch {
         overwrite: bool,
     ) -> Result<(), QuSpinError>;
 
-    /// Number of distinct cindex values — the required `coeffs` length.
+    /// Required `coeffs` length: the largest cindex plus one.
+    ///
+    /// Not the count of distinct values — the two differ when the cindex
+    /// sequence has a gap, and sizing `coeffs` by the count would leave
+    /// every later lookup out of bounds.
     fn num_cindices(&self) -> usize;
 
     /// Local Hilbert-space size the operator's matrix elements assume.

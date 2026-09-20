@@ -135,7 +135,7 @@ pub struct BosonOperator<C> {
     manip: DynamicDitManip,
     /// Maximum site index across all operator strings (inferred from terms).
     max_site: usize,
-    /// Number of distinct cindex values.
+    /// Required `coeffs` length: the largest cindex plus one.
     num_cindices: usize,
 }
 

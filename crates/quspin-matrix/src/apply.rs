@@ -78,6 +78,8 @@ where
     validate_args(
         op.num_cindices(),
         coeffs.len(),
+        op.lhss(),
+        op.max_site(),
         input_space.n_sites(),
         input_space.lhss(),
         input_space.size(),
@@ -247,6 +249,8 @@ where
 fn validate_args(
     num_cindices: usize,
     coeffs_len: usize,
+    op_lhss: usize,
+    op_max_site: usize,
     input_n_sites: usize,
     input_lhss: usize,
     input_size: usize,
@@ -259,6 +263,23 @@ fn validate_args(
     if coeffs_len != num_cindices {
         return Err(QuSpinError::ValueError(format!(
             "coeffs.len() = {coeffs_len} but operator has {num_cindices} cindices"
+        )));
+    }
+    // The operator must agree with the space it is applied to. Nothing below
+    // checks this: a mismatched `lhss` reads the basis' dit digits with the
+    // wrong local dimension, and a site index past the end of the lattice
+    // reads as 0 and folds back in as a phantom diagonal term. Both give
+    // wrong numbers rather than an error.
+    if op_lhss != input_lhss {
+        return Err(QuSpinError::ValueError(format!(
+            "operator lhss={op_lhss} does not match basis lhss={input_lhss}"
+        )));
+    }
+    if op_max_site >= input_n_sites {
+        return Err(QuSpinError::ValueError(format!(
+            "operator references site {op_max_site} but basis has only \
+             {input_n_sites} sites (max valid index is {})",
+            input_n_sites.saturating_sub(1),
         )));
     }
     if input_n_sites != output_n_sites {
