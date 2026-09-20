@@ -375,14 +375,48 @@ impl<B: BitInt> BenesPermDitLocations<B> {
     pub fn new(lhss: usize, perm: &[usize], fermionic: bool) -> Self {
         let n_sites = perm.len();
 
-        // bits_per_dit = ceil(log2(lhss))
-        let bits_per_dit = if lhss <= 1 {
-            0
-        } else {
-            (usize::BITS - (lhss - 1).leading_zeros()) as usize
-        };
+        // Validate before building, as `PermDitLocations::new` does. Without
+        // this, a repeated destination silently drops a source and surfaces
+        // much later as `gen_benes` rejecting a duplicate in the bit-level
+        // map it derived — an array the caller never constructed.
+        let mut seen = vec![false; n_sites];
+        for (src, &dst) in perm.iter().enumerate() {
+            assert!(
+                dst < n_sites,
+                "perm[{src}]={dst} is out of range 0..{n_sites}"
+            );
+            assert!(
+                !seen[dst],
+                "perm[{src}]={dst} repeats a destination; `perm` must be a permutation"
+            );
+            seen[dst] = true;
+        }
 
-        let bits = B::BITS as usize;
+        // bits_per_dit = ceil(log2(lhss))
+        assert!(
+            lhss >= 2,
+            "lhss must be at least 2, got {lhss}: a site with fewer than two \
+             local states has no bits to permute"
+        );
+        let bits_per_dit = (usize::BITS - (lhss - 1).leading_zeros()) as usize;
+
+        // Size the network to the bits the permutation actually reaches, not
+        // to the storage width. The permuted region is the low
+        // `n_sites * bits_per_dit` bits; a Benes network addresses a
+        // power-of-two block, so round that up. Bits above the block are
+        // left untouched by construction (see `gen_benes`), which is what
+        // makes the short network substitutable for a full-width one.
+        //
+        // This is worth roughly 2x on wide integers: a 64-site permutation
+        // in a 4096-bit container costs 6 butterfly stages here instead of
+        // `B::LD_BITS` = 12.
+        let bits = (n_sites * bits_per_dit).next_power_of_two().max(2);
+        assert!(
+            bits <= B::BITS as usize,
+            "{n_sites} sites x {bits_per_dit} bits/dit need a {bits}-bit network, \
+             wider than B::BITS = {}",
+            B::BITS
+        );
 
         // Build bit-level target permutation.
         // Convention: c_tgt[dst_bit] = src_bit (output bit dst comes from input bit src).
@@ -584,6 +618,77 @@ mod tests {
                 "mismatch for s={s:#06b}"
             );
         }
+    }
+
+    /// The network width is `n_sites * bits_per_dit` rounded up, but every
+    /// other test here uses `lhss = 2`, where `bits_per_dit` is 1 and the
+    /// factor disappears. These pin the multi-bit-per-site path against the
+    /// naive implementation, which does not go through a Benes network.
+    #[test]
+    fn benes_perm_dit_locations_matches_naive_multibit() {
+        // (lhss, bits_per_dit): 3 and 4 need 2 bits, 5..=8 need 3.
+        for &lhss in &[3usize, 4, 5, 8] {
+            for perm in [
+                vec![1usize, 2, 0],
+                vec![2usize, 0, 1],
+                vec![1usize, 0, 3, 2],
+                vec![3usize, 2, 1, 0],
+                vec![4usize, 3, 0, 1, 2],
+            ] {
+                let n = perm.len();
+                let benes = BenesPermDitLocations::<u64>::new(lhss, &perm, false);
+                let naive = PermDitLocations::new(lhss, &perm);
+                // Enumerate every state of the first few sites; higher dits
+                // stay zero, so this stays cheap while covering carries
+                // across dit boundaries.
+                let manip = DynamicDitManip::new(lhss);
+                for dense in 0..lhss.pow(n.min(4) as u32) {
+                    let state: u64 = manip.state_from_dense(dense, n);
+                    assert_eq!(
+                        BitStateOp::apply(&benes, state),
+                        BitStateOp::apply(&naive, state),
+                        "lhss={lhss} perm={perm:?} state={state:#b}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Bits above the permuted region must survive, which is the property
+    /// that makes the shortened network substitutable. With `lhss > 2` the
+    /// region is `n_sites * bits_per_dit` wide, not `n_sites`.
+    #[test]
+    fn benes_perm_dit_locations_leaves_high_bits_untouched_multibit() {
+        let (lhss, n) = (4usize, 5); // 2 bits/dit -> 10 live bits, 16-slot net
+        let perm: Vec<usize> = (0..n).map(|d| (d + n - 1) % n).collect();
+        let op = BenesPermDitLocations::<u64>::new(lhss, &perm, false);
+        let live = n * 2;
+        let mut rng: u64 = 0x0BAD_C0FF_EE0D_DF00;
+        for _ in 0..500 {
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let out = BitStateOp::apply(&op, rng);
+            assert_eq!(out >> live, rng >> live, "bits above {live} changed");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "repeats a destination")]
+    fn benes_perm_dit_locations_rejects_duplicate_destination() {
+        let _ = BenesPermDitLocations::<u64>::new(2, &[0, 0], false);
+    }
+
+    #[test]
+    #[should_panic(expected = "out of range")]
+    fn benes_perm_dit_locations_rejects_out_of_range() {
+        let _ = BenesPermDitLocations::<u64>::new(2, &[0, 5], false);
+    }
+
+    #[test]
+    #[should_panic(expected = "lhss must be at least 2")]
+    fn benes_perm_dit_locations_rejects_degenerate_lhss() {
+        let _ = BenesPermDitLocations::<u64>::new(1, &[1, 0], false);
     }
 
     #[test]

@@ -42,7 +42,7 @@ All four crates at the mid level (`quspin-operator`, `quspin-basis`, `quspin-exp
 
 ### Key design rules
 
-- **No runtime dispatch at crate boundaries.** `*OperatorInner` enums dispatch the cindex-width choice (`u8` vs `u16`) but that's it. The only `dyn Trait` is `DynLinearOperator<V> = Box<dyn LinearOperator<V> + Send + Sync>`.
+- **No runtime dispatch at crate boundaries.** `*OperatorInner` enums dispatch the cindex-width choice (`u8` vs `u16`) but that's it. The only `dyn Trait` **across a crate boundary** is `DynLinearOperator<V> = Box<dyn LinearOperator<V> + Send + Sync>`. One crate-internal exception exists: `RowSource` in `quspin-matrix::qmatrix::rowsource` (a `pub(crate)` module), where `build_raw_rows` takes `&dyn RowSource`. It is deliberate and load-bearing — matrix building is generic over six type parameters (`M` × `I` × `C` × `B` × space × family), and putting the rayon `collect` and the per-row sort behind a trait object is what stops that product from multiplying rayon's job machinery and `pdqsort`. It cut `quspin-matrix`'s rlib 59% and its compile time 48%. Erasing `B`/`S`/`C` is sound because the state integer never escapes a row build. Do not widen this exception without the same kind of measurement.
 - **Static dispatch across crate boundaries** via generics. Rust monomorphises at link time.
 - `quspin-core` is a pure facade — never add logic there. Add to the focused crate that owns the domain.
 - **`StateGraph` trait** (in `quspin-bitbasis`) is the connectivity abstraction `SpinBasis::build` / `BosonBasis::build` / `FermionBasis::build` / `GenericBasis::build` take. Every `*Operator<C>` and `*OperatorInner` impls it — callers do `basis.build(&op.inner, seeds)` or `basis.build(&op, seeds)`.

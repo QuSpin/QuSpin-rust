@@ -1,6 +1,5 @@
-use super::matrix::PARALLEL_DIM_THRESHOLD;
-use super::{CIndex, Entry, Index, QMatrix};
-use num_complex::Complex;
+use super::rowsource::{BasisRows, SymRows, build_qmatrix};
+use super::{CIndex, Index, QMatrix};
 use quspin_basis::dispatch::{
     B128, B256, BitBasis, BitBasisDefault, DitBasis, DynDitBasis, DynDitBasisDefault, GenericBasis,
     QuatBasis, QuatBasisDefault, TritBasis, TritBasisDefault,
@@ -19,24 +18,6 @@ use quspin_bitbasis::{
 };
 use quspin_operator::Operator;
 use quspin_types::Primitive;
-use rayon::prelude::*;
-use smallvec::SmallVec;
-
-/// Assemble a `QMatrix` from per-row entry vectors.
-fn rows_to_qmatrix<M: Primitive, I: Index, C: CIndex>(
-    dim: usize,
-    rows: Vec<Vec<Entry<M, I, C>>>,
-) -> QMatrix<M, I, C> {
-    let total_nnz: usize = rows.iter().map(|r| r.len()).sum();
-    let mut indptr = Vec::with_capacity(dim + 1);
-    let mut data = Vec::with_capacity(total_nnz);
-    indptr.push(I::from_usize(0));
-    for row in rows {
-        data.extend_from_slice(&row);
-        indptr.push(I::from_usize(data.len()));
-    }
-    QMatrix::from_csr(indptr, data)
-}
 
 // ---------------------------------------------------------------------------
 // Build from non-symmetric basis (FullSpace or Subspace)
@@ -52,37 +33,8 @@ where
     C: CIndex + Copy + Ord,
     S: BasisSpace<B> + Sync,
 {
-    let dim = basis.size();
-
-    let build_row = |row_idx: usize| -> Vec<Entry<M, I, C>> {
-        let state = basis.state_at(row_idx);
-        let mut entries: Vec<Entry<M, I, C>> = Vec::new();
-        ham.apply(state, |cindex, amp, new_state| {
-            let Some(col_idx) = basis.index(new_state) else {
-                return;
-            };
-            let col = I::from_usize(col_idx);
-            let value = M::from_complex(amp);
-            let existing = entries
-                .iter_mut()
-                .find(|e| e.col == col && e.cindex == cindex);
-            if let Some(e) = existing {
-                e.value = M::from_complex(e.value.to_complex() + amp);
-            } else {
-                entries.push(Entry::new(value, col, cindex));
-            }
-        });
-        entries.sort_unstable_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));
-        entries
-    };
-
-    let rows: Vec<Vec<Entry<M, I, C>>> = if dim >= PARALLEL_DIM_THRESHOLD {
-        (0..dim).into_par_iter().map(build_row).collect()
-    } else {
-        (0..dim).map(build_row).collect()
-    };
-
-    rows_to_qmatrix(dim, rows)
+    let src = BasisRows::<H, B, C, S>::new(ham, basis);
+    build_qmatrix(&src)
 }
 
 // ---------------------------------------------------------------------------
@@ -103,55 +55,8 @@ where
     I: Index,
     C: CIndex + Copy + Ord,
 {
-    let dim = basis.size();
-    const ROW_CAP: usize = 64;
-
-    let build_row = |row_idx: usize| -> Vec<Entry<M, I, C>> {
-        let (state, norm) = basis.entry(row_idx);
-        let mut row_buf: SmallVec<[(C, Complex<f64>); ROW_CAP]> = SmallVec::new();
-        let mut new_states: SmallVec<[B; ROW_CAP]> = SmallVec::new();
-        let mut ref_out: SmallVec<[(B, Complex<f64>); ROW_CAP]> = SmallVec::new();
-        let mut entries: Vec<Entry<M, I, C>> = Vec::new();
-
-        ham.apply(state, |cindex, amp, new_state| {
-            row_buf.push((cindex, amp));
-            new_states.push(new_state);
-        });
-
-        if !new_states.is_empty() {
-            ref_out.resize(new_states.len(), (new_states[0], Complex::new(1.0, 0.0)));
-            basis.get_refstate_batch(&new_states, &mut ref_out);
-
-            for ((cindex, amp), (ref_state, grp_char)) in row_buf.iter().zip(ref_out.iter()) {
-                let Some(col_idx) = basis.index(*ref_state) else {
-                    continue;
-                };
-                let (_, new_norm) = basis.entry(col_idx);
-                let scale = grp_char * (new_norm / norm).sqrt();
-                let full_amp = amp * scale;
-                let col = I::from_usize(col_idx);
-                let value = M::from_complex(full_amp);
-                let existing = entries
-                    .iter_mut()
-                    .find(|e| e.col == col && e.cindex == *cindex);
-                if let Some(e) = existing {
-                    e.value = M::from_complex(e.value.to_complex() + full_amp);
-                } else {
-                    entries.push(Entry::new(value, col, *cindex));
-                }
-            }
-        }
-        entries.sort_unstable_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));
-        entries
-    };
-
-    let rows: Vec<Vec<Entry<M, I, C>>> = if dim >= PARALLEL_DIM_THRESHOLD {
-        (0..dim).into_par_iter().map(build_row).collect()
-    } else {
-        (0..dim).map(build_row).collect()
-    };
-
-    rows_to_qmatrix(dim, rows)
+    let src = SymRows::<H, B, L, N, C>::new(ham, basis);
+    build_qmatrix(&src)
 }
 
 // ---------------------------------------------------------------------------
