@@ -866,10 +866,7 @@ mod tests {
     fn sym_basis_two_site_reflection_odd_parity_has_single_state() {
         let mut basis = SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(2, 2, false);
         basis
-            .add_symmetry(
-                Complex::new(-1.0, 0.0),
-                crate::SymElement::lattice(&[1, 0]),
-            )
+            .add_symmetry(Complex::new(-1.0, 0.0), crate::SymElement::lattice(&[1, 0]))
             .unwrap();
         basis.build(0u32, &x_op(2)).unwrap();
 

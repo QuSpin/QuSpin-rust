@@ -1,15 +1,15 @@
+use crate::basis::state_int::{py_int_to_state_bytes, state_bytes_to_py_int, states_to_pyarray};
+use crate::basis::state_vec::{project_bit, reject_sparse};
 use crate::basis::{
-    group_n_sites_lhss, parse_seeds, parse_state_str, py_any_to_c64_vec, py_int_to_state_bytes,
-    replay_group_into_bit, state_bytes_to_py_int, state_bytes_to_state_string,
-    state_vec_to_pyarray,
-    validate_op_max_site,
+    group_n_sites_lhss, parse_seeds, parse_state_str, replay_group_into_bit, validate_op_max_site,
 };
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::fermion::PyFermionOperator;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use quspin_core::project_to_bit as project_between_bit_bases;
+use quspin_core::basis::dispatch::BitBasis;
+use quspin_core::basis::seed::state_to_display_str;
 use quspin_core::basis::{FermionBasis, SpaceKind};
 
 /// Python-facing fermionic basis.
@@ -40,6 +40,16 @@ fn build_fermion_basis(
         ));
     }
     Ok(())
+}
+
+impl PyFermionBasis {
+    /// The unrestricted fermionic Hilbert space with the same `n_sites`, used
+    /// as the other end of `project_to` / `project_from`.
+    fn full_basis(&self) -> PyResult<BitBasis> {
+        BitBasis::new(self.inner.inner.n_sites(), SpaceKind::Full, true)
+            .map_err(Error::from)
+            .map_err(PyErr::from)
+    }
 }
 
 #[pymethods]
@@ -132,6 +142,17 @@ impl PyFermionBasis {
         self.inner.inner.is_built()
     }
 
+    /// Integer representation of every basis state, in array-index order.
+    ///
+    /// Matches the "integer repr." column of `print(basis)`.
+    #[getter]
+    fn states(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let decimals: Vec<String> = (0..self.inner.inner.size())
+            .map(|i| self.inner.inner.state_at_decimal_str(i))
+            .collect();
+        states_to_pyarray(py, &decimals)
+    }
+
     // ------------------------------------------------------------------
     // Methods
     // ------------------------------------------------------------------
@@ -148,11 +169,15 @@ impl PyFermionBasis {
     }
 
     /// Return the integer representation of `state_str`.
+    ///
+    /// Accepts ket notation (`"|01>"`), a plain bit-string (`"01"`), and
+    /// whitespace- or comma-separated occupations (`"0 1"`, `"0,1"`).
     fn state_to_int(&self, py: Python<'_>, state_str: &str) -> PyResult<Py<PyAny>> {
         let bytes = parse_state_str(state_str, self.inner.inner.n_sites(), 2)?;
         state_bytes_to_py_int(py, &bytes, 2)
     }
 
+    /// Return the Fock-state string for an integer-encoded state.
     #[pyo3(signature = (state_int, bracket_notation = true))]
     fn int_to_state(
         &self,
@@ -160,7 +185,7 @@ impl PyFermionBasis {
         bracket_notation: bool,
     ) -> PyResult<String> {
         let bytes = py_int_to_state_bytes(state_int, self.inner.inner.n_sites(), 2)?;
-        Ok(state_bytes_to_state_string(&bytes, bracket_notation))
+        Ok(state_to_display_str(&bytes, bracket_notation))
     }
 
     /// Return the index of `state_str` in this basis, or `None` if absent.
@@ -182,68 +207,34 @@ impl PyFermionBasis {
 
     /// Project a full-basis vector into this basis.
     ///
-    /// The `sparse` argument is accepted for API compatibility and currently
-    /// ignored; this method returns a dense `numpy.ndarray`.
-    #[pyo3(signature = (state, sparse = true))]
+    /// `sparse=True` is not implemented yet and raises `NotImplementedError`
+    /// rather than silently returning a dense array.
+    #[pyo3(signature = (state, sparse = false))]
     fn project_to(
         &self,
         py: Python<'_>,
         state: &Bound<'_, PyAny>,
         sparse: bool,
     ) -> PyResult<Py<PyAny>> {
-        let _ = sparse;
-
-        let in_vec = py_any_to_c64_vec(state)?;
-        let full_basis = quspin_core::basis::BitBasis::new(
-            self.inner.inner.n_sites(),
-            SpaceKind::Full,
-            true,
-        )
-        .map_err(Error::from)?;
-
-        let out_rows = self.inner.inner.size();
-        let mut out_vec = vec![num_complex::Complex::<f64>::new(0.0, 0.0); out_rows * in_vec.ncols];
-        for col in 0..in_vec.ncols {
-            let in_col = &in_vec.data[col * in_vec.nrows..(col + 1) * in_vec.nrows];
-            let out_col = &mut out_vec[col * out_rows..(col + 1) * out_rows];
-            project_between_bit_bases(&full_basis, &self.inner.inner, in_col, out_col, true)
-                .map_err(Error::from)?;
-        }
-
-        Ok(state_vec_to_pyarray(py, &out_vec, in_vec.is_complex, out_rows, in_vec.ncols, in_vec.is_matrix))
+        reject_sparse(sparse)?;
+        let full_basis = self.full_basis()?;
+        project_bit(py, &full_basis, &self.inner.inner, state)
     }
 
     /// Expand a vector in this basis to the full Hilbert-space basis.
     ///
-    /// The `sparse` argument is accepted for API compatibility and currently
-    /// ignored; this method returns a dense `numpy.ndarray`.
-    #[pyo3(signature = (state, sparse = true))]
+    /// `sparse=True` is not implemented yet and raises `NotImplementedError`
+    /// rather than silently returning a dense array.
+    #[pyo3(signature = (state, sparse = false))]
     fn project_from(
         &self,
         py: Python<'_>,
         state: &Bound<'_, PyAny>,
         sparse: bool,
     ) -> PyResult<Py<PyAny>> {
-        let _ = sparse;
-
-        let in_vec = py_any_to_c64_vec(state)?;
-        let full_basis = quspin_core::basis::BitBasis::new(
-            self.inner.inner.n_sites(),
-            SpaceKind::Full,
-            true,
-        )
-        .map_err(Error::from)?;
-
-        let out_rows = full_basis.size();
-        let mut out_vec = vec![num_complex::Complex::<f64>::new(0.0, 0.0); out_rows * in_vec.ncols];
-        for col in 0..in_vec.ncols {
-            let in_col = &in_vec.data[col * in_vec.nrows..(col + 1) * in_vec.nrows];
-            let out_col = &mut out_vec[col * out_rows..(col + 1) * out_rows];
-            project_between_bit_bases(&self.inner.inner, &full_basis, in_col, out_col, true)
-                .map_err(Error::from)?;
-        }
-
-        Ok(state_vec_to_pyarray(py, &out_vec, in_vec.is_complex, out_rows, in_vec.ncols, in_vec.is_matrix))
+        reject_sparse(sparse)?;
+        let full_basis = self.full_basis()?;
+        project_bit(py, &self.inner.inner, &full_basis, state)
     }
 
     fn __str__(&self) -> String {

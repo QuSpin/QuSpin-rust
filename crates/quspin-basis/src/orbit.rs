@@ -115,12 +115,37 @@ where
             norm_sum += c;
         }
     }
-    let norm = if norm_sum.norm() <= 1e-10 {
-        0.0
-    } else {
-        norm_sum.re.round()
-    };
-    (ref_state, norm)
+    (ref_state, collapse_norm(norm_sum))
+}
+
+/// Tolerance below which a character-weighted stabilizer sum counts as zero.
+///
+/// A non-zero sum equals the stabilizer size, i.e. at least 1, so anything
+/// near zero is a state the sector projects out.
+const NORM_ZERO_TOL: f64 = 1e-10;
+
+/// Collapse a character-weighted stabilizer sum to the stored orbit norm.
+///
+/// `Σ_{g : g(s)=s} χ(g)` is a sum over a subgroup of a 1D character, so it is
+/// either zero or the (real, positive, integral) stabilizer size. Anything
+/// else means the character table is not a valid 1D representation, which
+/// [`SymBasis::validate_group`](super::SymBasis::validate_group) rejects at
+/// build time; the assertions below catch a group that slipped through.
+#[inline]
+fn collapse_norm(norm_sum: Complex<f64>) -> f64 {
+    if norm_sum.norm() <= NORM_ZERO_TOL {
+        return 0.0;
+    }
+    debug_assert!(
+        norm_sum.im.abs() <= NORM_ZERO_TOL.max(norm_sum.re.abs() * 1e-8),
+        "stabilizer character sum {norm_sum} is not real; group characters are \
+         not a valid 1D representation",
+    );
+    debug_assert!(
+        norm_sum.re > 0.0,
+        "stabilizer character sum {norm_sum} is not positive",
+    );
+    norm_sum.re.round()
 }
 
 // ---------------------------------------------------------------------------
@@ -147,12 +172,7 @@ where
 /// Apply one element to the whole batch, accumulating character-weighted
 /// stabilizer sums into `norms` and tracking the running max representative.
 #[inline]
-fn batch_update_count<B, E>(
-    states: &[B],
-    out: &mut [(B, f64)],
-    norms: &mut [Complex<f64>],
-    el: &E,
-)
+fn batch_update_count<B, E>(states: &[B], out: &mut [(B, f64)], norms: &mut [Complex<f64>], el: &E)
 where
     B: BitInt,
     E: OrbitImage<B>,
@@ -235,11 +255,7 @@ pub(crate) fn check_refstate_batch<B, L>(
     }
 
     for (o, norm) in out.iter_mut().zip(norms.iter()) {
-        o.1 = if norm.norm() <= 1e-10 {
-            0.0
-        } else {
-            norm.re.round()
-        };
+        o.1 = collapse_norm(*norm);
     }
 }
 

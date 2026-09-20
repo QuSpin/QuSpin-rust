@@ -17,7 +17,8 @@ pub use dispatch::{BitBasis, DitBasis, GenericBasis};
 pub use fermion::FermionBasis;
 pub use seed::{
     dit_seed_from_bytes, dit_seed_from_str, dit_state_to_str, seed_from_bytes, seed_from_str,
-    state_to_str,
+    state_from_str, state_to_display_str, state_to_str, strip_ket_notation,
+    tokenized_state_from_str,
 };
 pub use space::{FullSpace, Subspace};
 pub use spin::{SpaceKind, SpinBasis};
