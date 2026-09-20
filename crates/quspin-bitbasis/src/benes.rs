@@ -166,12 +166,11 @@ pub fn gen_benes<B: BitInt>(c_tgt: &[Option<usize>]) -> BenesNetwork<B> {
 ///
 /// # Panics
 ///
-/// Panics if `perm` is empty, if `n_sites.next_power_of_two() > B::BITS`, or
-/// if any entry is `>= perm.len()`.
+/// Panics if `perm` is empty, if `n_sites.next_power_of_two() > B::BITS`, if
+/// any entry is `>= perm.len()`, or if any source appears twice.
 pub fn gen_benes_for<B: BitInt>(perm: &[usize]) -> BenesNetwork<B> {
     assert!(!perm.is_empty(), "permutation must be non-empty");
-    // A Benes network addresses a power-of-two block; round up and let the
-    // padding slots route to identity.
+    // A Benes network addresses a power-of-two block, so round `n_sites` up.
     let bits = perm.len().next_power_of_two().max(2);
     assert!(
         bits <= B::BITS as usize,
@@ -179,13 +178,29 @@ pub fn gen_benes_for<B: BitInt>(perm: &[usize]) -> BenesNetwork<B> {
         perm.len(),
         B::BITS
     );
-    let mut c_tgt: Vec<Option<usize>> = vec![None; bits];
+
+    // Seed every slot with its identity route, *not* with `None`. A `None`
+    // slot is a don't-care the router may use as scratch, which would let a
+    // padding bit move: for `perm = [0, 1, 2, 4, 3]` in an 8-slot network,
+    // don't-care padding routed input bit 5 to output bit 6. Identity
+    // padding pins those slots so bits at or above `perm.len()` are fixed.
+    let mut c_tgt: Vec<Option<usize>> = (0..bits).map(Some).collect();
+
+    // `perm` is documented as a permutation; a repeated source would
+    // silently overwrite routing state in `gen_benes_inner` and yield a
+    // non-bijective network, so reject it here rather than downstream.
+    let mut seen = vec![false; perm.len()];
     for (dst, &src) in perm.iter().enumerate() {
         assert!(
             src < perm.len(),
             "permutation entry {src} outside 0..{}",
             perm.len()
         );
+        assert!(
+            !seen[src],
+            "source {src} appears more than once; `perm` must be a permutation"
+        );
+        seen[src] = true;
         c_tgt[dst] = Some(src);
     }
     gen_benes::<B>(&c_tgt)
@@ -498,6 +513,55 @@ mod tests {
                 "short network disagrees with full for perm {perm:?} on {p:#x}"
             );
         }
+    }
+
+    /// Regression: a non-power-of-two site count leaves padding slots that,
+    /// if routed as don't-care, the router will happily use as scratch.
+    /// With `perm = [0, 1, 2, 4, 3]` in an 8-slot network this moved input
+    /// bit 5 to output bit 6. Every padding bit must be a fixed point.
+    #[test]
+    fn padding_bits_are_fixed_points() {
+        for n in [3usize, 5, 6, 7, 9, 12, 20, 33] {
+            // A permutation that is not the identity on the real sites.
+            let perm: Vec<usize> = (0..n).map(|d| (d + n - 1) % n).collect();
+            let net = gen_benes_for::<u64>(&perm);
+            let bits = n.next_power_of_two().max(2);
+            for bit in n..64 {
+                let x = 1u64 << bit;
+                assert_eq!(
+                    net.apply(x),
+                    x,
+                    "n={n} (network {bits} slots): bit {bit} was moved"
+                );
+            }
+        }
+    }
+
+    /// The same property under a full-width probe: bits outside the permuted
+    /// block must survive untouched alongside live bits, not just alone.
+    #[test]
+    fn padding_bits_survive_alongside_live_bits() {
+        let n = 20usize;
+        let perm: Vec<usize> = (0..n).map(|d| (d + n - 1) % n).collect();
+        let net = gen_benes_for::<u64>(&perm);
+        let mut rng: u64 = 0xFEED_FACE_CAFE_BEEF;
+        for _ in 0..500 {
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let out = net.apply(rng);
+            assert_eq!(
+                out >> n,
+                rng >> n,
+                "bits at or above {n} changed for {rng:#x}"
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "appears more than once")]
+    fn rejects_duplicate_source() {
+        let _ = gen_benes_for::<u64>(&[0usize, 1, 1, 3]);
     }
 
     #[test]

@@ -65,9 +65,11 @@ pub trait RowSource: Sync {
 
     /// Append every non-zero contribution in row `row_idx` to `out`.
     ///
-    /// Duplicates are allowed — the driver coalesces them. Implementations
-    /// must push in the operator's natural emission order, because that
-    /// order fixes the floating-point summation order during coalescing.
+    /// Duplicates are allowed: the row is sorted in [`build_raw_rows`] and
+    /// duplicates are summed later, in [`raw_rows_to_qmatrix`], where the
+    /// element type is known. Implementations must push in the operator's
+    /// natural emission order — the sort is stable, so that order survives
+    /// and fixes the floating-point summation order.
     fn row_into(&self, row_idx: usize, out: &mut Vec<RawEntry>);
 }
 
@@ -202,37 +204,27 @@ where
 // Erased driver — one rayon instantiation, one sort instantiation
 // ---------------------------------------------------------------------------
 
-/// Sort a row by `(col, cindex)` and sum duplicates.
+/// Order a row by `(col, cindex)`, leaving duplicates adjacent.
 ///
-/// Uses a **stable** sort so that entries sharing a key keep their emission
-/// order, which makes the coalesced sum bit-identical to the previous
-/// implementation's accumulate-on-first-match behaviour.
-fn coalesce_row(row: &mut Vec<RawEntry>) {
+/// The sort is **stable**, so entries sharing a key keep the operator's
+/// emission order. Duplicates are *not* summed here: see
+/// [`raw_rows_to_qmatrix`] for why that has to happen in the typed stage.
+fn sort_row(row: &mut [RawEntry]) {
     row.sort_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));
-    let mut write = 0usize;
-    for read in 0..row.len() {
-        let cur = row[read];
-        if write > 0 && row[write - 1].col == cur.col && row[write - 1].cindex == cur.cindex {
-            row[write - 1].amp += cur.amp;
-        } else {
-            row[write] = cur;
-            write += 1;
-        }
-    }
-    row.truncate(write);
 }
 
 /// Build every row through a type-erased source.
 ///
 /// Takes `&dyn RowSource`, so the closure handed to rayon and the slice
 /// handed to the sort both have exactly one type no matter how many
-/// `(H, B, C, S)` combinations exist upstream.
+/// `(H, B, C, S)` combinations exist upstream. This is where the
+/// instantiation count collapses: one rayon copy, one pdqsort copy.
 pub fn build_raw_rows(src: &dyn RowSource) -> Vec<Vec<RawEntry>> {
     let dim = src.dim();
     let build_row = |row_idx: usize| -> Vec<RawEntry> {
         let mut row = Vec::new();
         src.row_into(row_idx, &mut row);
-        coalesce_row(&mut row);
+        sort_row(&mut row);
         row
     };
 
@@ -243,10 +235,21 @@ pub fn build_raw_rows(src: &dyn RowSource) -> Vec<Vec<RawEntry>> {
     }
 }
 
-/// Assemble erased rows into a typed `QMatrix`.
+/// Assemble sorted erased rows into a typed `QMatrix`, summing duplicates.
 ///
-/// Generic over `M`, `I` and `C`, but contains no parallelism and no
-/// sorting — so this is the only code the element-type axes multiply.
+/// Generic over `M`, `I` and `C`, but contains no parallelism and no sort —
+/// those stayed in [`build_raw_rows`], so the element-type axes multiply
+/// only this small loop.
+///
+/// # Why coalescing lives here and not in the erased stage
+///
+/// Summing in `Complex<f64>` and narrowing once is *not* equivalent to the
+/// previous implementation, which narrowed to `M` at every addition. For
+/// `M = f32` the contributions `16_777_216`, `1`, `-16_777_216` sum to `1`
+/// under deferred narrowing but to `0` under per-addition narrowing,
+/// because `16_777_217` is not representable in `f32`; integer `M` can
+/// diverge further. Accumulating through `M` here keeps the stored values
+/// bit-identical to the pre-refactor behaviour.
 pub fn raw_rows_to_qmatrix<M: Primitive, I: Index, C: CIndex>(
     dim: usize,
     rows: Vec<Vec<RawEntry>>,
@@ -256,14 +259,137 @@ pub fn raw_rows_to_qmatrix<M: Primitive, I: Index, C: CIndex>(
     let mut data: Vec<Entry<M, I, C>> = Vec::with_capacity(total_nnz);
     indptr.push(I::from_usize(0));
     for row in rows {
+        let row_start = data.len();
         for e in row {
-            data.push(Entry::new(
-                M::from_complex(e.amp),
-                I::from_usize(e.col),
-                C::from_usize(e.cindex as usize),
-            ));
+            // Rows arrive sorted, so duplicates are adjacent and comparing
+            // against the entry just written is enough. `row_start` stops a
+            // merge from reaching back into the previous row.
+            let col = I::from_usize(e.col);
+            let cindex = C::from_usize(e.cindex as usize);
+            let merged = if data.len() > row_start {
+                let last = data.last_mut().expect("non-empty by the length check");
+                let same = last.col == col && last.cindex == cindex;
+                if same {
+                    last.value = M::from_complex(last.value.to_complex() + e.amp);
+                }
+                same
+            } else {
+                false
+            };
+            if !merged {
+                data.push(Entry::new(M::from_complex(e.amp), col, cindex));
+            }
         }
         indptr.push(I::from_usize(data.len()));
     }
     QMatrix::from_csr(indptr, data)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(col: usize, cindex: u32, re: f64) -> RawEntry {
+        RawEntry {
+            col,
+            cindex,
+            amp: Complex::new(re, 0.0),
+        }
+    }
+
+    /// Regression: coalescing must narrow to `M` at *every* addition, not
+    /// sum in `Complex<f64>` and narrow once.
+    ///
+    /// `16_777_216 + 1` is not representable in `f32`, so per-addition
+    /// narrowing rounds it back to `16_777_216` and the third term cancels
+    /// to exactly zero. Deferred narrowing would keep the `1` and produce
+    /// `1.0` instead. The pre-refactor implementation did the former, so
+    /// this pins the stored value to it.
+    #[test]
+    fn coalescing_narrows_at_every_addition() {
+        let row = vec![
+            entry(0, 0, 16_777_216.0),
+            entry(0, 0, 1.0),
+            entry(0, 0, -16_777_216.0),
+        ];
+        let m: QMatrix<f32, i64, u8> = raw_rows_to_qmatrix(1, vec![row]);
+        assert_eq!(m.row(0).len(), 1, "duplicates must coalesce to one entry");
+        assert_eq!(
+            m.row(0)[0].value,
+            0.0f32,
+            "f32 must round 16_777_217 back down at each step"
+        );
+    }
+
+    /// The same inputs in `f64`, where every intermediate *is* representable,
+    /// must keep the `1`. Guards against "fixing" the test above by
+    /// truncating somewhere it does not belong.
+    #[test]
+    fn coalescing_keeps_precision_when_the_type_allows() {
+        let row = vec![
+            entry(0, 0, 16_777_216.0),
+            entry(0, 0, 1.0),
+            entry(0, 0, -16_777_216.0),
+        ];
+        let m: QMatrix<f64, i64, u8> = raw_rows_to_qmatrix(1, vec![row]);
+        assert_eq!(m.row(0)[0].value, 1.0f64);
+    }
+
+    /// Only entries sharing *both* col and cindex may merge.
+    #[test]
+    fn coalescing_distinguishes_col_and_cindex() {
+        let row = vec![
+            entry(0, 0, 1.0),
+            entry(0, 1, 2.0),
+            entry(1, 0, 4.0),
+            entry(1, 0, 8.0),
+        ];
+        let m: QMatrix<f64, i64, u8> = raw_rows_to_qmatrix(1, vec![row]);
+        assert_eq!(m.row(0).len(), 3);
+        assert_eq!(m.row(0)[0].value, 1.0);
+        assert_eq!(m.row(0)[1].value, 2.0);
+        assert_eq!(m.row(0)[2].value, 12.0);
+    }
+
+    /// A merge must never reach back into the previous row, even when the
+    /// last entry of one row and the first of the next share a key.
+    #[test]
+    fn coalescing_does_not_cross_row_boundaries() {
+        let rows = vec![vec![entry(3, 0, 1.0)], vec![entry(3, 0, 2.0)]];
+        let m: QMatrix<f64, i64, u8> = raw_rows_to_qmatrix(2, rows);
+        assert_eq!(m.row(0).len(), 1);
+        assert_eq!(m.row(1).len(), 1);
+        assert_eq!(m.row(0)[0].value, 1.0);
+        assert_eq!(m.row(1)[0].value, 2.0);
+    }
+
+    /// Empty rows must still advance `indptr` so row lookups stay aligned.
+    #[test]
+    fn empty_rows_keep_indptr_aligned() {
+        let rows = vec![vec![], vec![entry(0, 0, 5.0)], vec![]];
+        let m: QMatrix<f64, i64, u8> = raw_rows_to_qmatrix(3, rows);
+        assert_eq!(m.row(0).len(), 0);
+        assert_eq!(m.row(1).len(), 1);
+        assert_eq!(m.row(2).len(), 0);
+        assert_eq!(m.row(1)[0].value, 5.0);
+    }
+
+    /// `sort_row` must be stable: equal keys keep emission order, which is
+    /// what fixes the summation order during coalescing.
+    #[test]
+    fn sort_row_is_stable_on_equal_keys() {
+        let mut row = vec![
+            entry(1, 0, 1.0),
+            entry(0, 0, 2.0),
+            entry(1, 0, 3.0),
+            entry(0, 0, 4.0),
+        ];
+        sort_row(&mut row);
+        let order: Vec<f64> = row.iter().map(|e| e.amp.re).collect();
+        assert_eq!(order, vec![2.0, 4.0, 1.0, 3.0]);
+    }
 }
