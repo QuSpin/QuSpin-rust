@@ -1,6 +1,7 @@
 use super::HardcoreOperator;
 
 /// Type-erased `HardcoreOperator`: either u8 or u16 cindex type.
+#[derive(Clone)]
 pub enum HardcoreOperatorInner {
     Ham8(HardcoreOperator<u8>),
     Ham16(HardcoreOperator<u16>),

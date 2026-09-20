@@ -18,8 +18,9 @@ pub use quspin_basis::*;
 pub use quspin_bitbasis::*;
 pub use quspin_krylov::*;
 pub use quspin_matrix::{
-    Hamiltonian, HamiltonianInner, IntoHamiltonianInner, OperatorDispatch, OwnedQMatrixOperator,
-    QMatrix, QMatrixInner, QMatrixOperator, SchrodingerEq, apply_and_project_to,
+    BasisSource, Hamiltonian, HamiltonianInner, IntoHamiltonianInner, OperatorDispatch,
+    OperatorOnBasis, OwnedQMatrixOperator, QMatrix, QMatrixInner, QMatrixOperator, SchrodingerEq,
+    apply_and_project_to,
 };
 // Re-export dispatch macros so callers like `quspin-py` can match on the
 // type-erased `*Inner` enums without taking a direct dep on `quspin-matrix`.

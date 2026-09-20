@@ -1,6 +1,7 @@
 use super::MonomialOperator;
 
 /// Type-erased `MonomialOperator`: either u8 or u16 cindex type.
+#[derive(Clone)]
 pub enum MonomialOperatorInner {
     Ham8(MonomialOperator<u8>),
     Ham16(MonomialOperator<u16>),

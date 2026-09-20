@@ -7,6 +7,7 @@ use crate::operator::monomial::PyMonomialOperator;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 use quspin_core::basis::{GenericBasis, SpaceKind};
+use std::sync::Arc;
 
 /// Python-facing generic basis for any on-site Hilbert-space size.
 ///
@@ -14,7 +15,7 @@ use quspin_core::basis::{GenericBasis, SpaceKind};
 /// symmetries.  Paired with `MonomialOperator` for Hamiltonian construction.
 #[pyclass(name = "GenericBasis", module = "quspin._rs")]
 pub struct PyGenericBasis {
-    pub inner: GenericBasis,
+    pub inner: Arc<GenericBasis>,
 }
 
 #[pymethods]
@@ -28,7 +29,9 @@ impl PyGenericBasis {
     fn full(_cls: &Bound<'_, PyType>, n_sites: usize, lhss: usize) -> PyResult<Self> {
         let inner =
             GenericBasis::new(n_sites, lhss, SpaceKind::Full, false).map_err(Error::from)?;
-        Ok(PyGenericBasis { inner })
+        Ok(PyGenericBasis {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Subspace built by BFS from seed states using a `MonomialOperator`.
@@ -51,7 +54,9 @@ impl PyGenericBasis {
         let mut basis =
             GenericBasis::new(n_sites, lhss, SpaceKind::Sub, false).map_err(Error::from)?;
         basis.build(&ham.inner, &byte_seeds).map_err(Error::from)?;
-        Ok(PyGenericBasis { inner: basis })
+        Ok(PyGenericBasis {
+            inner: Arc::new(basis),
+        })
     }
 
     /// Symmetry-reduced subspace.
@@ -77,7 +82,9 @@ impl PyGenericBasis {
             GenericBasis::new(n_sites, lhss, SpaceKind::Symm, false).map_err(Error::from)?;
         replay_group_into_generic(group, &mut basis)?;
         basis.build(&ham.inner, &byte_seeds).map_err(Error::from)?;
-        Ok(PyGenericBasis { inner: basis })
+        Ok(PyGenericBasis {
+            inner: Arc::new(basis),
+        })
     }
 
     // ------------------------------------------------------------------

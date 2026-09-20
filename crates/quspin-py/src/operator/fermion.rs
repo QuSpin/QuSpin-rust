@@ -3,6 +3,7 @@ use crate::operator::{
     Terms, as_c64_vec, dispatch_apply, dispatch_apply_and_project_to, max_site_from_terms,
     parse_terms_generic, write_c64_back,
 };
+use numpy::PyReadonlyArray1;
 use numpy::{Complex64, PyArray1};
 use pyo3::prelude::*;
 use quspin_core::operator::fermion::{
@@ -119,6 +120,19 @@ impl PyFermionOperator {
 
         unsafe { write_c64_back(output, &output_vec) };
         Ok(())
+    }
+
+    /// Matrix-free ``LinearOperator`` over ``basis`` with ``coeffs`` baked in.
+    ///
+    /// Unlike ``QMatrix.build_*(...).as_linearoperator(...)`` nothing is
+    /// assembled: matrix elements are recomputed inside every product.
+    #[pyo3(signature = (basis, coeffs))]
+    fn as_linearoperator(
+        slf: &Bound<'_, Self>,
+        basis: &Bound<'_, PyAny>,
+        coeffs: PyReadonlyArray1<'_, Complex64>,
+    ) -> PyResult<crate::matrix_free::PyOperatorLinearOperator> {
+        crate::matrix_free::as_linearoperator(slf.as_any(), basis, coeffs)
     }
 
     fn __repr__(&self) -> String {

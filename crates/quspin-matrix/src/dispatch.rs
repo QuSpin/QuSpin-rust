@@ -6,6 +6,7 @@
 //! (from `quspin-basis`).
 
 use crate::apply::{apply_and_project_to, apply_and_project_to_bit};
+use crate::matrix_free as mf;
 use num_complex::Complex;
 use quspin_basis::dispatch::{BitBasis, GenericBasis};
 use quspin_operator::{
@@ -58,6 +59,67 @@ pub trait OperatorDispatch {
         out_vec: &mut [Complex<f64>],
         overwrite: bool,
     ) -> Result<(), QuSpinError>;
+
+    /// Number of distinct cindex values — the required `coeffs` length.
+    fn num_cindices(&self) -> usize;
+
+    // -----------------------------------------------------------------
+    // Matrix-free `LinearOperator` support
+    //
+    // These back [`OperatorOnBasis`](crate::OperatorOnBasis), which needs
+    // the transpose product and the two spectral quantities without ever
+    // assembling a `QMatrix`. Each is a single sweep over the basis.
+    // -----------------------------------------------------------------
+
+    /// `out_vec = Aᵀ · in_vec` (or `+=` when `overwrite` is false).
+    fn dot_transpose(
+        &self,
+        space: &GenericBasis,
+        coeffs: &[Complex<f64>],
+        in_vec: &[Complex<f64>],
+        out_vec: &mut [Complex<f64>],
+        overwrite: bool,
+    ) -> Result<(), QuSpinError>;
+
+    /// `out_vec = Aᵀ · in_vec` over a `BitBasis`.
+    fn dot_transpose_bit(
+        &self,
+        space: &BitBasis,
+        coeffs: &[Complex<f64>],
+        in_vec: &[Complex<f64>],
+        out_vec: &mut [Complex<f64>],
+        overwrite: bool,
+    ) -> Result<(), QuSpinError>;
+
+    /// `Σ_i A[i, i]`.
+    fn trace(
+        &self,
+        space: &GenericBasis,
+        coeffs: &[Complex<f64>],
+    ) -> Result<Complex<f64>, QuSpinError>;
+
+    /// `Σ_i A[i, i]` over a `BitBasis`.
+    fn trace_bit(
+        &self,
+        space: &BitBasis,
+        coeffs: &[Complex<f64>],
+    ) -> Result<Complex<f64>, QuSpinError>;
+
+    /// `‖A − shift·I‖₁`.
+    fn onenorm(
+        &self,
+        space: &GenericBasis,
+        coeffs: &[Complex<f64>],
+        shift: Complex<f64>,
+    ) -> Result<f64, QuSpinError>;
+
+    /// `‖A − shift·I‖₁` over a `BitBasis`.
+    fn onenorm_bit(
+        &self,
+        space: &BitBasis,
+        coeffs: &[Complex<f64>],
+        shift: Complex<f64>,
+    ) -> Result<f64, QuSpinError>;
 }
 
 macro_rules! impl_operator_dispatch {
@@ -134,6 +196,92 @@ macro_rules! impl_operator_dispatch {
                     Self::Ham16(h) => apply_and_project_to_bit(
                         h, space, space, coeffs, in_vec, out_vec, overwrite,
                     ),
+                }
+            }
+
+            fn num_cindices(&self) -> usize {
+                Self::num_cindices(self)
+            }
+
+            fn dot_transpose(
+                &self,
+                space: &GenericBasis,
+                coeffs: &[Complex<f64>],
+                in_vec: &[Complex<f64>],
+                out_vec: &mut [Complex<f64>],
+                overwrite: bool,
+            ) -> Result<(), QuSpinError> {
+                match self {
+                    Self::Ham8(h) => {
+                        mf::dot_transpose(h, space, coeffs, in_vec, out_vec, overwrite)
+                    }
+                    Self::Ham16(h) => {
+                        mf::dot_transpose(h, space, coeffs, in_vec, out_vec, overwrite)
+                    }
+                }
+            }
+
+            fn dot_transpose_bit(
+                &self,
+                space: &BitBasis,
+                coeffs: &[Complex<f64>],
+                in_vec: &[Complex<f64>],
+                out_vec: &mut [Complex<f64>],
+                overwrite: bool,
+            ) -> Result<(), QuSpinError> {
+                match self {
+                    Self::Ham8(h) => {
+                        mf::dot_transpose_bit(h, space, coeffs, in_vec, out_vec, overwrite)
+                    }
+                    Self::Ham16(h) => {
+                        mf::dot_transpose_bit(h, space, coeffs, in_vec, out_vec, overwrite)
+                    }
+                }
+            }
+
+            fn trace(
+                &self,
+                space: &GenericBasis,
+                coeffs: &[Complex<f64>],
+            ) -> Result<Complex<f64>, QuSpinError> {
+                match self {
+                    Self::Ham8(h) => mf::trace(h, space, coeffs),
+                    Self::Ham16(h) => mf::trace(h, space, coeffs),
+                }
+            }
+
+            fn trace_bit(
+                &self,
+                space: &BitBasis,
+                coeffs: &[Complex<f64>],
+            ) -> Result<Complex<f64>, QuSpinError> {
+                match self {
+                    Self::Ham8(h) => mf::trace_bit(h, space, coeffs),
+                    Self::Ham16(h) => mf::trace_bit(h, space, coeffs),
+                }
+            }
+
+            fn onenorm(
+                &self,
+                space: &GenericBasis,
+                coeffs: &[Complex<f64>],
+                shift: Complex<f64>,
+            ) -> Result<f64, QuSpinError> {
+                match self {
+                    Self::Ham8(h) => mf::onenorm(h, space, coeffs, shift),
+                    Self::Ham16(h) => mf::onenorm(h, space, coeffs, shift),
+                }
+            }
+
+            fn onenorm_bit(
+                &self,
+                space: &BitBasis,
+                coeffs: &[Complex<f64>],
+                shift: Complex<f64>,
+            ) -> Result<f64, QuSpinError> {
+                match self {
+                    Self::Ham8(h) => mf::onenorm_bit(h, space, coeffs, shift),
+                    Self::Ham16(h) => mf::onenorm_bit(h, space, coeffs, shift),
                 }
             }
         }

@@ -1,6 +1,7 @@
 use super::FermionOperator;
 
 /// Type-erased `FermionOperator`: either u8 or u16 cindex type.
+#[derive(Clone)]
 pub enum FermionOperatorInner {
     Ham8(FermionOperator<u8>),
     Ham16(FermionOperator<u16>),

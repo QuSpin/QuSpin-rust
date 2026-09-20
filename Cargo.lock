@@ -999,6 +999,7 @@ dependencies = [
  "ndarray",
  "num-complex",
  "ode_solvers",
+ "paste",
  "quspin-basis",
  "quspin-bitbasis",
  "quspin-core",

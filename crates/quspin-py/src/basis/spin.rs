@@ -9,6 +9,7 @@ use crate::operator::spin::PySpinOperator;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 use quspin_core::basis::{SpaceKind, SpinBasis};
+use std::sync::Arc;
 
 /// Python-facing spin-½ / spin-S basis.
 ///
@@ -16,7 +17,7 @@ use quspin_core::basis::{SpaceKind, SpinBasis};
 /// `SpinOperator`, or a `BondOperator` as the Hamiltonian used for BFS.
 #[pyclass(name = "SpinBasis", module = "quspin._rs")]
 pub struct PySpinBasis {
-    pub inner: SpinBasis,
+    pub inner: Arc<SpinBasis>,
 }
 
 // Helper: dispatch BFS build to the right operator type.
@@ -57,7 +58,9 @@ impl PySpinBasis {
     #[pyo3(signature = (n_sites, lhss = 2))]
     fn full(_cls: &Bound<'_, PyType>, n_sites: usize, lhss: usize) -> PyResult<Self> {
         let inner = SpinBasis::new(n_sites, lhss, SpaceKind::Full).map_err(Error::from)?;
-        Ok(PySpinBasis { inner })
+        Ok(PySpinBasis {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Particle-number (or energy) sector subspace.
@@ -81,7 +84,9 @@ impl PySpinBasis {
         let byte_seeds = parse_seeds(&seeds, n_sites, lhss)?;
         let mut basis = SpinBasis::new(n_sites, lhss, SpaceKind::Sub).map_err(Error::from)?;
         build_spin_basis(&mut basis, ham, n_sites, &byte_seeds)?;
-        Ok(PySpinBasis { inner: basis })
+        Ok(PySpinBasis {
+            inner: Arc::new(basis),
+        })
     }
 
     /// Symmetry-reduced subspace.
@@ -105,7 +110,9 @@ impl PySpinBasis {
         let mut basis = SpinBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
         replay_group_into_generic(group, &mut basis.inner)?;
         build_spin_basis(&mut basis, ham, n_sites, &byte_seeds)?;
-        Ok(PySpinBasis { inner: basis })
+        Ok(PySpinBasis {
+            inner: Arc::new(basis),
+        })
     }
 
     // ------------------------------------------------------------------

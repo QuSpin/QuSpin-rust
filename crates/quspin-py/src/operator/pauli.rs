@@ -4,6 +4,7 @@ use crate::operator::{
     parse_terms_generic, write_c64_back,
 };
 use num_complex::Complex;
+use numpy::PyReadonlyArray1;
 use numpy::{Complex64, PyArray1, PyArrayDescr, PyArrayDescrMethods, ToPyArray};
 use pyo3::prelude::*;
 use quspin_core::operator::pauli::{HardcoreOp, HardcoreOperator, HardcoreOperatorInner, OpEntry};
@@ -237,6 +238,19 @@ impl PyPauliOperator {
             };
 
         Ok((indptr_py, indices_py, data_out))
+    }
+
+    /// Matrix-free ``LinearOperator`` over ``basis`` with ``coeffs`` baked in.
+    ///
+    /// Unlike ``QMatrix.build_*(...).as_linearoperator(...)`` nothing is
+    /// assembled: matrix elements are recomputed inside every product.
+    #[pyo3(signature = (basis, coeffs))]
+    fn as_linearoperator(
+        slf: &Bound<'_, Self>,
+        basis: &Bound<'_, PyAny>,
+        coeffs: PyReadonlyArray1<'_, Complex64>,
+    ) -> PyResult<crate::matrix_free::PyOperatorLinearOperator> {
+        crate::matrix_free::as_linearoperator(slf.as_any(), basis, coeffs)
     }
 
     fn __repr__(&self) -> String {

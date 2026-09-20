@@ -5,6 +5,7 @@ use crate::Operator;
 ///
 /// The cindex type is chosen at construction time based on the number of
 /// distinct cindices and the maximum site index.
+#[derive(Clone)]
 pub enum BondOperatorInner {
     Ham8(BondOperator<u8>),
     Ham16(BondOperator<u16>),

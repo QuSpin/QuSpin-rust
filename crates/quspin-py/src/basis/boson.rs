@@ -8,13 +8,14 @@ use crate::operator::boson::PyBosonOperator;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 use quspin_core::basis::{BosonBasis, SpaceKind};
+use std::sync::Arc;
 
 /// Python-facing bosonic basis.
 ///
 /// `lhss` is the number of on-site Fock states (≥ 2).
 #[pyclass(name = "BosonBasis", module = "quspin._rs")]
 pub struct PyBosonBasis {
-    pub inner: BosonBasis,
+    pub inner: Arc<BosonBasis>,
 }
 
 fn build_boson_basis(
@@ -49,7 +50,9 @@ impl PyBosonBasis {
     #[classmethod]
     fn full(_cls: &Bound<'_, PyType>, n_sites: usize, lhss: usize) -> PyResult<Self> {
         let inner = BosonBasis::new(n_sites, lhss, SpaceKind::Full).map_err(Error::from)?;
-        Ok(PyBosonBasis { inner })
+        Ok(PyBosonBasis {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Particle-number sector subspace.
@@ -70,7 +73,9 @@ impl PyBosonBasis {
         let byte_seeds = parse_seeds(&seeds, n_sites, lhss)?;
         let mut basis = BosonBasis::new(n_sites, lhss, SpaceKind::Sub).map_err(Error::from)?;
         build_boson_basis(&mut basis, ham, n_sites, &byte_seeds)?;
-        Ok(PyBosonBasis { inner: basis })
+        Ok(PyBosonBasis {
+            inner: Arc::new(basis),
+        })
     }
 
     /// Symmetry-reduced subspace.
@@ -94,7 +99,9 @@ impl PyBosonBasis {
         let mut basis = BosonBasis::new(n_sites, lhss, SpaceKind::Symm).map_err(Error::from)?;
         replay_group_into_generic(group, &mut basis.inner)?;
         build_boson_basis(&mut basis, ham, n_sites, &byte_seeds)?;
-        Ok(PyBosonBasis { inner: basis })
+        Ok(PyBosonBasis {
+            inner: Arc::new(basis),
+        })
     }
 
     // ------------------------------------------------------------------
