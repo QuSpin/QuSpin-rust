@@ -28,7 +28,7 @@ class SpinBasis:
     def subspace(
         cls,
         n_sites: int,
-        ham: PauliOperator | BondOperator,
+        ham: PauliOperator | SpinOperator | BondOperator,
         seeds: list[str],
         lhss: int = 2,
     ) -> SpinBasis:
@@ -43,7 +43,7 @@ class SpinBasis:
     def symmetric(
         cls,
         group: Any,
-        ham: PauliOperator | BondOperator,
+        ham: PauliOperator | SpinOperator | BondOperator,
         seeds: list[str],
     ) -> SpinBasis:
         """Symmetry-projected subspace.
@@ -51,7 +51,8 @@ class SpinBasis:
         Args:
             group: a ``SymmetryGroup``; ``n_sites`` and ``lhss`` are
                 read from ``group.n_sites`` / ``group.lhss``.
-            ham:   ``PauliOperator`` (LHSS=2) or ``BondOperator`` for BFS.
+            ham:   ``PauliOperator`` (LHSS=2), ``SpinOperator``, or
+                ``BondOperator`` for BFS.
             seeds: list of seed state strings.
         """
         ...
@@ -289,7 +290,6 @@ def _validate_group(
 # Operator types
 # ---------------------------------------------------------------------------
 
-
 class PauliOperator:
     """Pauli / hardcore-boson operator.
 
@@ -383,6 +383,52 @@ class BondOperator:
     def __init__(
         self,
         *terms: list[tuple[npt.NDArray[Any], list[tuple[int, int]]]],
+    ) -> None: ...
+    @property
+    def max_site(self) -> int: ...
+    @property
+    def num_cindices(self) -> int: ...
+    @property
+    def lhss(self) -> int: ...
+    def apply_and_project_to(
+        self,
+        input_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        output_basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input`` in ``input_basis``, project into ``output_basis``."""
+        ...
+
+    def apply(
+        self,
+        basis: SpinBasis | FermionBasis | BosonBasis | GenericBasis,
+        coeffs: npt.NDArray[Any],
+        input: npt.NDArray[Any],
+        output: npt.NDArray[Any],
+        overwrite: bool = True,
+    ) -> None:
+        """Apply operator to ``input``, projecting back into the same ``basis``."""
+        ...
+
+    def __repr__(self) -> str: ...
+
+class SpinOperator:
+    """Spin-S operator.
+
+    Same variadic ``*terms`` format as ``PauliOperator``, using spin op
+    strings (``+``, ``-``, ``z``).  ``lhss`` (= ``2S + 1``) is keyword-only.
+
+    State encoding: dit value ``n`` represents spin projection ``m = S - n``,
+    so ``n = 0`` is the highest-weight state ``m = +S``.
+    """
+
+    def __init__(
+        self,
+        *terms: list[tuple[str, list[list[Any]]]],
+        lhss: int,
     ) -> None: ...
     @property
     def max_site(self) -> int: ...
@@ -603,6 +649,15 @@ class QMatrix:
         ...
 
     @staticmethod
+    def build_spin(
+        op: SpinOperator,
+        basis: SpinBasis,
+        dtype: np.dtype[Any],
+    ) -> QMatrix:
+        """Build from a SpinOperator and a SpinBasis."""
+        ...
+
+    @staticmethod
     def build_boson(
         op: BosonOperator,
         basis: BosonBasis,
@@ -752,6 +807,7 @@ class Hamiltonian:
     ) -> npt.NDArray[np.complexfloating[Any, Any]]:
         """Return the Hamiltonian at ``time`` as a dense ``(dim, dim)`` complex128 matrix."""
         ...
+
     def dot(
         self,
         time: float,
@@ -1133,7 +1189,6 @@ class FTLMDynamic:
         ...
 
     def __repr__(self) -> str: ...
-
 
 # ---------------------------------------------------------------------------
 # Fast Hadamard Transform

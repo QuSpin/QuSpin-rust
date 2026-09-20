@@ -10,6 +10,7 @@ use crate::operator::boson::PyBosonOperator;
 use crate::operator::fermion::PyFermionOperator;
 use crate::operator::monomial::PyMonomialOperator;
 use crate::operator::pauli::PyPauliOperator;
+use crate::operator::spin::PySpinOperator;
 use num_complex::Complex;
 use numpy::{
     Complex64, PyArrayDescr, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
@@ -103,6 +104,22 @@ impl PyQMatrix {
                 "basis must be SpinBasis, FermionBasis, or BosonBasis for build_bond",
             ));
         };
+        Ok(PyQMatrix {
+            inner: Arc::new(inner),
+        })
+    }
+
+    /// Build from a `SpinOperator` and a `SpinBasis`.
+    #[staticmethod]
+    #[pyo3(signature = (op, basis, dtype))]
+    fn build_spin(
+        py: Python<'_>,
+        op: &PySpinOperator,
+        basis: &PySpinBasis,
+        dtype: &Bound<'_, PyArrayDescr>,
+    ) -> PyResult<Self> {
+        let vdtype = dtype_from_py(py, dtype)?;
+        let inner = QMatrixInner::build_spin(&op.inner, &basis.inner.inner, vdtype);
         Ok(PyQMatrix {
             inner: Arc::new(inner),
         })

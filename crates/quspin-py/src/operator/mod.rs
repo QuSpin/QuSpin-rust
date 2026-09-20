@@ -3,12 +3,14 @@ pub mod boson;
 pub mod fermion;
 pub mod monomial;
 pub mod pauli;
+pub mod spin;
 
 pub use bond::PyBondOperator;
 pub use boson::PyBosonOperator;
 pub use fermion::PyFermionOperator;
 pub use monomial::PyMonomialOperator;
 pub use pauli::PyPauliOperator;
+pub use spin::PySpinOperator;
 
 use crate::basis::{PyBosonBasis, PyFermionBasis, PyGenericBasis, PySpinBasis};
 use crate::error::Error;

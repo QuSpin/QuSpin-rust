@@ -5,14 +5,15 @@ use crate::basis::{
 use crate::error::Error;
 use crate::operator::bond::PyBondOperator;
 use crate::operator::pauli::PyPauliOperator;
+use crate::operator::spin::PySpinOperator;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 use quspin_core::basis::{SpaceKind, SpinBasis};
 
 /// Python-facing spin-½ / spin-S basis.
 ///
-/// `subspace` and `symmetric` constructors accept either a `PauliOperator` or
-/// a `BondOperator` as the Hamiltonian used for BFS.
+/// `subspace` and `symmetric` constructors accept a `PauliOperator`, a
+/// `SpinOperator`, or a `BondOperator` as the Hamiltonian used for BFS.
 #[pyclass(name = "SpinBasis", module = "quspin._rs")]
 pub struct PySpinBasis {
     pub inner: SpinBasis,
@@ -29,13 +30,17 @@ fn build_spin_basis(
         let op = op.borrow();
         validate_op_max_site(op.inner.max_site(), n_sites)?;
         basis.build(&op.inner, byte_seeds).map_err(Error::from)?;
+    } else if let Ok(op) = ham.cast::<PySpinOperator>() {
+        let op = op.borrow();
+        validate_op_max_site(op.inner.max_site(), n_sites)?;
+        basis.build(&op.inner, byte_seeds).map_err(Error::from)?;
     } else if let Ok(op) = ham.cast::<PyBondOperator>() {
         let op = op.borrow();
         validate_op_max_site(op.inner.max_site(), n_sites)?;
         basis.build(&op.inner, byte_seeds).map_err(Error::from)?;
     } else {
         return Err(pyo3::exceptions::PyTypeError::new_err(
-            "ham must be a PauliOperator (lhss=2) or BondOperator",
+            "ham must be a PauliOperator (lhss=2), SpinOperator, or BondOperator",
         ));
     }
     Ok(())

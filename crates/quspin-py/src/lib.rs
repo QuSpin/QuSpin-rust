@@ -19,6 +19,7 @@ use krylov::{PyEigSolver, PyFTLM, PyFTLMDynamic, PyLTLM};
 use linear_operator::PyQMatrixLinearOperator;
 use operator::{
     PyBondOperator, PyBosonOperator, PyFermionOperator, PyMonomialOperator, PyPauliOperator,
+    PySpinOperator,
 };
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
@@ -43,6 +44,7 @@ fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Operator types
     m.add_class::<PyPauliOperator>()?;
     m.add_class::<PyBondOperator>()?;
+    m.add_class::<PySpinOperator>()?;
     m.add_class::<PyBosonOperator>()?;
     m.add_class::<PyFermionOperator>()?;
     m.add_class::<PyMonomialOperator>()?;

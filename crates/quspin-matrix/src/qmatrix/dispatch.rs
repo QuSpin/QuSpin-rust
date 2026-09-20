@@ -15,6 +15,7 @@ use quspin_operator::boson::BosonOperatorInner;
 use quspin_operator::fermion::FermionOperatorInner;
 use quspin_operator::monomial::MonomialOperatorInner;
 use quspin_operator::pauli::HardcoreOperatorInner;
+use quspin_operator::spin::SpinOperatorInner;
 use quspin_types::Primitive;
 use quspin_types::QuSpinError;
 use quspin_types::ValueDType;
@@ -320,6 +321,14 @@ impl QMatrixInner {
         match ham {
             BondOperatorInner::Ham8(h) => dispatch_dtype_u8!(build_from_bit, h, space, dtype),
             BondOperatorInner::Ham16(h) => dispatch_dtype_u16!(build_from_bit, h, space, dtype),
+        }
+    }
+
+    /// Build from a spin-S operator and a `GenericBasis`.
+    pub fn build_spin(ham: &SpinOperatorInner, space: &GenericBasis, dtype: ValueDType) -> Self {
+        match ham {
+            SpinOperatorInner::Ham8(h) => dispatch_dtype_u8!(build_from_space, h, space, dtype),
+            SpinOperatorInner::Ham16(h) => dispatch_dtype_u16!(build_from_space, h, space, dtype),
         }
     }
 
