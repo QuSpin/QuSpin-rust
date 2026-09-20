@@ -67,7 +67,7 @@ impl<C: Clone> Clone for MonomialTerm<C> {
     }
 }
 
-impl<C: Copy + Ord> MonomialOperator<C> {
+impl<C: Copy + Ord + Into<usize>> MonomialOperator<C> {
     /// Construct from a list of `MonomialTerm` entries and an explicit `lhss`.
     ///
     /// # Errors
@@ -134,12 +134,17 @@ impl<C: Copy + Ord> MonomialOperator<C> {
             .max()
             .unwrap_or(0);
 
-        let num_cindices = {
-            let mut sorted: Vec<C> = terms.iter().map(|t| t.cindex).collect();
-            sorted.sort();
-            sorted.dedup();
-            sorted.len()
-        };
+        // Required coefficient-slice length: the largest cindex plus one, not
+        // the number of distinct values. Cindices are contiguous for anything
+        // built through the Python layer, but this constructor is public, and
+        // a gap would otherwise make `num_cindices()` under-report — every
+        // consumer then sizes `coeffs` too small and `coeffs[cindex]` indexes
+        // out of bounds inside `apply`.
+        let num_cindices = terms
+            .iter()
+            .map(|t| t.cindex)
+            .max()
+            .map_or(0, |c| Into::<usize>::into(c) + 1);
 
         Ok(MonomialOperator {
             terms,

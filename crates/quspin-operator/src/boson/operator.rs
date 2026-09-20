@@ -135,26 +135,26 @@ pub struct BosonOperator<C> {
     manip: DynamicDitManip,
     /// Maximum site index across all operator strings (inferred from terms).
     max_site: usize,
-    /// Number of distinct cindex values.
+    /// Required `coeffs` length: the largest cindex plus one.
     num_cindices: usize,
 }
 
-impl<C: Copy + Ord> BosonOperator<C> {
+impl<C: Copy + Ord + Into<usize>> BosonOperator<C> {
     /// Construct from a list of `BosonOpEntry` terms, the LHSS, and the number
     /// of distinct cindices.  Terms are sorted by `cindex`.
     pub fn new(mut terms: Vec<BosonOpEntry<C>>, lhss: usize) -> Self {
         terms.sort_by_key(|e| e.cindex);
-        let num_cindices = {
-            let mut count = 0;
-            let mut last: Option<C> = None;
-            for t in &terms {
-                if Some(t.cindex) != last {
-                    count += 1;
-                    last = Some(t.cindex);
-                }
-            }
-            count
-        };
+        // Required coefficient-slice length: the largest cindex plus one, not
+        // the number of distinct values. Cindices are contiguous for anything
+        // built through the Python layer, but this constructor is public, and
+        // a gap would otherwise make `num_cindices()` under-report — every
+        // consumer then sizes `coeffs` too small and `coeffs[cindex]` indexes
+        // out of bounds inside `apply`.
+        let num_cindices = terms
+            .iter()
+            .map(|t| t.cindex)
+            .max()
+            .map_or(0, |c| Into::<usize>::into(c) + 1);
         let max_site = terms
             .iter()
             .flat_map(|t| t.ops.iter())

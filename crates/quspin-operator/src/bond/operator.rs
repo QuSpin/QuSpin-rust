@@ -42,7 +42,7 @@ pub struct BondOperator<C> {
     num_cindices: usize,
 }
 
-impl<C: Copy + Ord> BondOperator<C> {
+impl<C: Copy + Ord + Into<usize>> BondOperator<C> {
     /// Construct from a list of `BondTerm` entries.
     ///
     /// `lhss` is inferred from the shape of the first term's matrix:
@@ -93,19 +93,17 @@ impl<C: Copy + Ord> BondOperator<C> {
             .flat_map(|&(si, sj)| [si as usize, sj as usize])
             .max()
             .unwrap_or(0);
-        let num_cindices = {
-            let mut count = 0;
-            let mut last: Option<C> = None;
-            let mut sorted_cindices: Vec<C> = terms.iter().map(|t| t.cindex).collect();
-            sorted_cindices.sort();
-            for c in sorted_cindices {
-                if Some(c) != last {
-                    count += 1;
-                    last = Some(c);
-                }
-            }
-            count
-        };
+        // Required coefficient-slice length: the largest cindex plus one, not
+        // the number of distinct values. Cindices are contiguous for anything
+        // built through the Python layer, but this constructor is public, and
+        // a gap would otherwise make `num_cindices()` under-report — every
+        // consumer then sizes `coeffs` too small and `coeffs[cindex]` indexes
+        // out of bounds inside `apply`.
+        let num_cindices = terms
+            .iter()
+            .map(|t| t.cindex)
+            .max()
+            .map_or(0, |c| Into::<usize>::into(c) + 1);
         Ok(BondOperator {
             terms,
             lhss,

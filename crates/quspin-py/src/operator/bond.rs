@@ -162,6 +162,15 @@ where
                 "cindex {cindex_usize} out of range for chosen index type"
             ))
         })?;
+        // An empty group would leave a hole in the cindex sequence — see
+        // `parse_terms_generic`.
+        if term.is_empty() || term.iter().all(|(_, bonds)| bonds.is_empty()) {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "term group {cindex_usize} contains no bonds; every group maps to one \
+                 coefficient, so empty groups are not allowed. Use a zero coefficient \
+                 on a real bond if you need a placeholder slot."
+            )));
+        }
         for (mat, bonds) in term {
             // Copy matrix into an owned ndarray with Complex<f64> elements.
             let arr = mat.as_array();
