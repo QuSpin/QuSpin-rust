@@ -1,4 +1,5 @@
 use super::matrix::PARALLEL_DIM_THRESHOLD;
+use super::rowsource::{BasisRows, build_raw_rows, raw_rows_to_qmatrix};
 use super::{CIndex, Entry, Index, QMatrix};
 use num_complex::Complex;
 use quspin_basis::dispatch::{
@@ -53,36 +54,9 @@ where
     S: BasisSpace<B> + Sync,
 {
     let dim = basis.size();
-
-    let build_row = |row_idx: usize| -> Vec<Entry<M, I, C>> {
-        let state = basis.state_at(row_idx);
-        let mut entries: Vec<Entry<M, I, C>> = Vec::new();
-        ham.apply(state, |cindex, amp, new_state| {
-            let Some(col_idx) = basis.index(new_state) else {
-                return;
-            };
-            let col = I::from_usize(col_idx);
-            let value = M::from_complex(amp);
-            let existing = entries
-                .iter_mut()
-                .find(|e| e.col == col && e.cindex == cindex);
-            if let Some(e) = existing {
-                e.value = M::from_complex(e.value.to_complex() + amp);
-            } else {
-                entries.push(Entry::new(value, col, cindex));
-            }
-        });
-        entries.sort_unstable_by(|a, b| a.col.cmp(&b.col).then_with(|| a.cindex.cmp(&b.cindex)));
-        entries
-    };
-
-    let rows: Vec<Vec<Entry<M, I, C>>> = if dim >= PARALLEL_DIM_THRESHOLD {
-        (0..dim).into_par_iter().map(build_row).collect()
-    } else {
-        (0..dim).map(build_row).collect()
-    };
-
-    rows_to_qmatrix(dim, rows)
+    let src = BasisRows::<H, B, C, S>::new(ham, basis);
+    let rows = build_raw_rows(&src);
+    raw_rows_to_qmatrix(dim, rows)
 }
 
 // ---------------------------------------------------------------------------
