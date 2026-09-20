@@ -8,6 +8,14 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+# A basis state in integer form. `basis.states` yields numpy integer scalars,
+# which the bindings accept anywhere a Python ``int`` is accepted.
+StateInt = int | np.integer[Any]
+
+# A site / value permutation. Accepted as any integer sequence, including a
+# numpy index array.
+Perm = Sequence[int] | npt.NDArray[np.integer[Any]]
+
 # ---------------------------------------------------------------------------
 # Basis types
 # ---------------------------------------------------------------------------
@@ -59,17 +67,53 @@ class SpinBasis:
     @property
     def n_sites(self) -> int: ...
     @property
+    def Ns(self) -> int: ...
+    @property
     def lhss(self) -> int: ...
     @property
     def size(self) -> int: ...
     @property
     def is_built(self) -> bool: ...
+    @property
+    def states(self) -> npt.NDArray[Any]: ...
     def state_at(self, i: int) -> str:
         """Return the i-th basis state as a bit-string."""
         ...
 
-    def index(self, state: str) -> int | None:
+    def state_to_int(self, state: str) -> int: ...
+    def int_to_state(self, state: StateInt, bracket_notation: bool = True) -> str: ...
+    def index_str(self, state: str) -> int | None:
         """Return the index of a state given as a bit-string, or ``None`` if absent."""
+        ...
+
+    def index(self, state: StateInt) -> int | None:
+        """Return the index of an integer-encoded state, or ``None`` if absent."""
+        ...
+
+    def project_to(
+        self,
+        state: npt.NDArray[Any] | Sequence[complex] | Sequence[float],
+        sparse: bool = False,
+    ) -> npt.NDArray[Any]:
+        """Project a full-basis state vector into this basis.
+
+        Returns a dense ``float64`` array when the input and the result are
+        both real, and ``complex128`` otherwise. ``sparse=True`` raises
+        ``NotImplementedError``.
+        """
+        ...
+
+    def project_from(
+        self,
+        state: npt.NDArray[Any] | Sequence[complex] | Sequence[float],
+        sparse: bool = False,
+    ) -> npt.NDArray[Any]:
+        """Expand a state vector in this basis to the full basis.
+
+        Returns a dense ``float64`` array when the input and the result are
+        both real, and ``complex128`` otherwise. ``sparse=True`` raises
+        ``NotImplementedError``.
+        """
         ...
 
     def __repr__(self) -> str: ...
@@ -96,13 +140,30 @@ class FermionBasis:
     @property
     def n_sites(self) -> int: ...
     @property
+    def Ns(self) -> int: ...
+    @property
     def lhss(self) -> int: ...
     @property
     def size(self) -> int: ...
     @property
     def is_built(self) -> bool: ...
+    @property
+    def states(self) -> npt.NDArray[Any]: ...
     def state_at(self, i: int) -> str: ...
-    def index(self, state: str) -> int | None: ...
+    def state_to_int(self, state: str) -> int: ...
+    def int_to_state(self, state: StateInt, bracket_notation: bool = True) -> str: ...
+    def index_str(self, state: str) -> int | None: ...
+    def index(self, state: StateInt) -> int | None: ...
+    def project_to(
+        self,
+        state: npt.NDArray[Any] | Sequence[complex] | Sequence[float],
+        sparse: bool = False,
+    ) -> npt.NDArray[Any]: ...
+    def project_from(
+        self,
+        state: npt.NDArray[Any] | Sequence[complex] | Sequence[float],
+        sparse: bool = False,
+    ) -> npt.NDArray[Any]: ...
     def __repr__(self) -> str: ...
 
 class BosonBasis:
@@ -128,13 +189,30 @@ class BosonBasis:
     @property
     def n_sites(self) -> int: ...
     @property
+    def Ns(self) -> int: ...
+    @property
     def lhss(self) -> int: ...
     @property
     def size(self) -> int: ...
     @property
     def is_built(self) -> bool: ...
+    @property
+    def states(self) -> npt.NDArray[Any]: ...
     def state_at(self, i: int) -> str: ...
-    def index(self, state: str) -> int | None: ...
+    def state_to_int(self, state: str) -> int: ...
+    def int_to_state(self, state: StateInt, bracket_notation: bool = True) -> str: ...
+    def index_str(self, state: str) -> int | None: ...
+    def index(self, state: StateInt) -> int | None: ...
+    def project_to(
+        self,
+        state: npt.NDArray[Any] | Sequence[complex] | Sequence[float],
+        sparse: bool = False,
+    ) -> npt.NDArray[Any]: ...
+    def project_from(
+        self,
+        state: npt.NDArray[Any] | Sequence[complex] | Sequence[float],
+        sparse: bool = False,
+    ) -> npt.NDArray[Any]: ...
     def __repr__(self) -> str: ...
 
 class GenericBasis:
@@ -184,17 +262,53 @@ class GenericBasis:
     @property
     def n_sites(self) -> int: ...
     @property
+    def Ns(self) -> int: ...
+    @property
     def lhss(self) -> int: ...
     @property
     def size(self) -> int: ...
     @property
     def is_built(self) -> bool: ...
+    @property
+    def states(self) -> npt.NDArray[Any]: ...
     def state_at(self, i: int) -> str:
         """Return the i-th basis state as a string of site occupations."""
         ...
 
-    def index(self, state: str) -> int | None:
+    def state_to_int(self, state: str) -> int: ...
+    def int_to_state(self, state: StateInt, bracket_notation: bool = True) -> str: ...
+    def index_str(self, state: str) -> int | None:
         """Return the index of a state string, or ``None`` if absent."""
+        ...
+
+    def index(self, state: StateInt) -> int | None:
+        """Return the index of an integer-encoded state, or ``None`` if absent."""
+        ...
+
+    def project_to(
+        self,
+        state: npt.NDArray[Any] | Sequence[complex] | Sequence[float],
+        sparse: bool = False,
+    ) -> npt.NDArray[Any]:
+        """Project a full-basis state vector into this basis.
+
+        Returns a dense ``float64`` array when the input and the result are
+        both real, and ``complex128`` otherwise. ``sparse=True`` raises
+        ``NotImplementedError``.
+        """
+        ...
+
+    def project_from(
+        self,
+        state: npt.NDArray[Any] | Sequence[complex] | Sequence[float],
+        sparse: bool = False,
+    ) -> npt.NDArray[Any]:
+        """Expand a state vector in this basis to the full basis.
+
+        Returns a dense ``float64`` array when the input and the result are
+        both real, and ``complex128`` otherwise. ``sparse=True`` raises
+        ``NotImplementedError``.
+        """
         ...
 
     def __repr__(self) -> str: ...
@@ -223,7 +337,7 @@ class SymElement:
     def __hash__(self) -> int: ...
     def __repr__(self) -> str: ...
 
-def Lattice(perm: list[int]) -> SymElement:
+def Lattice(perm: Perm) -> SymElement:
     """Pure site-permutation symmetry element.
 
     Args:
@@ -236,7 +350,7 @@ def Lattice(perm: list[int]) -> SymElement:
     """
     ...
 
-def Local(perm_vals: list[int], locs: list[int] | None = None) -> SymElement:
+def Local(perm_vals: Perm, locs: Perm | None = None) -> SymElement:
     """Pure on-site (dit-permutation) symmetry element.
 
     Args:
@@ -248,9 +362,9 @@ def Local(perm_vals: list[int], locs: list[int] | None = None) -> SymElement:
     ...
 
 def Composite(
-    perm: list[int],
-    perm_vals: list[int],
-    locs: list[int] | None = None,
+    perm: Perm,
+    perm_vals: Perm,
+    locs: Perm | None = None,
 ) -> SymElement:
     """Combined site-permutation + local-permutation symmetry element.
 
@@ -288,7 +402,6 @@ def _validate_group(
 # ---------------------------------------------------------------------------
 # Operator types
 # ---------------------------------------------------------------------------
-
 
 class PauliOperator:
     """Pauli / hardcore-boson operator.
@@ -752,6 +865,7 @@ class Hamiltonian:
     ) -> npt.NDArray[np.complexfloating[Any, Any]]:
         """Return the Hamiltonian at ``time`` as a dense ``(dim, dim)`` complex128 matrix."""
         ...
+
     def dot(
         self,
         time: float,
@@ -1133,7 +1247,6 @@ class FTLMDynamic:
         ...
 
     def __repr__(self) -> str: ...
-
 
 # ---------------------------------------------------------------------------
 # Fast Hadamard Transform

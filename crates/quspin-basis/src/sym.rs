@@ -862,6 +862,20 @@ mod tests {
         }
     }
 
+    #[test]
+    fn sym_basis_two_site_reflection_odd_parity_has_single_state() {
+        let mut basis = SymBasis::<u32, PermDitMask<u32>, u8>::new_empty(2, 2, false);
+        basis
+            .add_symmetry(Complex::new(-1.0, 0.0), crate::SymElement::lattice(&[1, 0]))
+            .unwrap();
+        basis.build(0u32, &x_op(2)).unwrap();
+
+        assert_eq!(basis.size(), 1);
+        assert_eq!(basis.state_at(0), 2u32);
+        let (_, norm) = basis.entry(0);
+        assert_eq!(norm, 1.0);
+    }
+
     // --- Parallel path tests ---
 
     #[test]

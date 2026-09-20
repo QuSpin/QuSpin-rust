@@ -2,6 +2,8 @@ pub mod boson;
 pub mod fermion;
 pub mod generic;
 pub mod spin;
+pub mod state_int;
+pub mod state_vec;
 pub mod sym_element;
 
 pub use boson::PyBosonBasis;
@@ -17,26 +19,23 @@ pub use sym_element::PySymElement;
 use crate::error::Error;
 use num_complex::Complex;
 use pyo3::prelude::*;
-use quspin_core::basis::seed::{dit_seed_from_str, seed_from_str};
 
-/// Parse seed strings into byte vectors.
+/// Parse a human-readable state string into per-site occupation bytes.
 ///
-/// Each seed must have length `n_sites`. For `lhss == 2` uses binary
-/// `seed_from_str`; for `lhss > 2` uses `dit_seed_from_str`.
+/// Thin PyO3 wrapper over
+/// [`quspin_core::basis::seed::state_from_str`], which owns the accepted
+/// grammar (ket notation, tokenised occupations, one character per site).
+pub(crate) fn parse_state_str(state_str: &str, n_sites: usize, lhss: usize) -> PyResult<Vec<u8>> {
+    quspin_core::basis::seed::state_from_str(state_str, n_sites, lhss)
+        .map_err(Error::from)
+        .map_err(PyErr::from)
+}
+
+/// Parse seed strings into byte vectors. See [`parse_state_str`].
 pub(crate) fn parse_seeds(seeds: &[String], n_sites: usize, lhss: usize) -> PyResult<Vec<Vec<u8>>> {
     seeds
         .iter()
-        .map(|s| {
-            if lhss == 2 {
-                seed_from_str(s, n_sites)
-                    .map_err(Error::from)
-                    .map_err(PyErr::from)
-            } else {
-                dit_seed_from_str(s, n_sites, lhss)
-                    .map_err(Error::from)
-                    .map_err(PyErr::from)
-            }
-        })
+        .map(|s| parse_state_str(s, n_sites, lhss))
         .collect()
 }
 
@@ -108,19 +107,4 @@ pub(crate) fn replay_group_into_bit(
         elem.add_to_bit_basis(basis, chi).map_err(Error::from)?;
         Ok(())
     })
-}
-
-/// Parse a state string to bytes, handling LHSS=2 (binary) and LHSS>2 (dit).
-///
-/// `state_str` must have length `n_sites`.
-pub(crate) fn parse_state_str(state_str: &str, n_sites: usize, lhss: usize) -> PyResult<Vec<u8>> {
-    if lhss == 2 {
-        seed_from_str(state_str, n_sites)
-            .map_err(Error::from)
-            .map_err(PyErr::from)
-    } else {
-        dit_seed_from_str(state_str, n_sites, lhss)
-            .map_err(Error::from)
-            .map_err(PyErr::from)
-    }
 }
