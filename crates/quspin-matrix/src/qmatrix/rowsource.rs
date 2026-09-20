@@ -235,6 +235,16 @@ pub fn build_raw_rows(src: &dyn RowSource) -> Vec<Vec<RawEntry>> {
     }
 }
 
+/// Number of distinct `(col, cindex)` keys in an already-sorted row, i.e.
+/// how many entries survive coalescing.
+fn distinct_keys(row: &[RawEntry]) -> usize {
+    let boundaries = row
+        .windows(2)
+        .filter(|w| w[0].col != w[1].col || w[0].cindex != w[1].cindex)
+        .count();
+    boundaries + usize::from(!row.is_empty())
+}
+
 /// Assemble sorted erased rows into a typed `QMatrix`, summing duplicates.
 ///
 /// Generic over `M`, `I` and `C`, but contains no parallelism and no sort —
@@ -254,7 +264,12 @@ pub fn raw_rows_to_qmatrix<M: Primitive, I: Index, C: CIndex>(
     dim: usize,
     rows: Vec<Vec<RawEntry>>,
 ) -> QMatrix<M, I, C> {
-    let total_nnz: usize = rows.iter().map(|r| r.len()).sum();
+    // Reserve the *coalesced* count, not the emitted one. Rows arrive
+    // sorted, so the number of surviving entries is the number of distinct
+    // `(col, cindex)` runs; an operator that emits many contributions per
+    // key would otherwise leave the returned `QMatrix` holding the raw
+    // count as dead capacity for its whole lifetime.
+    let total_nnz: usize = rows.iter().map(|row| distinct_keys(row)).sum();
     let mut indptr = Vec::with_capacity(dim + 1);
     let mut data: Vec<Entry<M, I, C>> = Vec::with_capacity(total_nnz);
     indptr.push(I::from_usize(0));
@@ -376,6 +391,46 @@ mod tests {
         assert_eq!(m.row(1).len(), 1);
         assert_eq!(m.row(2).len(), 0);
         assert_eq!(m.row(1)[0].value, 5.0);
+    }
+
+    /// `distinct_keys` must predict exactly what coalescing produces,
+    /// otherwise the reserved capacity is either short (reallocation) or
+    /// long (dead memory retained in the returned matrix).
+    #[test]
+    fn reserved_capacity_matches_coalesced_length() {
+        // Ten emitted contributions collapsing to three surviving entries.
+        let row = vec![
+            entry(0, 0, 1.0),
+            entry(0, 0, 1.0),
+            entry(0, 0, 1.0),
+            entry(0, 1, 1.0),
+            entry(0, 1, 1.0),
+            entry(5, 0, 1.0),
+            entry(5, 0, 1.0),
+            entry(5, 0, 1.0),
+            entry(5, 0, 1.0),
+            entry(5, 0, 1.0),
+        ];
+        assert_eq!(distinct_keys(&row), 3);
+
+        let m: QMatrix<f64, i64, u8> = raw_rows_to_qmatrix(1, vec![row]);
+        assert_eq!(
+            m.row(0).len(),
+            3,
+            "coalesced length must match the estimate"
+        );
+        assert_eq!(m.row(0)[0].value, 3.0);
+        assert_eq!(m.row(0)[1].value, 2.0);
+        assert_eq!(m.row(0)[2].value, 5.0);
+    }
+
+    #[test]
+    fn distinct_keys_handles_edges() {
+        assert_eq!(distinct_keys(&[]), 0);
+        assert_eq!(distinct_keys(&[entry(0, 0, 1.0)]), 1);
+        assert_eq!(distinct_keys(&[entry(0, 0, 1.0), entry(0, 0, 2.0)]), 1);
+        assert_eq!(distinct_keys(&[entry(0, 0, 1.0), entry(0, 1, 2.0)]), 2);
+        assert_eq!(distinct_keys(&[entry(0, 0, 1.0), entry(1, 0, 2.0)]), 2);
     }
 
     /// `sort_row` must be stable: equal keys keep emission order, which is

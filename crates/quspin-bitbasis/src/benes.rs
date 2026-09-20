@@ -129,8 +129,9 @@ fn invert_perm(p: &[i32], inv: &mut [i32]) {
 ///
 /// # Panics
 ///
-/// Panics unless `c_tgt.len()` is a power of two in `2..=B::BITS`, or if any
-/// source index is `>= c_tgt.len()`.
+/// Panics unless `c_tgt.len()` is a power of two in `2..=B::BITS`, if any
+/// source index is `>= c_tgt.len()`, or if any source appears more than
+/// once. `None` slots are exempt — they are don't-cares, not sources.
 pub fn gen_benes<B: BitInt>(c_tgt: &[Option<usize>]) -> BenesNetwork<B> {
     let bits = c_tgt.len();
 
@@ -141,11 +142,23 @@ pub fn gen_benes<B: BitInt>(c_tgt: &[Option<usize>]) -> BenesNetwork<B> {
 
     // Convert to the internal i32 representation used by the routing algorithm.
     // Convention: c_int[dst] = src  (EMPTY = don't care).
+    //
+    // A repeated source is not a partial permutation: `gen_benes_inner`
+    // assigns `src[c_tgt[s]] = s`, so the second occurrence overwrites the
+    // first and the resulting bijective network cannot satisfy the request.
+    // Reject it here rather than letting routing fail or silently misroute.
+    let mut seen = vec![false; bits];
     let c_int: Vec<i32> = c_tgt
         .iter()
         .map(|e| {
             e.map_or(EMPTY, |v| {
                 assert!(v < bits, "source index {v} outside network width {bits}");
+                assert!(
+                    !seen[v],
+                    "source index {v} appears more than once in c_tgt; \
+                     each source may feed at most one destination"
+                );
+                seen[v] = true;
                 v as i32
             })
         })
@@ -156,10 +169,17 @@ pub fn gen_benes<B: BitInt>(c_tgt: &[Option<usize>]) -> BenesNetwork<B> {
 
 /// Generate a Benes network sized to `n_sites` rather than to `B::BITS`.
 ///
-/// `perm[dst]` is the source site feeding output site `dst`, for
-/// `dst < n_sites`. The network is routed over `n_sites.next_power_of_two()`
-/// slots — the smallest block a Benes network can address that still
-/// contains every permuted site — and sites outside `perm` map to identity.
+/// **`perm[src] = dst`** — the site at `src` moves to `dst`. This is the
+/// forward convention used throughout the crate by
+/// [`BenesPermDitLocations::new`](crate::BenesPermDitLocations) and by
+/// `SymElement::lattice`, so a lattice permutation can be handed straight
+/// to this function. (Note it is the *opposite* of `gen_benes`'s
+/// `c_tgt[dst] = src`, which is a bit-level target map, not a site
+/// permutation.)
+///
+/// The network is routed over `n_sites.next_power_of_two()` slots — the
+/// smallest block a Benes network can address that still contains every
+/// permuted site — and sites outside `perm` map to identity.
 ///
 /// This is the entry point lattice symmetries should use: the stage count
 /// follows the physics instead of the storage width.
@@ -167,7 +187,7 @@ pub fn gen_benes<B: BitInt>(c_tgt: &[Option<usize>]) -> BenesNetwork<B> {
 /// # Panics
 ///
 /// Panics if `perm` is empty, if `n_sites.next_power_of_two() > B::BITS`, if
-/// any entry is `>= perm.len()`, or if any source appears twice.
+/// any entry is `>= perm.len()`, or if any destination appears twice.
 pub fn gen_benes_for<B: BitInt>(perm: &[usize]) -> BenesNetwork<B> {
     assert!(!perm.is_empty(), "permutation must be non-empty");
     // A Benes network addresses a power-of-two block, so round `n_sites` up.
@@ -186,21 +206,22 @@ pub fn gen_benes_for<B: BitInt>(perm: &[usize]) -> BenesNetwork<B> {
     // padding pins those slots so bits at or above `perm.len()` are fixed.
     let mut c_tgt: Vec<Option<usize>> = (0..bits).map(Some).collect();
 
-    // `perm` is documented as a permutation; a repeated source would
-    // silently overwrite routing state in `gen_benes_inner` and yield a
-    // non-bijective network, so reject it here rather than downstream.
+    // `perm` is documented as a permutation; a repeated destination would
+    // silently overwrite an earlier route and yield a network that cannot
+    // satisfy the request, so reject it here rather than downstream.
     let mut seen = vec![false; perm.len()];
-    for (dst, &src) in perm.iter().enumerate() {
+    for (src, &dst) in perm.iter().enumerate() {
         assert!(
-            src < perm.len(),
-            "permutation entry {src} outside 0..{}",
+            dst < perm.len(),
+            "permutation entry {dst} outside 0..{}",
             perm.len()
         );
         assert!(
-            !seen[src],
-            "source {src} appears more than once; `perm` must be a permutation"
+            !seen[dst],
+            "destination {dst} appears more than once; `perm` must be a permutation"
         );
-        seen[src] = true;
+        seen[dst] = true;
+        // `gen_benes` wants the inverse map: output bit `dst` reads `src`.
         c_tgt[dst] = Some(src);
     }
     gen_benes::<B>(&c_tgt)
@@ -497,8 +518,10 @@ mod tests {
         let n = perm.len();
         assert!(n.is_power_of_two());
 
+        // `perm[src] = dst` (the crate convention); `gen_benes` wants the
+        // inverse bit map, so invert while filling.
         let mut full: Vec<Option<usize>> = (0..B::BITS as usize).map(Some).collect();
-        for (dst, &src) in perm.iter().enumerate() {
+        for (src, &dst) in perm.iter().enumerate() {
             full[dst] = Some(src);
         }
         let net_full = gen_benes::<B>(&full);
@@ -512,6 +535,50 @@ mod tests {
                 net_full.apply(x),
                 "short network disagrees with full for perm {perm:?} on {p:#x}"
             );
+        }
+    }
+
+    /// `gen_benes_for` must use the crate's forward site-permutation
+    /// convention, `perm[src] = dst`, the same as
+    /// `BenesPermDitLocations::new` and `SymElement::lattice`.
+    ///
+    /// It originally took `perm[dst] = src`, so handing it a lattice
+    /// permutation silently applied the inverse symmetry. A cyclic shift
+    /// cannot catch that — it is its own inverse up to direction — so this
+    /// uses a 3-cycle, where forward and inverse differ observably.
+    #[test]
+    fn uses_forward_site_permutation_convention() {
+        // perm[src] = dst: 0 -> 1, 1 -> 2, 2 -> 0.
+        let perm = [1usize, 2, 0];
+        let net = gen_benes_for::<u64>(&perm);
+        assert_eq!(net.apply(0b001u64), 0b010u64, "bit 0 must move to bit 1");
+        assert_eq!(net.apply(0b010u64), 0b100u64, "bit 1 must move to bit 2");
+        assert_eq!(net.apply(0b100u64), 0b001u64, "bit 2 must move to bit 0");
+    }
+
+    /// Stronger form of the above: agree with `BenesPermDitLocations`, the
+    /// production site-permutation type, on the same input. If the two ever
+    /// disagree, one of them is applying the inverse.
+    #[test]
+    fn agrees_with_perm_dit_locations() {
+        use crate::transform::{BenesPermDitLocations, BitStateOp};
+        for perm in [
+            vec![1usize, 2, 0],
+            vec![2usize, 0, 1],
+            vec![3usize, 0, 1, 2],
+            vec![1usize, 0, 3, 2, 5, 4],
+            vec![4usize, 3, 0, 1, 2],
+        ] {
+            let n = perm.len();
+            let direct = gen_benes_for::<u64>(&perm);
+            // lhss = 2 -> one bit per site, so sites and bits coincide.
+            let via_api = BenesPermDitLocations::<u64>::new(2, &perm, false);
+            let mask = (1u64 << n) - 1;
+            for x in 0..(1u64 << n) {
+                let a = direct.apply(x & mask);
+                let b = BitStateOp::apply(&via_api, x & mask);
+                assert_eq!(a, b, "perm {perm:?}: x={x:#b} -> {a:#b} vs {b:#b}");
+            }
         }
     }
 
@@ -560,8 +627,24 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "appears more than once")]
-    fn rejects_duplicate_source() {
+    fn rejects_duplicate_destination() {
         let _ = gen_benes_for::<u64>(&[0usize, 1, 1, 3]);
+    }
+
+    /// `gen_benes` itself must also reject a repeated source; `None` slots
+    /// stay exempt because they are don't-cares rather than sources.
+    #[test]
+    #[should_panic(expected = "appears more than once")]
+    fn gen_benes_rejects_duplicate_source() {
+        let c_tgt = vec![Some(0usize), Some(1), Some(1), Some(3)];
+        let _ = gen_benes::<u64>(&c_tgt);
+    }
+
+    #[test]
+    fn gen_benes_allows_repeated_dont_cares() {
+        let c_tgt = vec![Some(1usize), Some(0), None, None];
+        let net = gen_benes::<u64>(&c_tgt);
+        assert_eq!(net.apply(0b01u64), 0b10u64);
     }
 
     #[test]
@@ -633,7 +716,7 @@ mod tests {
         assert_eq!(net.b1.cfg.len(), 5, "20 sites -> 32-slot network");
 
         let mut full: Vec<Option<usize>> = (0..64usize).map(Some).collect();
-        for (dst, &src) in perm.iter().enumerate() {
+        for (src, &dst) in perm.iter().enumerate() {
             full[dst] = Some(src);
         }
         let reference = gen_benes::<u64>(&full);
