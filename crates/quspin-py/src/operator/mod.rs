@@ -217,6 +217,11 @@ pub(crate) fn extract_coeff(py: Python<'_>, obj: &Py<PyAny>) -> PyResult<Complex
 }
 
 /// Generic parsing of `*terms` for any operator type that implements `ParseOp`.
+///
+/// Each positional group becomes one cindex, so a group that produces no
+/// entries would leave a hole in the cindex sequence and shift every later
+/// coefficient off by one relative to what the caller wrote. Empty groups are
+/// rejected here, in the one place all the string-based operator types share.
 pub(crate) fn parse_terms_generic<C, Op, E, F>(
     py: Python<'_>,
     terms: &[Term],
@@ -235,6 +240,13 @@ where
                 "cindex {cindex_usize} out of range for chosen index type"
             ))
         })?;
+        if term.iter().all(|(_, bonds)| bonds.is_empty()) {
+            return Err(quspin_core::error::QuSpinError::ValueError(format!(
+                "term group {cindex_usize} contains no bonds; every group maps to one \
+                 coefficient, so empty groups are not allowed. Use a zero coefficient \
+                 on a real bond if you need a placeholder slot."
+            )));
+        }
         for (op_str, bonds) in term {
             for bond in bonds {
                 if bond.is_empty() {
