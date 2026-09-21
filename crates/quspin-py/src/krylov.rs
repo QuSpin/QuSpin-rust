@@ -50,21 +50,54 @@ fn validate_e_shift(e_shift: f64) -> PyResult<()> {
     Ok(())
 }
 
-/// Turn an overflowed Boltzmann weight into an actionable error.
+/// Turn a Boltzmann weight that has left the representable range into an
+/// actionable error.
 ///
-/// `e^{-beta (E_n - e_shift)}` overflows once `beta * |E_n - e_shift|` exceeds
-/// about 709. Returning `inf`/`NaN` here would propagate into the caller's
-/// `sum(oz_r)/sum(z_r)` as a silent NaN, so fail loudly and name the knob.
-fn check_partition_finite(z_r: f64, beta: f64, e_shift: f64) -> PyResult<()> {
-    if z_r.is_finite() {
-        return Ok(());
+/// `e^{-beta (E_n - e_shift)}` overflows once `beta * (e_shift - E_n)` exceeds
+/// about 709 and underflows to zero once `beta * (E_n - e_shift)` does. Both
+/// ends are failures the caller cannot detect afterwards:
+///
+/// - overflow gives `inf`, and `sum(oz)/sum(z)` comes out `NaN`;
+/// - underflow gives exactly `0.0`, and the same ratio is `0/0`.
+///
+/// The underflow end matters more than it looks: the natural thing to reach
+/// for is a variational *lower* bound on the ground-state energy, and a bound
+/// only `709/beta` too low is already enough to zero every weight.
+///
+/// `z_r` is a sum of non-negative terms so it cannot reach a finite value
+/// through cancellation, but `oz_r` can be non-finite while `z_r` is not (a
+/// large-norm observable), so check it too.
+fn check_sample_in_range(z_r: f64, oz_r: C64, beta: f64, e_shift: f64) -> PyResult<()> {
+    let bad = |what: &str, detail: &str| {
+        Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "{what} at beta = {beta} with e_shift = {e_shift}; {detail} \
+             (exp(-beta*(E - e_shift)) leaves the representable range once \
+             beta*|E - e_shift| exceeds ~709)"
+        )))
+    };
+
+    if !z_r.is_finite() {
+        return bad(
+            &format!("partition function overflowed (z_r = {z_r})"),
+            "raise e_shift towards the ground-state energy when constructing \
+             the estimator",
+        );
     }
-    Err(pyo3::exceptions::PyValueError::new_err(format!(
-        "partition function overflowed (z_r = {z_r}) at beta = {beta} with \
-         e_shift = {e_shift}; set e_shift to an estimate of the ground-state \
-         energy when constructing the estimator (exp(-beta*(E - e_shift)) \
-         overflows once beta*|E - e_shift| exceeds ~709)"
-    )))
+    if z_r == 0.0 {
+        return bad(
+            "partition function underflowed to zero (z_r = 0)",
+            "e_shift is far below the spectrum, so every Boltzmann weight \
+             rounded to zero; lower e_shift is not safer than higher, set it \
+             near the ground-state energy rather than below it",
+        );
+    }
+    if !oz_r.re.is_finite() || !oz_r.im.is_finite() {
+        return bad(
+            &format!("observable contribution is not finite (oz_r = {oz_r})"),
+            "the observable's matrix elements overflowed once weighted",
+        );
+    }
+    Ok(())
 }
 
 /// Build a matvec closure from a HamiltonianInner at a fixed time.
@@ -332,12 +365,12 @@ impl PyFTLM {
         });
 
         let (z_r, oz_r) = result.map_err(Error::from)?;
-        check_partition_finite(z_r, beta, e_shift)?;
+        check_sample_in_range(z_r, oz_r, beta, e_shift)?;
         Ok((z_r, Complex64::new(oz_r.re, oz_r.im)))
     }
 
     fn __repr__(&self) -> String {
-        format!("FTLM(dim={})", self.inner.dim())
+        format!("FTLM(dim={}, e_shift={})", self.inner.dim(), self.e_shift)
     }
 }
 
@@ -378,9 +411,10 @@ impl PyLTLM {
 
     /// Energy shift used in the Boltzmann weights; see ``FTLM.e_shift``.
     ///
-    /// LTLM exponentiates ``-beta (E_n - e_shift) / 2``, so it overflows at
-    /// twice the ``beta`` the FTLM partition does — later, but just as
-    /// silently.
+    /// ``ltlm_coeffs`` exponentiates the half exponent
+    /// ``-beta (E_n - e_shift) / 2``, but ``sample`` still computes ``z_r``
+    /// with the full-exponent FTLM partition, so this class overflows at the
+    /// same ``beta`` FTLM does — not at twice it.
     #[getter]
     fn e_shift(&self) -> f64 {
         self.e_shift
@@ -474,12 +508,12 @@ impl PyLTLM {
         });
 
         let (z_r, oz_r) = result.map_err(Error::from)?;
-        check_partition_finite(z_r, beta, e_shift)?;
+        check_sample_in_range(z_r, oz_r, beta, e_shift)?;
         Ok((z_r, Complex64::new(oz_r.re, oz_r.im)))
     }
 
     fn __repr__(&self) -> String {
-        format!("LTLM(dim={})", self.inner.dim())
+        format!("LTLM(dim={}, e_shift={})", self.inner.dim(), self.e_shift)
     }
 }
 
@@ -520,7 +554,22 @@ impl PyFTLMDynamic {
     /// Energy shift used in the Boltzmann weights; see ``FTLM.e_shift``.
     ///
     /// Applied to the Boltzmann weight only — the resolvent pole ``omega +
-    /// E_n`` is left alone, so the frequency axis does not move.
+    /// E_n`` is left alone, so the frequency axis does not move.  The whole
+    /// returned array is scaled by ``exp(beta*e_shift)``.
+    ///
+    /// **Normalization caveat.**  ``sample`` returns only the unnormalized
+    /// ``S_r(omega)``; the partition function that divides it comes from a
+    /// separate ``FTLM`` object.  That is the one place the constructor-level
+    /// shift cannot enforce consistency on its own — if the two objects are
+    /// built with different ``e_shift`` values the spectral function is off by
+    /// a silent factor ``exp(beta*(s_dyn - s_ftlm))``.  Build both from the
+    /// same value:
+    ///
+    /// ```python
+    /// e0 = ...                      # one estimate, used for both
+    /// dyn = FTLMDynamic(ham, e_shift=e0)
+    /// part = FTLM(ham, e_shift=e0)
+    /// ```
     #[getter]
     fn e_shift(&self) -> f64 {
         self.e_shift
@@ -606,10 +655,28 @@ impl PyFTLMDynamic {
         });
 
         let spectral = result.map_err(Error::from)?;
+        // Same guard the FTLM/LTLM samples get: an overflowed Boltzmann weight
+        // turns the whole spectral array into `inf`, which the caller cannot
+        // distinguish from a genuinely large spectral weight afterwards. An
+        // all-zero array is legitimate here (a frequency window with no
+        // spectral weight), so unlike `z_r` only the non-finite end is checked.
+        if let Some(bad) = spectral.iter().find(|s| !s.is_finite()) {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "spectral function is not finite (S = {bad}) at beta = {beta} \
+                 with e_shift = {e_shift}; set e_shift near the ground-state \
+                 energy when constructing the estimator \
+                 (exp(-beta*(E - e_shift)) leaves the representable range once \
+                 beta*|E - e_shift| exceeds ~709)"
+            )));
+        }
         Ok(spectral.to_pyarray(py))
     }
 
     fn __repr__(&self) -> String {
-        format!("FTLMDynamic(dim={})", self.inner.dim())
+        format!(
+            "FTLMDynamic(dim={}, e_shift={})",
+            self.inner.dim(),
+            self.e_shift
+        )
     }
 }

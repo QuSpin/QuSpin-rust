@@ -34,7 +34,11 @@ def _ham_and_obs(scale: float = 1.0):
     """
     bonds = [[scale, i, i + 1] for i in range(N - 1)]
     h_op = PauliOperator([("XX", bonds)], [("ZZ", bonds)])
-    o_op = PauliOperator([("Z", [[1.0, 0]])])
+    # ZZ, not Z: XX+ZZ is invariant under the global spin flip X^(x)N, under
+    # which a single Z is odd, so <Z_0> vanishes identically at every beta and
+    # any multiplicative error in oz_r would be invisible.  ZZ is even, and
+    # <ZZ_01> = -0.687... here.
+    o_op = PauliOperator([("ZZ", [[1.0, 0, 1]])])
     basis = SpinBasis.full(N)
 
     h_mat = QMatrix.build_pauli(h_op, basis, np.dtype("complex128"))
@@ -61,9 +65,16 @@ def _exact_thermal_average(h_dense, o_dense, beta: float) -> complex:
 def _ftlm_average(estimator, obs, beta: float, k: int) -> complex:
     """Full-trace FTLM: sum over a complete basis of starting vectors.
 
-    Summing over all `dim` unit vectors with a full Krylov space makes FTLM
-    exact — it is just the trace written out — so this compares against dense
-    diagonalization with no stochastic tolerance.
+    Summing over all `dim` unit vectors makes FTLM exact — it is just the
+    trace written out — so this compares against dense diagonalization with no
+    stochastic tolerance.
+
+    Note the reason it is exact is *not* that ``k = dim`` spans the whole
+    space: Lanczos from a computational-basis vector on a symmetric chain
+    terminates early (``LanczosBasis::build`` breaks when beta_j underflows).
+    It is exact because the space it terminates on is H-invariant and contains
+    |r>, so ``e^{-beta H}|r>`` never leaves it and the Ritz pairs are exact
+    eigenpairs there.  That is what licenses the tight ``abs=1e-8`` below.
     """
     z_total = 0.0
     oz_total = 0.0 + 0.0j
@@ -116,6 +127,23 @@ class TestEShiftCorrectness:
         want = _exact_thermal_average(h_dense, o_dense, beta)
         assert got == pytest.approx(want, abs=1e-8)
 
+    @pytest.mark.parametrize("shift", [-4.0, 0.0, 2.5])
+    def test_ltlm_full_trace_matches_exact_diagonalization(self, shift: float):
+        """Same identity for LTLM, and it pins the half-exponent bookkeeping.
+
+        LTLM's oz_r = <phi|O|phi> with phi = e^{-beta(H-s)/2}|r>, so it picks up
+        exp(beta*s) from *two* half-exponent factors while z_r picks it up from
+        one full one.  Those powers have to match for the ratio to be
+        shift-invariant, and a test that only checks finiteness cannot see it.
+        Summing over a complete basis gives
+        Tr(e^{-bH/2} O e^{-bH/2}) / Tr(e^{-bH}) = <O> exactly.
+        """
+        ham, obs, h_dense, o_dense = _ham_and_obs()
+        beta = 1.5
+        got = _ftlm_average(LTLM(ham, e_shift=shift), obs, beta, DIM)
+        want = _exact_thermal_average(h_dense, o_dense, beta)
+        assert got == pytest.approx(want, abs=1e-8)
+
 
 class TestOverflow:
     """The regression: low temperature used to return inf/NaN silently."""
@@ -159,6 +187,68 @@ class TestOverflow:
         z_r, oz_r = LTLM(ham, e_shift=e0).sample(v0, DIM, obs, self.BETA)
         assert np.isfinite(z_r)
         assert np.isfinite(oz_r)
+
+    def test_ftlm_dynamic_unshifted_raises(self):
+        """The dynamic estimator overflows the same way the other two do."""
+        ham, obs, _, _ = _ham_and_obs(self.SCALE)
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[0] = 1.0
+
+        with pytest.raises(ValueError, match="e_shift"):
+            FTLMDynamic(ham).sample(
+                v0, DIM, obs, self.BETA, np.linspace(-2.0, 2.0, 5), 0.1
+            )
+
+    def test_ftlm_dynamic_shifted_is_finite(self):
+        ham, obs, h_dense, _ = _ham_and_obs(self.SCALE)
+        e0 = np.linalg.eigvalsh(h_dense).min()
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[0] = 1.0
+
+        s = FTLMDynamic(ham, e_shift=e0).sample(
+            v0, DIM, obs, self.BETA, np.linspace(-2.0, 2.0, 5), 0.1
+        )
+        assert np.all(np.isfinite(s))
+
+    @pytest.mark.parametrize("cls", [FTLM, LTLM])
+    def test_underflow_raises_instead_of_returning_zero_over_zero(self, cls):
+        """The opposite failure: e_shift far BELOW the spectrum zeroes every weight.
+
+        Reaching for a variational lower bound on E_0 is the natural mistake,
+        and a bound only ~709/beta too low is already enough.
+        """
+        ham, obs, h_dense, _ = _ham_and_obs(self.SCALE)
+        e0 = np.linalg.eigvalsh(h_dense).min()
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[0] = 1.0
+
+        with pytest.raises(ValueError, match="underflow"):
+            cls(ham, e_shift=e0 - 100.0).sample(v0, DIM, obs, self.BETA)
+
+    def test_non_finite_observable_contribution_raises(self):
+        """`oz_r` can blow up while `z_r` stays finite — the guard is two-sided.
+
+        E_0 = -2.83 here, so beta=8 leaves z_r = 1.4e8: comfortably finite, and
+        independent of the observable.  A norm-1e305 observable then pushes
+        oz_r past f64 on its own.
+        """
+        ham, obs, _, _ = _ham_and_obs()
+        huge = Hamiltonian(
+            QMatrix.build_pauli(
+                PauliOperator([("ZZ", [[1e305, 0, 1]])]),
+                SpinBasis.full(N),
+                np.dtype("complex128"),
+            ),
+            [Static()],
+        )
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[0] = 1.0
+
+        z_r, _ = FTLM(ham).sample(v0, DIM, obs, 8.0)
+        assert np.isfinite(z_r), "z_r must stay finite for this test to bite"
+
+        with pytest.raises(ValueError, match="not finite"):
+            FTLM(ham).sample(v0, DIM, huge, 8.0)
 
 
 class TestFTLMDynamic:
