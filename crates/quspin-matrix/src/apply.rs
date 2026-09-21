@@ -23,10 +23,11 @@ const PARALLEL_APPLY_THRESHOLD: usize = 256;
 ///
 /// For non-symmetric bases the scale is always `1.0`.  For `SymBasis` the
 /// state is mapped to its orbit representative and scaled by
-/// `χ_h · √(norm_j / |G|)`, where `h` is the element that carries the state
-/// to the representative (`h·state = r_j`) and `χ_h` is the character
-/// [`SymBasis::get_refstate`] accumulates along the way.  Fully
-/// monomorphized — zero runtime dispatch.
+/// `c_h(state) · √(norm_j / |G|)`, where `h` is the element that carries the
+/// state to the representative (`h·state = r_j`) and `c_h(s) = χ_h · η_h(s)`
+/// is what [`SymBasis::get_refstate`] accumulates — the group character
+/// *times the fermion sign*, not the character alone.  Fully monomorphized —
+/// zero runtime dispatch.
 pub trait ProjectState<B: BitInt>: BasisSpace<B> {
     fn project(&self, state: B) -> Option<(usize, C64)>;
 }
@@ -50,14 +51,27 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> ProjectState<B> for SymBa
             let (_, norm) = self.entry(j);
             let group_order = self.group_order() as f64;
             // `grp_char` is used un-conjugated, matching `SymRows::row_into`
-            // in the assembled-matrix path.  With
-            // `|ψ_j⟩ = (|G|·n_j)^(-1/2) Σ_g χ_g Û_g|r_j⟩` and `h·state = r_j`,
+            // in the assembled-matrix path.  Writing `c_g(s) = χ_g · η_g(s)`
+            // for the character times the fermion sign — which is what
+            // `get_refstate` returns — and
+            // `|ψ_j⟩ = (|G|·n_j)^(-1/2) Σ_g χ_g Û_g|r_j⟩` with `h·state = r_j`,
             // the elements carrying `r_j` to `state` are `h⁻¹k` for `k` in the
             // stabilizer, so
-            // `⟨ψ_j|state⟩ = χ_h (|G|·n_j)^(-1/2) Σ_k conj(χ_k) = χ_h √(n_j/|G|)`
-            // because `Σ_k χ_k = n_j` is real.  Conjugating here would turn the
-            // group sum into `Σ_g χ_g²`, which vanishes for every character
-            // other than `χ ≡ ±1`.
+            //
+            //   ⟨state|ψ_j⟩ = c_{h⁻¹}(r_j) · √(n_j/|G|)
+            //   ⟨ψ_j|state⟩ = conj(c_{h⁻¹}(r_j)) · √(n_j/|G|)
+            //               = c_h(state) · √(n_j/|G|)
+            //
+            // using `Σ_k c_k(r_j) = n_j` (real: `c` restricted to the
+            // stabilizer is a genuine 1-D character, the cocycle collapsing
+            // because `k·r_j = r_j`) and `conj(c_{h⁻¹}(r_j)) = c_h(state)`,
+            // which holds because `|χ| = 1` and the fermion sign is real
+            // (`η_{h⁻¹}(h·s) · η_h(s) = η_e(s) = 1`).
+            //
+            // Conjugating here would instead return `⟨state|ψ_j⟩`, turning the
+            // group sum into `Σ_g χ_g²` — identically zero for every character
+            // other than `χ ≡ ±1`, since `conj(ψ_j)` lives in the `conj(χ)`
+            // sector and `H` commutes with the group.
             (j, grp_char * C64::new((norm / group_order).sqrt(), 0.0))
         })
     }
