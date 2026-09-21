@@ -1,0 +1,22 @@
+name = "quspin-symmetry"
+version = "0.1.0"
+keywords = ["math", "quantum", "symmetry"]
+defaultTargets = ["QuSpinSymmetry"]
+
+[leanOptions]
+pp.unicode.fun = true # pretty-prints `fun a ↦ b`
+relaxedAutoImplicit = false
+autoImplicit = false
+# Mathlib's house-style linter set (copyright headers, authors lines, ...) is
+# for Mathlib's own source tree, not downstream projects. The mathematical
+# linters still run.
+weak.linter.mathlibStandardSet = false
+maxSynthPendingDepth = 3
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.34.0"
+
+[[lean_lib]]
+name = "QuSpinSymmetry"

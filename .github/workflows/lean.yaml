@@ -1,0 +1,38 @@
+name: Lean
+
+# The Lean development proves the mathematics behind the symmetry-sector
+# formulas (see lean/README.md). It is independent of the Rust build, so it
+# runs only when it changes — a full Mathlib build is expensive even with the
+# prebuilt cache.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lean/**'
+      - '.github/workflows/lean.yaml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lean/**'
+      - '.github/workflows/lean.yaml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build proofs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `axiom-audit` checks EVERY declaration in the library, not a hand-kept
+      # list, and the default allow-list is exactly Lean's three standard
+      # axioms. That catches `sorry` (which shows up as `sorryAx`) along with
+      # `native_decide` (`Lean.ofReduceBool`) and any stray `axiom`
+      # declaration — none of which a grep for "sorry" would find.
+      - name: Build and audit
+        uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: lean
+          build-args: QuSpinSymmetry
+          use-mathlib-cache: true
+          axiom-audit: true
