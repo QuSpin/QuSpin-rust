@@ -23,8 +23,11 @@ const PARALLEL_APPLY_THRESHOLD: usize = 256;
 ///
 /// For non-symmetric bases the scale is always `1.0`.  For `SymBasis` the
 /// state is mapped to its orbit representative and scaled by
-/// `conj(χ_g) · √(norm_j / |G|)`.  Fully monomorphized — zero runtime
-/// dispatch.
+/// `c_h(state) · √(norm_j / |G|)`, where `h` is the element that carries the
+/// state to the representative (`h·state = r_j`) and `c_h(s) = χ_h · η_h(s)`
+/// is what [`SymBasis::get_refstate`] accumulates — the group character
+/// *times the fermion sign*, not the character alone.  Fully monomorphized —
+/// zero runtime dispatch.
 pub trait ProjectState<B: BitInt>: BasisSpace<B> {
     fn project(&self, state: B) -> Option<(usize, C64)>;
 }
@@ -47,10 +50,29 @@ impl<B: BitInt, L: FermionicBitStateOp<B>, N: NormInt> ProjectState<B> for SymBa
         self.index(rep).map(|j| {
             let (_, norm) = self.entry(j);
             let group_order = self.group_order() as f64;
-            (
-                j,
-                grp_char.conj() * C64::new((norm / group_order).sqrt(), 0.0),
-            )
+            // `grp_char` is used un-conjugated, matching `SymRows::row_into`
+            // in the assembled-matrix path.  Writing `c_g(s) = χ_g · η_g(s)`
+            // for the character times the fermion sign — which is what
+            // `get_refstate` returns — and
+            // `|ψ_j⟩ = (|G|·n_j)^(-1/2) Σ_g χ_g Û_g|r_j⟩` with `h·state = r_j`,
+            // the elements carrying `r_j` to `state` are `h⁻¹k` for `k` in the
+            // stabilizer, so
+            //
+            //   ⟨state|ψ_j⟩ = c_{h⁻¹}(r_j) · √(n_j/|G|)
+            //   ⟨ψ_j|state⟩ = conj(c_{h⁻¹}(r_j)) · √(n_j/|G|)
+            //               = c_h(state) · √(n_j/|G|)
+            //
+            // using `Σ_k c_k(r_j) = n_j` (real: `c` restricted to the
+            // stabilizer is a genuine 1-D character, the cocycle collapsing
+            // because `k·r_j = r_j`) and `conj(c_{h⁻¹}(r_j)) = c_h(state)`,
+            // which holds because `|χ| = 1` and the fermion sign is real
+            // (`η_{h⁻¹}(h·s) · η_h(s) = η_e(s) = 1`).
+            //
+            // Conjugating here would instead return `⟨state|ψ_j⟩`, turning the
+            // group sum into `Σ_g χ_g²` — identically zero for every character
+            // other than `χ ≡ ±1`, since `conj(ψ_j)` lives in the `conj(χ)`
+            // sector and `H` commutes with the group.
+            (j, grp_char * C64::new((norm / group_order).sqrt(), 0.0))
         })
     }
 }
@@ -849,6 +871,160 @@ mod tests {
                 out_mat[i],
                 out_apply[i],
             );
+        }
+    }
+
+    /// Build a momentum-`m` sector of an `n_sites` ring.
+    ///
+    /// `m != 0` gives genuinely complex characters, which is what
+    /// distinguishes this from [`apply_symmetric_basis_matches_qmatrix_dot`]
+    /// above (that one sits at `m = 0`, where `χ ≡ 1` and a stray complex
+    /// conjugation is invisible).
+    fn momentum_sector(
+        n_sites: usize,
+        m: usize,
+    ) -> SymBasis<u32, quspin_bitbasis::PermDitMask<u32>, u32> {
+        use quspin_bitbasis::PermDitMask;
+
+        let x_op = quspin_bitbasis::test_graphs::XAllSites::new(n_sites as u32);
+        let perm: Vec<usize> = (0..n_sites).map(|i| (i + 1) % n_sites).collect();
+
+        let mut sym = SymBasis::<u32, PermDitMask<u32>, u32>::new_empty(2, n_sites, false);
+        sym.add_cyclic(quspin_basis::SymElement::lattice(&perm), n_sites, |k| {
+            C64::from_polar(
+                1.0,
+                -2.0 * std::f64::consts::PI * (k * m) as f64 / n_sites as f64,
+            )
+        })
+        .unwrap();
+        sym.build(0u32, &x_op).unwrap();
+        sym
+    }
+
+    /// `project` must be the adjoint of `expand_ref_state_iter`.
+    ///
+    /// `expand_ref_state_iter(j, 1)` emits `(s, ⟨s|ψ_j⟩)` and `project(s)`
+    /// returns `(j, ⟨ψ_j|s⟩)`, so the two amplitudes are complex conjugates
+    /// and `Σ_s ⟨ψ_j|s⟩⟨s|ψ_j⟩ = 1`.  Conjugating the character in `project`
+    /// turns that sum into `Σ_g χ_g²`, which vanishes for every character
+    /// other than `χ ≡ ±1`.
+    #[test]
+    fn project_is_adjoint_of_expand_for_complex_characters() {
+        use quspin_basis::expand::ExpandRefState;
+        use std::collections::HashMap;
+
+        let sym = momentum_sector(4, 1);
+        let dim = sym.size();
+        assert!(dim > 0, "momentum sector is empty");
+
+        // Guards against the sector degenerating to real characters, which
+        // would let this test pass with the conjugation bug present.
+        let mut saw_complex_amplitude = false;
+
+        for j in 0..dim {
+            let mut amps: HashMap<u32, C64> = HashMap::new();
+            for (s, a) in sym.expand_ref_state_iter(j, &C64::new(1.0, 0.0)) {
+                *amps.entry(s).or_default() += a;
+            }
+
+            let mut norm_sq = C64::default();
+            for (&s, &amp) in &amps {
+                saw_complex_amplitude |= amp.im.abs() > 1e-9;
+
+                let (idx, scale) = sym.project(s).expect("expanded state must project back");
+                assert_eq!(idx, j, "state {s:04b} projected to {idx}, expected {j}");
+                assert!(
+                    (scale - amp.conj()).norm() < 1e-12,
+                    "project/expand not adjoint for state {s:04b}: \
+                     project={scale}, conj(expand)={}",
+                    amp.conj(),
+                );
+                norm_sq += scale * amp;
+            }
+
+            assert!(
+                (norm_sq - C64::new(1.0, 0.0)).norm() < 1e-12,
+                "⟨ψ_{j}|ψ_{j}⟩ = {norm_sq}, expected 1",
+            );
+        }
+
+        assert!(
+            saw_complex_amplitude,
+            "sector had only real amplitudes — the test cannot detect the bug",
+        );
+    }
+
+    /// End-to-end: the matrix-free path must not collapse to zero in a
+    /// complex-character sector, and must reproduce the assembled matrix.
+    ///
+    /// `QMatrix` stores the transpose (issue #121), so the assembled dense
+    /// matrix is compared against the transpose of the matrix-free one.
+    #[test]
+    fn apply_symmetric_basis_complex_character_matches_qmatrix() {
+        use crate::qmatrix::build::build_from_symmetric;
+        use quspin_bitbasis::PermDitMask;
+
+        // 6 sites, not 4: the m=1 sector of a 4-site ring sits at k = π/2,
+        // where the hopping dispersion cos(k) vanishes and the sector matrix
+        // is legitimately zero — which would make the all-zero assertion
+        // below fire on correct code.
+        let n_sites = 6;
+        let mut terms = Vec::new();
+        for i in 0..n_sites {
+            let j = (i + 1) % n_sites;
+            let xx = smallvec![(HardcoreOp::X, i as u32), (HardcoreOp::X, j as u32)];
+            terms.push(OpEntry::new(0u8, C64::new(1.0, 0.0), xx));
+            let yy = smallvec![(HardcoreOp::Y, i as u32), (HardcoreOp::Y, j as u32)];
+            terms.push(OpEntry::new(0u8, C64::new(1.0, 0.0), yy));
+        }
+        let ham = HardcoreOperator::new(terms);
+
+        let sym = momentum_sector(n_sites, 1);
+        let dim = sym.size();
+        assert!(dim > 0, "momentum sector is empty");
+
+        let mat = build_from_symmetric::<_, u32, PermDitMask<u32>, u32, C64, i64, u8>(&ham, &sym);
+        let coeffs = vec![C64::new(1.0, 0.0)];
+
+        // Dense matrices, column by column, from both paths.
+        let mut free = vec![vec![C64::default(); dim]; dim];
+        let mut asm = vec![vec![C64::default(); dim]; dim];
+        for c in 0..dim {
+            let mut e = vec![C64::default(); dim];
+            e[c] = C64::new(1.0, 0.0);
+
+            let mut col = vec![C64::default(); dim];
+            apply_and_project_to_inner(&ham, &sym, &sym, &coeffs, &e, &mut col, true).unwrap();
+            for r in 0..dim {
+                free[r][c] = col[r];
+            }
+
+            let mut col_asm = vec![C64::default(); dim];
+            mat.dot(true, &coeffs, &e, &mut col_asm).unwrap();
+            for r in 0..dim {
+                asm[r][c] = col_asm[r];
+            }
+        }
+
+        let magnitude: f64 = free.iter().flatten().map(|z| z.norm()).sum();
+        assert!(
+            magnitude > 1e-6,
+            "matrix-free path produced an all-zero matrix in the k=1 sector",
+        );
+
+        for r in 0..dim {
+            for c in 0..dim {
+                assert!(
+                    (free[r][c] - asm[c][r]).norm() < 1e-10,
+                    "free[{r}][{c}]={} != asm[{c}][{r}]={}",
+                    free[r][c],
+                    asm[c][r],
+                );
+                assert!(
+                    (free[r][c] - free[c][r].conj()).norm() < 1e-10,
+                    "matrix-free result is not Hermitian at ({r},{c})",
+                );
+            }
         }
     }
 
