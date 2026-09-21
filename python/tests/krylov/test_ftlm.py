@@ -1,0 +1,180 @@
+"""Tests for FTLM / LTLM / FTLMDynamic, focused on the Boltzmann energy shift.
+
+``e^{-beta E_n}`` on raw Ritz values overflows to ``inf`` once
+``beta * |E_min|`` exceeds ~709, which for any Hamiltonian with a negative
+ground state is an ordinary low-temperature regime.  ``e_shift`` subtracts a
+reference energy before exponentiating; it cancels in ``sum(oz)/sum(z)``
+provided every sample uses the same value, which is why it lives on the
+constructor rather than on ``sample()``.
+"""
+
+import numpy as np
+import pytest
+
+from quspin_rs._rs import (
+    FTLM,
+    LTLM,
+    FTLMDynamic,
+    Hamiltonian,
+    PauliOperator,
+    QMatrix,
+    SpinBasis,
+    Static,
+)
+
+N = 3
+DIM = 2**N
+
+
+def _ham_and_obs(scale: float = 1.0):
+    """Heisenberg-ish chain H and an observable O, plus their dense forms.
+
+    ``scale`` multiplies H so the spectrum can be pushed far enough from zero
+    to overflow the unshifted Boltzmann weight.
+    """
+    bonds = [[scale, i, i + 1] for i in range(N - 1)]
+    h_op = PauliOperator([("XX", bonds)], [("ZZ", bonds)])
+    o_op = PauliOperator([("Z", [[1.0, 0]])])
+    basis = SpinBasis.full(N)
+
+    h_mat = QMatrix.build_pauli(h_op, basis, np.dtype("complex128"))
+    o_mat = QMatrix.build_pauli(o_op, basis, np.dtype("complex128"))
+    ham = Hamiltonian(h_mat, [Static(), Static()])
+    obs = Hamiltonian(o_mat, [Static()])
+
+    # `QMatrix` stores the transpose (#121), but XX+ZZ and Z are both
+    # real-symmetric, so `to_dense` returns the same matrix either way.
+    h_dense = ham.to_dense(0.0)
+    o_dense = obs.to_dense(0.0)
+    assert np.max(np.abs(h_dense - h_dense.T)) < 1e-12
+    return ham, obs, h_dense, o_dense
+
+
+def _exact_thermal_average(h_dense, o_dense, beta: float) -> complex:
+    """Tr(O e^{-beta H}) / Tr(e^{-beta H}) by dense diagonalization."""
+    evals, evecs = np.linalg.eigh(h_dense)
+    weights = np.exp(-beta * (evals - evals.min()))
+    rho = evecs @ np.diag(weights) @ evecs.conj().T
+    return np.trace(o_dense @ rho) / np.trace(rho)
+
+
+def _ftlm_average(estimator, obs, beta: float, k: int) -> complex:
+    """Full-trace FTLM: sum over a complete basis of starting vectors.
+
+    Summing over all `dim` unit vectors with a full Krylov space makes FTLM
+    exact — it is just the trace written out — so this compares against dense
+    diagonalization with no stochastic tolerance.
+    """
+    z_total = 0.0
+    oz_total = 0.0 + 0.0j
+    for i in range(DIM):
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[i] = 1.0
+        z_r, oz_r = estimator.sample(v0, k, obs, beta)
+        z_total += z_r
+        oz_total += oz_r
+    return oz_total / z_total
+
+
+class TestEShiftSurface:
+    def test_default_is_zero(self):
+        ham, _, _, _ = _ham_and_obs()
+        assert FTLM(ham).e_shift == 0.0
+        assert LTLM(ham).e_shift == 0.0
+        assert FTLMDynamic(ham).e_shift == 0.0
+
+    def test_roundtrips(self):
+        ham, _, _, _ = _ham_and_obs()
+        assert FTLM(ham, e_shift=-3.5).e_shift == -3.5
+        assert LTLM(ham, -3.5).e_shift == -3.5
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    @pytest.mark.parametrize("cls", [FTLM, LTLM, FTLMDynamic])
+    def test_rejects_non_finite(self, cls, bad: float):
+        ham, _, _, _ = _ham_and_obs()
+        with pytest.raises(ValueError, match="finite"):
+            cls(ham, e_shift=bad)
+
+
+class TestEShiftCorrectness:
+    @pytest.mark.parametrize("beta", [0.0, 0.5, 2.0])
+    def test_full_trace_matches_exact_diagonalization(self, beta: float):
+        """With a complete set of start vectors, FTLM is exact."""
+        ham, obs, h_dense, o_dense = _ham_and_obs()
+        got = _ftlm_average(
+            FTLM(ham, e_shift=h_dense.diagonal().real.min()), obs, beta, DIM
+        )
+        want = _exact_thermal_average(h_dense, o_dense, beta)
+        assert got == pytest.approx(want, abs=1e-8)
+
+    @pytest.mark.parametrize("shift", [-4.0, -1.0, 0.0, 2.5])
+    def test_ratio_is_invariant_under_the_shift(self, shift: float):
+        """Different shifts must give the same thermal average."""
+        ham, obs, h_dense, o_dense = _ham_and_obs()
+        beta = 1.5
+        got = _ftlm_average(FTLM(ham, e_shift=shift), obs, beta, DIM)
+        want = _exact_thermal_average(h_dense, o_dense, beta)
+        assert got == pytest.approx(want, abs=1e-8)
+
+
+class TestOverflow:
+    """The regression: low temperature used to return inf/NaN silently."""
+
+    # scale=30 puts the ground state near -85; beta=25 makes beta*|E_0| >> 709.
+    SCALE = 30.0
+    BETA = 25.0
+
+    def test_unshifted_raises_instead_of_returning_nan(self):
+        ham, obs, _, _ = _ham_and_obs(self.SCALE)
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[0] = 1.0
+
+        with pytest.raises(ValueError, match="e_shift"):
+            FTLM(ham).sample(v0, DIM, obs, self.BETA)
+
+    def test_shifted_is_finite_and_correct(self):
+        ham, obs, h_dense, o_dense = _ham_and_obs(self.SCALE)
+        e0 = np.linalg.eigvalsh(h_dense).min()
+
+        got = _ftlm_average(FTLM(ham, e_shift=e0), obs, self.BETA, DIM)
+        want = _exact_thermal_average(h_dense, o_dense, self.BETA)
+
+        assert np.isfinite(got)
+        assert got == pytest.approx(want, abs=1e-8)
+
+    def test_ltlm_unshifted_raises(self):
+        ham, obs, _, _ = _ham_and_obs(self.SCALE)
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[0] = 1.0
+
+        with pytest.raises(ValueError, match="e_shift"):
+            LTLM(ham).sample(v0, DIM, obs, self.BETA)
+
+    def test_ltlm_shifted_is_finite(self):
+        ham, obs, h_dense, _ = _ham_and_obs(self.SCALE)
+        e0 = np.linalg.eigvalsh(h_dense).min()
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[0] = 1.0
+
+        z_r, oz_r = LTLM(ham, e_shift=e0).sample(v0, DIM, obs, self.BETA)
+        assert np.isfinite(z_r)
+        assert np.isfinite(oz_r)
+
+
+class TestFTLMDynamic:
+    def test_shift_leaves_the_frequency_axis_alone(self):
+        """e_shift rescales weights; it must not move the spectral peaks."""
+        ham, obs, h_dense, _ = _ham_and_obs()
+        omegas = np.linspace(-4.0, 4.0, 65)
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[0] = 1.0
+        beta, eta = 1.0, 0.1
+
+        plain = FTLMDynamic(ham).sample(v0, DIM, obs, beta, omegas, eta)
+        shift = -2.0
+        shifted = FTLMDynamic(ham, e_shift=shift).sample(
+            v0, DIM, obs, beta, omegas, eta
+        )
+
+        # Uniform rescaling by e^{beta*shift}, same shape.
+        assert np.max(np.abs(shifted - plain * np.exp(beta * shift))) < 1e-10

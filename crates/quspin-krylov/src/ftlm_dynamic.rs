@@ -44,6 +44,11 @@ pub fn continued_fraction(alpha: &[f64], beta: &[f64], z: C64) -> C64 {
 /// - `beta_temp` — inverse temperature `β`
 /// - `omegas` — frequency grid
 /// - `eta` — Lorentzian broadening parameter
+/// - `e_shift` — energy shift applied to the Boltzmann weight only (the
+///   resolvent pole `ω + E_n` is left alone, so the frequency axis does not
+///   move).  See [`ftlm_partition`](super::ftlm::ftlm_partition) for why it
+///   must be identical across the samples being averaged.
+#[allow(clippy::too_many_arguments)]
 pub fn ftlm_dynamic_spectral(
     left_eig: &TridiagEigen,
     right_alpha: &[f64],
@@ -52,6 +57,7 @@ pub fn ftlm_dynamic_spectral(
     beta_temp: f64,
     omegas: &[f64],
     eta: f64,
+    e_shift: f64,
 ) -> Vec<f64> {
     let inv_pi = -1.0 / std::f64::consts::PI;
 
@@ -61,7 +67,7 @@ pub fn ftlm_dynamic_spectral(
             let mut s = 0.0;
             for n in 0..left_eig.k {
                 let c0n = left_eig.vec_element(0, n);
-                let weight = c0n * c0n * (-beta_temp * left_eig.eigenvalues[n]).exp();
+                let weight = c0n * c0n * (-beta_temp * (left_eig.eigenvalues[n] - e_shift)).exp();
                 let z = C64::new(omega + left_eig.eigenvalues[n], eta);
                 let g = continued_fraction(right_alpha, right_beta, z);
                 s += weight * inv_pi * (right_norm_sq * g).im;
@@ -172,6 +178,7 @@ mod tests {
             1.0,
             &omegas,
             0.1,
+            0.0,
         );
 
         for (i, &si) in s.iter().enumerate() {
@@ -196,6 +203,7 @@ mod tests {
             0.0,
             &[2.0],
             0.1,
+            0.0,
         )[0];
         let s_neg = ftlm_dynamic_spectral(
             &left_eig,
@@ -205,6 +213,7 @@ mod tests {
             0.0,
             &[-2.0],
             0.1,
+            0.0,
         )[0];
 
         // At β=0, S(ω) = S(-ω) (detailed balance with equal weights)

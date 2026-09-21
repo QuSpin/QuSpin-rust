@@ -36,6 +36,37 @@ fn extract_c64_vec(arr: &Bound<'_, PyArray1<Complex64>>) -> Vec<C64> {
     }
 }
 
+/// Reject a non-finite energy shift at construction.
+///
+/// A NaN shift makes every Boltzmann weight NaN; an infinite one makes them
+/// all 0 or inf. Either way the failure surfaces far from its cause, so catch
+/// it where the user supplied it.
+fn validate_e_shift(e_shift: f64) -> PyResult<()> {
+    if !e_shift.is_finite() {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "e_shift must be finite, got {e_shift}"
+        )));
+    }
+    Ok(())
+}
+
+/// Turn an overflowed Boltzmann weight into an actionable error.
+///
+/// `e^{-beta (E_n - e_shift)}` overflows once `beta * |E_n - e_shift|` exceeds
+/// about 709. Returning `inf`/`NaN` here would propagate into the caller's
+/// `sum(oz_r)/sum(z_r)` as a silent NaN, so fail loudly and name the knob.
+fn check_partition_finite(z_r: f64, beta: f64, e_shift: f64) -> PyResult<()> {
+    if z_r.is_finite() {
+        return Ok(());
+    }
+    Err(pyo3::exceptions::PyValueError::new_err(format!(
+        "partition function overflowed (z_r = {z_r}) at beta = {beta} with \
+         e_shift = {e_shift}; set e_shift to an estimate of the ground-state \
+         energy when constructing the estimator (exp(-beta*(E - e_shift)) \
+         overflows once beta*|E - e_shift| exceeds ~709)"
+    )))
+}
+
 /// Build a matvec closure from a HamiltonianInner at a fixed time.
 fn make_matvec(
     inner: &Arc<HamiltonianInner>,
@@ -162,20 +193,49 @@ impl PyEigSolver {
 #[pyclass(name = "FTLM", module = "quspin._rs")]
 pub struct PyFTLM {
     inner: Arc<HamiltonianInner>,
+    e_shift: f64,
 }
 
 #[pymethods]
 impl PyFTLM {
+    /// Args:
+    ///     hamiltonian: The system Hamiltonian.
+    ///     e_shift:     Energy shift subtracted from every Ritz value before
+    ///                  exponentiating (default ``0.0``).  See the ``e_shift``
+    ///                  property for why you almost certainly want to set it.
     #[new]
-    fn new(hamiltonian: &PyHamiltonian) -> Self {
-        PyFTLM {
+    #[pyo3(signature = (hamiltonian, e_shift = 0.0))]
+    fn new(hamiltonian: &PyHamiltonian, e_shift: f64) -> PyResult<Self> {
+        validate_e_shift(e_shift)?;
+        Ok(PyFTLM {
             inner: Arc::clone(&hamiltonian.inner),
-        }
+            e_shift,
+        })
     }
 
     #[getter]
     fn dim(&self) -> usize {
         self.inner.dim()
+    }
+
+    /// Energy shift used in the Boltzmann weights ``e^{-beta (E_n - e_shift)}``.
+    ///
+    /// Fixed at construction rather than passed per ``sample()`` call, and
+    /// deliberately so: the shift rescales every ``z_r`` and ``oz_r`` by
+    /// ``e^{beta*e_shift}``, which cancels in ``sum(oz_r)/sum(z_r)`` **only if
+    /// every sample used the same shift**.  Letting it vary per call (for
+    /// instance, per-sample auto-shifting by that sample's own lowest Ritz
+    /// value) would silently bias the estimate instead of overflowing, which
+    /// is strictly worse.
+    ///
+    /// Set it to an estimate of the ground-state energy.  With the default of
+    /// ``0.0``, ``e^{-beta E_n}`` overflows to ``inf`` once ``beta*|E_min|``
+    /// exceeds about 709: a 20-site Heisenberg chain has ``E_0 ~ -35``, so any
+    /// ``beta >~ 20`` returns ``inf``/``NaN``.  A cheap way to get one is a
+    /// short ``EigSolver`` run; it does not need to be tight, only close.
+    #[getter]
+    fn e_shift(&self) -> f64 {
+        self.e_shift
     }
 
     /// Compute a single FTLM sample.
@@ -220,6 +280,7 @@ impl PyFTLM {
 
         let h_inner = Arc::clone(&self.inner);
         let o_inner = Arc::clone(&observable.inner);
+        let e_shift = self.e_shift;
 
         let result = py.detach(move || -> Result<(f64, C64), QuSpinError> {
             if stored {
@@ -242,8 +303,8 @@ impl PyFTLM {
                     })
                     .collect();
 
-                let z_r = ftlm::ftlm_partition(&eig, beta);
-                let oz_r = ftlm::ftlm_observable(&eig, &obs_elements, beta);
+                let z_r = ftlm::ftlm_partition(&eig, beta, e_shift);
+                let oz_r = ftlm::ftlm_observable(&eig, &obs_elements, beta, e_shift);
                 Ok((z_r, oz_r))
             } else {
                 // Replay path: O(k + dim) memory, extra matvecs
@@ -264,13 +325,14 @@ impl PyFTLM {
                     obs_elements.push(elem);
                 })?;
 
-                let z_r = ftlm::ftlm_partition(&eig, beta);
-                let oz_r = ftlm::ftlm_observable(&eig, &obs_elements, beta);
+                let z_r = ftlm::ftlm_partition(&eig, beta, e_shift);
+                let oz_r = ftlm::ftlm_observable(&eig, &obs_elements, beta, e_shift);
                 Ok((z_r, oz_r))
             }
         });
 
         let (z_r, oz_r) = result.map_err(Error::from)?;
+        check_partition_finite(z_r, beta, e_shift)?;
         Ok((z_r, Complex64::new(oz_r.re, oz_r.im)))
     }
 
@@ -290,20 +352,38 @@ impl PyFTLM {
 #[pyclass(name = "LTLM", module = "quspin._rs")]
 pub struct PyLTLM {
     inner: Arc<HamiltonianInner>,
+    e_shift: f64,
 }
 
 #[pymethods]
 impl PyLTLM {
+    /// Args:
+    ///     hamiltonian: The system Hamiltonian.
+    ///     e_shift:     Energy shift subtracted from every Ritz value before
+    ///                  exponentiating (default ``0.0``).  See ``FTLM.e_shift``.
     #[new]
-    fn new(hamiltonian: &PyHamiltonian) -> Self {
-        PyLTLM {
+    #[pyo3(signature = (hamiltonian, e_shift = 0.0))]
+    fn new(hamiltonian: &PyHamiltonian, e_shift: f64) -> PyResult<Self> {
+        validate_e_shift(e_shift)?;
+        Ok(PyLTLM {
             inner: Arc::clone(&hamiltonian.inner),
-        }
+            e_shift,
+        })
     }
 
     #[getter]
     fn dim(&self) -> usize {
         self.inner.dim()
+    }
+
+    /// Energy shift used in the Boltzmann weights; see ``FTLM.e_shift``.
+    ///
+    /// LTLM exponentiates ``-beta (E_n - e_shift) / 2``, so it overflows at
+    /// twice the ``beta`` the FTLM partition does — later, but just as
+    /// silently.
+    #[getter]
+    fn e_shift(&self) -> f64 {
+        self.e_shift
     }
 
     /// Compute a single LTLM sample.
@@ -347,15 +427,16 @@ impl PyLTLM {
 
         let h_inner = Arc::clone(&self.inner);
         let o_inner = Arc::clone(&observable.inner);
+        let e_shift = self.e_shift;
 
         let result = py.detach(move || -> Result<(f64, C64), QuSpinError> {
             if stored {
                 // Stored path: keep all basis vectors
                 let basis = LanczosBasis::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
                 let eig = eig::solve_tridiagonal(basis.alpha(), basis.beta());
-                let z_r = ftlm::ftlm_partition(&eig, beta);
+                let z_r = ftlm::ftlm_partition(&eig, beta, e_shift);
 
-                let coeffs = ltlm::ltlm_coeffs(&eig, beta);
+                let coeffs = ltlm::ltlm_coeffs(&eig, beta, e_shift);
                 let mut phi = vec![C64::default(); n];
                 basis.lin_comb(&coeffs, &mut phi)?;
 
@@ -373,10 +454,10 @@ impl PyLTLM {
                 let iter_basis =
                     LanczosBasisIter::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
                 let eig = eig::solve_tridiagonal(iter_basis.alpha(), iter_basis.beta());
-                let z_r = ftlm::ftlm_partition(&eig, beta);
+                let z_r = ftlm::ftlm_partition(&eig, beta, e_shift);
 
                 // Compute |φ⟩ = e^{-βH/2}|r⟩ via replay
-                let coeffs = ltlm::ltlm_coeffs(&eig, beta);
+                let coeffs = ltlm::ltlm_coeffs(&eig, beta, e_shift);
                 let mut phi = vec![C64::default(); n];
                 iter_basis.lin_comb(&mut make_matvec(&h_inner, time), &coeffs, &mut phi)?;
 
@@ -393,6 +474,7 @@ impl PyLTLM {
         });
 
         let (z_r, oz_r) = result.map_err(Error::from)?;
+        check_partition_finite(z_r, beta, e_shift)?;
         Ok((z_r, Complex64::new(oz_r.re, oz_r.im)))
     }
 
@@ -411,20 +493,37 @@ impl PyLTLM {
 #[pyclass(name = "FTLMDynamic", module = "quspin._rs")]
 pub struct PyFTLMDynamic {
     inner: Arc<HamiltonianInner>,
+    e_shift: f64,
 }
 
 #[pymethods]
 impl PyFTLMDynamic {
+    /// Args:
+    ///     hamiltonian: The system Hamiltonian.
+    ///     e_shift:     Energy shift subtracted from every Ritz value before
+    ///                  exponentiating (default ``0.0``).  See ``FTLM.e_shift``.
     #[new]
-    fn new(hamiltonian: &PyHamiltonian) -> Self {
-        PyFTLMDynamic {
+    #[pyo3(signature = (hamiltonian, e_shift = 0.0))]
+    fn new(hamiltonian: &PyHamiltonian, e_shift: f64) -> PyResult<Self> {
+        validate_e_shift(e_shift)?;
+        Ok(PyFTLMDynamic {
             inner: Arc::clone(&hamiltonian.inner),
-        }
+            e_shift,
+        })
     }
 
     #[getter]
     fn dim(&self) -> usize {
         self.inner.dim()
+    }
+
+    /// Energy shift used in the Boltzmann weights; see ``FTLM.e_shift``.
+    ///
+    /// Applied to the Boltzmann weight only — the resolvent pole ``omega +
+    /// E_n`` is left alone, so the frequency axis does not move.
+    #[getter]
+    fn e_shift(&self) -> f64 {
+        self.e_shift
     }
 
     /// Compute one FTLM dynamic sample for the spectral function.
@@ -469,6 +568,7 @@ impl PyFTLMDynamic {
 
         let h_inner = Arc::clone(&self.inner);
         let a_inner = Arc::clone(&operator.inner);
+        let e_shift = self.e_shift;
 
         let result = py.detach(move || -> Result<Vec<f64>, QuSpinError> {
             // Left Lanczos: build basis from v0 using H
@@ -499,6 +599,7 @@ impl PyFTLMDynamic {
                 beta,
                 &omegas_vec,
                 eta,
+                e_shift,
             );
 
             Ok(spectral)
