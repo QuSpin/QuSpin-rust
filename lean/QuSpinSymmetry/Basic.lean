@@ -74,9 +74,10 @@ theorem sign_one (x : X) : η.sign 1 x = 1 := by
 
 /-- The sign of an inverse, evaluated at the image point.
 
-This is the identity that makes the projection formula work: it says the sign
-picked up going `x → g • x` is undone going back.  In the Rust derivation it
-appears as `η_{h⁻¹}(h · s) = η_h(s)`. -/
+The sign picked up going `x → g • x` is undone going back.  The Rust
+derivation writes this as `η_{h⁻¹}(h · s) = η_h(s)`, which is the *real* case:
+this structure only assumes modulus one, so what follows is the reciprocal.
+The two agree exactly when `η` is real, as the Jordan-Wigner sign is. -/
 theorem sign_inv_smul (g : G) (x : X) : η.sign g⁻¹ (g • x) = (η.sign g x)⁻¹ := by
   have h := η.cocycle g⁻¹ g x
   rw [inv_mul_cancel, sign_one] at h

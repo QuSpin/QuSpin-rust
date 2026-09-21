@@ -38,12 +38,14 @@ as well as the group element. `η` is not a character; it is a 1-cocycle.
 | --- | --- |
 | `SignCocycle.sign_one` | `η 1 x = 1` — forced by the cocycle law, not assumed |
 | `SignCocycle.sign_inv_smul` | `η g⁻¹ (g • x) = (η g x)⁻¹` — the sign undoes itself |
-| `U.mul` | `Û (g·h) = Û g ∘ Û h` **iff** `η` is a 1-cocycle |
+| `U.mul` | if `η` is a 1-cocycle then `Û (g·h) = Û g ∘ Û h` |
 | `inner_U_U` | `⟪Û g v, Û g w⟫ = ⟪v, w⟫` — unitarity, needs `‖η‖ = 1` |
 | `inner_U_left` | `⟪Û g v, w⟫ = ⟪v, Û g⁻¹ w⟫` — the adjoint relation |
 
 `U.mul` is the theorem the cocycle condition exists to make true. Replace the
 cocycle law with the naive "the sign is a character" and it fails for fermions.
+(The converse also holds — evaluate at an indicator vector — but is not proved
+here, so the table says "if", not "iff".)
 
 ### `Projector.lean` — the sector projector
 
@@ -53,20 +55,36 @@ cocycle law with the naive "the sign is a character" and it fails for fermions.
 | --- | --- |
 | `Character.chi_inv` | `χ(g⁻¹) = conj (χ g)` — true *only* because `‖χ‖ = 1` |
 | `Psum.apply_apply` | `Psum ∘ Psum = |G| • Psum` |
+| `Psum.U_apply` | `Psum χ ∘ Û g = χ(g) · Psum χ` |
 | `P.idem` | `P ∘ P = P` |
 | `P.selfAdjoint` | `⟪P v, w⟫ = ⟪v, P w⟫` |
+| `Psum_comp_of_ne` | **sector orthogonality**: `χ ≠ χ'` ⟹ `P_χ ∘ P_χ' = 0` |
+| `P_comp_conjChar_of_not_real` | `χ` not real ⟹ `P_χ ∘ P_{conj χ} = 0` |
 
-`P.selfAdjoint` is the one that governs #128. Its proof conjugates exactly
-twice — once moving `Û g` across the inner product, once re-indexing `g ↦ g⁻¹`.
-A formula that conjugates an odd number of times is not the adjoint of
-anything, and the operator it defines kills every sector with a non-real
-character.
+**Which theorem governs #128.** Not `selfAdjoint` — and the distinction
+matters, because getting it wrong is the same category of error the whole
+development exists to prevent.
+
+`conj ∘ χ` is itself a perfectly legal unimodular character. So the
+wrongly-conjugated operator is simply `P` for the *conjugate* character, and it
+is idempotent and self-adjoint too. `P.idem` and `P.selfAdjoint` cannot tell
+the two apart, and an earlier draft of this README claimed otherwise.
+
+What separates them is that they project onto **different sectors**, and
+distinct sectors annihilate each other. `expand_ref_state_iter` builds a vector
+in the `χ` sector; the erroneous `project` measured it against the `conj χ`
+sector; `P_comp_conjChar_of_not_real` says the composite is exactly zero unless
+`conj χ = χ`, i.e. unless `χ ≡ ±1`. That reproduces the observed symptom
+precisely — correct at momentum `0` and `L/2`, identically zero everywhere
+else — rather than merely asserting that `P` is a projection.
 
 ### `Orbit.lean` — the stored orbit norm
 
 `orbit.rs::check_refstate` computes `n_r = Σ_{k • r = r} χ(k) · η_k(r)` and
 `collapse_norm` then asserts it is real, non-negative and integral before
-rounding — but those are `debug_assert!`, so a release build checks nothing.
+rounding — but those are `debug_assert!`, so a release build checks none of
+them. (The `‖·‖ ≤ tol` zero-test just above them *is* a live branch in release;
+only the realness and positivity checks are debug-only.)
 
 | Theorem | Statement |
 | --- | --- |
@@ -95,6 +113,26 @@ They are the natural next step and the reason the scaffolding above exists:
 Proving (1) and (2) from `P.selfAdjoint` and `orbit_norm_eq_zero_or_card` would
 close the loop: the two formulas that must agree would be derived from a common
 root rather than independently hand-checked.
+
+## What this does not cover
+
+Stated explicitly, because a formalization that is quietly about a different
+object than the code is worse than none at all.
+
+* **The reduced basis is absent.** Everything here lives in the full space
+  `State X = X → ℂ`. The stored representatives, the `√(n/|G|)` normalization,
+  and the isometry between full and reduced space — where #128 actually sat —
+  are exactly the "not yet proved" items above.
+* **The hypotheses are exact; the Rust's checks are not.** `Character.mul` and
+  `SignCocycle.cocycle` are assumed to hold identically. `SymBasis::validate_group`
+  establishes the analogous facts only by sampling probe states, and it
+  validates character multiplicativity *without* the fermion sign. The cocycle
+  property of `η` is never checked at runtime at all — it holds by construction
+  for the shipped element types, but that is an unstated argument, and
+  `SignedPermDitMask` is a state-dependent sign that rests on it.
+* **Nothing here verifies Rust.** These are theorems about ℂ-valued functions on
+  a finite set. That they describe the same objects the code manipulates is an
+  argument made in prose and in the doc comments, not machine-checked.
 
 ## Building
 

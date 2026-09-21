@@ -28,51 +28,10 @@ namespace QuSpinSymmetry
 
 open Finset
 
-/-! ## The character-sum dichotomy
+/-! ## The orbit norm
 
-For a homomorphism from a finite group to `ℂ`, the sum over the group is either
-`|G|` (trivial character) or `0`. Proved directly rather than pulled from
-Mathlib's `MulChar` API, since the argument is three lines and the statement
-here is about a bare multiplicative function. -/
-
-section CharacterSum
-
-variable {H : Type*} [Group H] [Fintype H] {f : H → ℂ}
-
-/-- A nontrivial multiplicative function sums to zero over a finite group.
-
-`f g₀ * S = S` by re-indexing, so `(f g₀ - 1) * S = 0`. -/
-theorem sum_eq_zero_of_ne_one (hmul : ∀ g h, f (g * h) = f g * f h) {g₀ : H}
-    (hg₀ : f g₀ ≠ 1) : ∑ g : H, f g = 0 := by
-  have key : f g₀ * ∑ g : H, f g = ∑ g : H, f g := by
-    rw [Finset.mul_sum]
-    have : ∀ g : H, f g₀ * f g = f (g₀ * g) := fun g => (hmul g₀ g).symm
-    rw [Finset.sum_congr rfl fun g _ => this g]
-    exact Fintype.sum_equiv (Equiv.mulLeft g₀) _ _ fun g => rfl
-  have : (f g₀ - 1) * ∑ g : H, f g = 0 := by
-    rw [sub_mul, one_mul, key, sub_self]
-  rcases mul_eq_zero.mp this with h | h
-  · exact absurd (sub_eq_zero.mp h) hg₀
-  · exact h
-
-/-- The trivial character sums to `|H|`. -/
-theorem sum_eq_card_of_forall_eq_one (h : ∀ g : H, f g = 1) :
-    ∑ g : H, f g = (Fintype.card H : ℂ) := by
-  rw [Finset.sum_congr rfl fun g _ => h g, Finset.sum_const, Finset.card_univ,
-    nsmul_eq_mul, mul_one]
-
-/-- **The dichotomy.** -/
-theorem sum_eq_zero_or_card (hmul : ∀ g h, f (g * h) = f g * f h) :
-    (∑ g : H, f g) = 0 ∨ (∑ g : H, f g) = (Fintype.card H : ℂ) := by
-  by_cases h : ∀ g : H, f g = 1
-  · exact Or.inr (sum_eq_card_of_forall_eq_one h)
-  · push_neg at h
-    obtain ⟨g₀, hg₀⟩ := h
-    exact Or.inl (sum_eq_zero_of_ne_one hmul hg₀)
-
-end CharacterSum
-
-/-! ## The orbit norm -/
+The character-sum dichotomy this rests on (`sum_eq_zero_or_card`) lives in
+`Projector.lean`, since sector orthogonality needs it too. -/
 
 variable {G X : Type*} [Group G] [MulAction G X]
 

@@ -24,41 +24,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build
+      # `axiom-audit` checks EVERY declaration in the library, not a hand-kept
+      # list, and the default allow-list is exactly Lean's three standard
+      # axioms. That catches `sorry` (which shows up as `sorryAx`) along with
+      # `native_decide` (`Lean.ofReduceBool`) and any stray `axiom`
+      # declaration — none of which a grep for "sorry" would find.
+      - name: Build and audit
         uses: leanprover/lean-action@v1
         with:
           lake-package-directory: lean
           build-args: QuSpinSymmetry
-          # Fetches the prebuilt Mathlib oleans rather than compiling Mathlib.
           use-mathlib-cache: true
-
-      # `lake build` succeeds on a file full of `sorry`, so check separately
-      # that nothing is admitted. Any use would make a theorem depend on
-      # `sorryAx`, which is what this grep looks for.
-      - name: Reject sorry
-        working-directory: lean
-        run: |
-          if grep -rn --include='*.lean' '\bsorry\b' QuSpinSymmetry QuSpinSymmetry.lean; then
-            echo "::error::found 'sorry' in the Lean development"
-            exit 1
-          fi
-          echo "no sorry found"
-
-      - name: Check axiom dependencies
-        working-directory: lean
-        run: |
-          cat > axcheck.lean <<'EOF'
-          import QuSpinSymmetry
-          #print axioms QuSpinSymmetry.U.mul
-          #print axioms QuSpinSymmetry.inner_U_U
-          #print axioms QuSpinSymmetry.P.idem
-          #print axioms QuSpinSymmetry.P.selfAdjoint
-          #print axioms QuSpinSymmetry.orbit_norm_eq_zero_or_card
-          EOF
-          out=$(env LEAN_PATH="$(lake env printenv LEAN_PATH)" lean axcheck.lean)
-          rm -f axcheck.lean
-          echo "$out"
-          if echo "$out" | grep -q 'sorryAx'; then
-            echo "::error::a theorem depends on sorryAx"
-            exit 1
-          fi
+          axiom-audit: true
