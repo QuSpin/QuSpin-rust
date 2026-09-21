@@ -50,8 +50,7 @@ fn validate_e_shift(e_shift: f64) -> PyResult<()> {
     Ok(())
 }
 
-/// Turn a Boltzmann weight that has left the representable range into an
-/// actionable error.
+/// Build the shared "Boltzmann weight left the representable range" error.
 ///
 /// `e^{-beta (E_n - e_shift)}` overflows once `beta * (e_shift - E_n)` exceeds
 /// about 709 and underflows to zero once `beta * (E_n - e_shift)` does. Both
@@ -59,43 +58,59 @@ fn validate_e_shift(e_shift: f64) -> PyResult<()> {
 ///
 /// - overflow gives `inf`, and `sum(oz)/sum(z)` comes out `NaN`;
 /// - underflow gives exactly `0.0`, and the same ratio is `0/0`.
+fn boltzmann_range_err(what: &str, detail: &str, beta: f64, e_shift: f64) -> PyErr {
+    pyo3::exceptions::PyValueError::new_err(format!(
+        "{what} at beta = {beta} with e_shift = {e_shift}; {detail} \
+         (exp(-beta*(E - e_shift)) leaves the representable range once \
+         beta*|E - e_shift| exceeds ~709)"
+    ))
+}
+
+/// Check the partition function landed in the representable range.
 ///
-/// The underflow end matters more than it looks: the natural thing to reach
-/// for is a variational *lower* bound on the ground-state energy, and a bound
-/// only `709/beta` too low is already enough to zero every weight.
+/// Note the directions, which are opposite and easy to state backwards:
+/// overflow means `e_shift` sits too far **above** the spectrum and must be
+/// *lowered* toward `E_0`; underflow means it sits too far **below** and must
+/// be *raised*. With the default `e_shift = 0` and a negative ground state,
+/// the fix for overflow is to move `e_shift` down to `E_0` — not up.
+fn check_partition_in_range(z_r: f64, beta: f64, e_shift: f64) -> PyResult<()> {
+    if !z_r.is_finite() {
+        return Err(boltzmann_range_err(
+            &format!("partition function overflowed (z_r = {z_r})"),
+            "e_shift sits too far above the spectrum; lower it towards the \
+             ground-state energy when constructing the estimator",
+            beta,
+            e_shift,
+        ));
+    }
+    if z_r == 0.0 {
+        return Err(boltzmann_range_err(
+            "partition function underflowed to zero (z_r = 0)",
+            "e_shift sits too far below the spectrum, so every Boltzmann \
+             weight rounded to zero; raise it towards the ground-state energy. \
+             Lower is not safer than higher — set e_shift near E_0, not below \
+             it, so a variational lower bound is the wrong thing to reach for",
+            beta,
+            e_shift,
+        ));
+    }
+    Ok(())
+}
+
+/// Check a full `(z_r, oz_r)` sample.
 ///
 /// `z_r` is a sum of non-negative terms so it cannot reach a finite value
 /// through cancellation, but `oz_r` can be non-finite while `z_r` is not (a
 /// large-norm observable), so check it too.
 fn check_sample_in_range(z_r: f64, oz_r: C64, beta: f64, e_shift: f64) -> PyResult<()> {
-    let bad = |what: &str, detail: &str| {
-        Err(pyo3::exceptions::PyValueError::new_err(format!(
-            "{what} at beta = {beta} with e_shift = {e_shift}; {detail} \
-             (exp(-beta*(E - e_shift)) leaves the representable range once \
-             beta*|E - e_shift| exceeds ~709)"
-        )))
-    };
-
-    if !z_r.is_finite() {
-        return bad(
-            &format!("partition function overflowed (z_r = {z_r})"),
-            "raise e_shift towards the ground-state energy when constructing \
-             the estimator",
-        );
-    }
-    if z_r == 0.0 {
-        return bad(
-            "partition function underflowed to zero (z_r = 0)",
-            "e_shift is far below the spectrum, so every Boltzmann weight \
-             rounded to zero; lower e_shift is not safer than higher, set it \
-             near the ground-state energy rather than below it",
-        );
-    }
+    check_partition_in_range(z_r, beta, e_shift)?;
     if !oz_r.re.is_finite() || !oz_r.im.is_finite() {
-        return bad(
+        return Err(boltzmann_range_err(
             &format!("observable contribution is not finite (oz_r = {oz_r})"),
             "the observable's matrix elements overflowed once weighted",
-        );
+            beta,
+            e_shift,
+        ));
     }
     Ok(())
 }
@@ -619,10 +634,20 @@ impl PyFTLMDynamic {
         let a_inner = Arc::clone(&operator.inner);
         let e_shift = self.e_shift;
 
-        let result = py.detach(move || -> Result<Vec<f64>, QuSpinError> {
+        let result = py.detach(move || -> Result<(Vec<f64>, f64), QuSpinError> {
             // Left Lanczos: build basis from v0 using H
             let left_basis = LanczosBasisIter::build(&mut make_matvec(&h_inner, time), &v0_vec, k)?;
             let left_eig = eig::solve_tridiagonal(left_basis.alpha(), left_basis.beta());
+
+            // The Boltzmann weights that scale the whole spectral function are
+            // exactly the terms of this partition, so guard it the way the
+            // FTLM/LTLM samples guard theirs. Checking the *output* array
+            // instead would miss underflow: an e_shift below the left Ritz
+            // values zeroes every weight, and the resulting all-zero array is
+            // indistinguishable from a legitimately empty frequency window.
+            // Computed before the zero-operator early return below, so a
+            // degenerate partition is reported even when A|v0⟩ = 0.
+            let z_left = ftlm::ftlm_partition(&left_eig, beta, e_shift);
 
             // Compute A|v0⟩ (using normalized v0 from the left basis)
             let norm0 = v0_vec.iter().map(|c| c.norm_sqr()).sum::<f64>().sqrt();
@@ -633,8 +658,9 @@ impl PyFTLMDynamic {
             let right_norm_sq: f64 = a_v0.iter().map(|c| c.norm_sqr()).sum();
 
             if right_norm_sq < f64::EPSILON {
-                // A|v0⟩ = 0, no spectral weight
-                return Ok(vec![0.0; omegas_vec.len()]);
+                // A|v0⟩ = 0, no spectral weight. This is a genuine physical
+                // zero, not a numerical one.
+                return Ok((vec![0.0; omegas_vec.len()], z_left));
             }
 
             // Right Lanczos: build basis from A|v0⟩ using H
@@ -651,23 +677,24 @@ impl PyFTLMDynamic {
                 e_shift,
             );
 
-            Ok(spectral)
+            Ok((spectral, z_left))
         });
 
-        let spectral = result.map_err(Error::from)?;
-        // Same guard the FTLM/LTLM samples get: an overflowed Boltzmann weight
-        // turns the whole spectral array into `inf`, which the caller cannot
-        // distinguish from a genuinely large spectral weight afterwards. An
-        // all-zero array is legitimate here (a frequency window with no
-        // spectral weight), so unlike `z_r` only the non-finite end is checked.
+        let (spectral, z_left) = result.map_err(Error::from)?;
+        // Catches both ends, including the underflow the output array cannot
+        // show (an all-zero spectral function is also what an empty frequency
+        // window legitimately produces).
+        check_partition_in_range(z_left, beta, e_shift)?;
+        // A finite, non-zero partition still leaves the operator norm free, so
+        // an overflow can enter through `right_norm_sq` — the analogue of the
+        // `oz_r` check on the other two estimators.
         if let Some(bad) = spectral.iter().find(|s| !s.is_finite()) {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "spectral function is not finite (S = {bad}) at beta = {beta} \
-                 with e_shift = {e_shift}; set e_shift near the ground-state \
-                 energy when constructing the estimator \
-                 (exp(-beta*(E - e_shift)) leaves the representable range once \
-                 beta*|E - e_shift| exceeds ~709)"
-            )));
+            return Err(boltzmann_range_err(
+                &format!("spectral function is not finite (S = {bad})"),
+                "the operator's matrix elements overflowed once weighted",
+                beta,
+                e_shift,
+            ));
         }
         Ok(spectral.to_pyarray(py))
     }

@@ -210,6 +210,37 @@ class TestOverflow:
         )
         assert np.all(np.isfinite(s))
 
+    def test_ftlm_dynamic_underflow_raises(self):
+        """Underflow makes the whole spectral array zero, which looks legitimate.
+
+        An all-zero spectral function is also what an empty frequency window
+        produces, so checking the output array cannot distinguish them; the
+        guard has to be on the left partition.
+        """
+        ham, obs, h_dense, _ = _ham_and_obs(self.SCALE)
+        e0 = np.linalg.eigvalsh(h_dense).min()
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[0] = 1.0
+
+        with pytest.raises(ValueError, match="underflow"):
+            FTLMDynamic(ham, e_shift=e0 - 100.0).sample(
+                v0, DIM, obs, self.BETA, np.linspace(-2.0, 2.0, 5), 0.1
+            )
+
+    def test_overflow_message_says_lower_not_raise(self):
+        """The recovery direction must be right; it is the actionable half.
+
+        Overflow means e_shift sits too far ABOVE the spectrum. With the
+        default e_shift=0 and E_0 < 0 the fix is to move e_shift DOWN to E_0.
+        """
+        ham, obs, _, _ = _ham_and_obs(self.SCALE)
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[0] = 1.0
+
+        with pytest.raises(ValueError, match="lower it towards") as exc:
+            FTLM(ham).sample(v0, DIM, obs, self.BETA)
+        assert "raise" not in str(exc.value)
+
     @pytest.mark.parametrize("cls", [FTLM, LTLM])
     def test_underflow_raises_instead_of_returning_zero_over_zero(self, cls):
         """The opposite failure: e_shift far BELOW the spectrum zeroes every weight.
