@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 import scipy.sparse.linalg as sla
 
+from quspin_rs import Lattice, SymmetryGroup
 from quspin_rs._rs import (
     BosonBasis,
     BosonOperator,
@@ -435,3 +436,78 @@ class TestAsLinearOperatorValidation:
         lo = op.as_linearoperator(SpinBasis.full(1, 4), np.ones(1, dtype=np.complex128))
         diag = np.real(np.diag(dense_from_matvec(lo)))
         assert sorted(np.round(diag, 6)) == [-1.5, -0.5, 0.5, 1.5]
+
+
+class TestSymmetricBasisComplexCharacters:
+    """Matrix-free operators on a momentum sector with complex characters.
+
+    Every other test in this file uses a real-symmetric Hamiltonian on a
+    non-symmetric basis, where the group character is identically 1.  A stray
+    complex conjugation in the ``SymBasis`` projection is invisible there but
+    zeroes out the whole sector for any character other than ``chi = +-1``.
+    """
+
+    @staticmethod
+    def _sector(L: int, k: int):
+        """Single-magnon momentum-k sector of an L-site XX+YY ring."""
+        op = PauliOperator(
+            [("XX", [[1.0, i, (i + 1) % L] for i in range(L)])],
+            [("YY", [[1.0, i, (i + 1) % L] for i in range(L)])],
+        )
+        group = SymmetryGroup(n_sites=L, lhss=2)
+        group.add_cyclic(Lattice([(i + 1) % L for i in range(L)]), k=k)
+        basis = SpinBasis.symmetric(group, op, ["1" + "0" * (L - 1)])
+        return op, basis
+
+    @pytest.mark.parametrize("k", range(6))
+    def test_single_magnon_dispersion(self, k: int):
+        """E(k) = 4*cos(2*pi*k/L), exactly — no convention ambiguity.
+
+        XX + YY = 2*(S+S- + S-S+), so the hopping amplitude is 2 per bond and
+        a single magnon on a ring disperses as 2*2*cos(k).
+        """
+        L = 6
+        op, basis = self._sector(L, k)
+        assert basis.size == 1, f"k={k} sector should hold exactly one state"
+
+        lo = op.as_linearoperator(basis, np.ones(2, dtype=np.complex128))
+        got = lo.matvec(np.ones(1, dtype=np.complex128))[0]
+        want = 4.0 * np.cos(2.0 * np.pi * k / L)
+
+        assert got == pytest.approx(
+            want, abs=1e-10
+        ), f"k={k}: matrix-free gave {got}, expected {want}"
+
+    @pytest.mark.parametrize("k", range(6))
+    def test_matches_assembled_qmatrix(self, k: int):
+        """The matrix-free and assembled paths must agree on the sector.
+
+        The sector is 1x1 here, so the #121 transpose convention is moot and
+        the two paths are directly comparable.
+        """
+        op, basis = self._sector(6, k)
+        coeffs = np.ones(2, dtype=np.complex128)
+
+        free = op.as_linearoperator(basis, coeffs).matvec(
+            np.ones(1, dtype=np.complex128)
+        )[0]
+        assembled = (
+            QMatrix.build_pauli(op, basis, np.dtype("complex128"))
+            .as_linearoperator(coeffs)
+            .matvec(np.ones(1, dtype=np.complex128))[0]
+        )
+
+        assert free == pytest.approx(assembled, abs=1e-10)
+
+    def test_trace_is_not_silently_zero(self):
+        """`trace` runs through the same projection as `matvec`."""
+        L, k = 6, 1
+        op = PauliOperator([("ZZ", [[1.0, i, (i + 1) % L] for i in range(L)])])
+        group = SymmetryGroup(n_sites=L, lhss=2)
+        group.add_cyclic(Lattice([(i + 1) % L for i in range(L)]), k=k)
+        basis = SpinBasis.symmetric(group, op, ["100000"])
+
+        lo = op.as_linearoperator(basis, np.ones(1, dtype=np.complex128))
+        dense = dense_from_matvec(lo)
+        assert np.trace(dense) == pytest.approx(lo.trace(), abs=1e-10)
+        assert abs(lo.trace()) > 1e-10, "ZZ has a non-zero trace in every sector"
