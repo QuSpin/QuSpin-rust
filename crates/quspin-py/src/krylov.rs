@@ -53,11 +53,8 @@ fn validate_e_shift(e_shift: f64) -> PyResult<()> {
 /// Build the shared "Boltzmann weight left the representable range" error.
 ///
 /// `e^{-beta (E_n - e_shift)}` overflows once `beta * (e_shift - E_n)` exceeds
-/// about 709 and underflows to zero once `beta * (E_n - e_shift)` does. Both
-/// ends are failures the caller cannot detect afterwards:
-///
-/// - overflow gives `inf`, and `sum(oz)/sum(z)` comes out `NaN`;
-/// - underflow gives exactly `0.0`, and the same ratio is `0/0`.
+/// about 709, giving `inf`, and one `inf` sample turns `sum(oz)/sum(z)` into
+/// `NaN` no matter how many good samples surround it.
 fn boltzmann_range_err(what: &str, detail: &str, beta: f64, e_shift: f64) -> PyErr {
     pyo3::exceptions::PyValueError::new_err(format!(
         "{what} at beta = {beta} with e_shift = {e_shift}; {detail} \
@@ -66,30 +63,24 @@ fn boltzmann_range_err(what: &str, detail: &str, beta: f64, e_shift: f64) -> PyE
     ))
 }
 
-/// Check the partition function landed in the representable range.
+/// Check the partition function did not overflow.
 ///
-/// Note the directions, which are opposite and easy to state backwards:
-/// overflow means `e_shift` sits too far **above** the spectrum and must be
-/// *lowered* toward `E_0`; underflow means it sits too far **below** and must
-/// be *raised*. With the default `e_shift = 0` and a negative ground state,
-/// the fix for overflow is to move `e_shift` down to `E_0` — not up.
-fn check_partition_in_range(z_r: f64, beta: f64, e_shift: f64) -> PyResult<()> {
+/// Overflow means `e_shift` sits too far **above** the spectrum and must be
+/// *lowered* toward `E_0`. With the default `e_shift = 0` and a negative
+/// ground state, that means moving it down to `E_0` — not up.
+///
+/// Underflow (`z_r == 0`) is deliberately *not* rejected here. A single
+/// sample whose Krylov space sits more than ~745/beta above `e_shift` has
+/// weight exactly zero, and that is the right answer even with `e_shift = E_0`
+/// (e.g. the fully polarized start vector of an Sz-conserving chain in a
+/// full-trace average). Only `sum(z_r) == 0` over *all* samples means
+/// `e_shift` is too low, and only the caller sees that sum.
+fn check_partition_finite(z_r: f64, beta: f64, e_shift: f64) -> PyResult<()> {
     if !z_r.is_finite() {
         return Err(boltzmann_range_err(
             &format!("partition function overflowed (z_r = {z_r})"),
             "e_shift sits too far above the spectrum; lower it towards the \
              ground-state energy when constructing the estimator",
-            beta,
-            e_shift,
-        ));
-    }
-    if z_r == 0.0 {
-        return Err(boltzmann_range_err(
-            "partition function underflowed to zero (z_r = 0)",
-            "e_shift sits too far below the spectrum, so every Boltzmann \
-             weight rounded to zero; raise it towards the ground-state energy. \
-             Lower is not safer than higher — set e_shift near E_0, not below \
-             it, so a variational lower bound is the wrong thing to reach for",
             beta,
             e_shift,
         ));
@@ -102,8 +93,8 @@ fn check_partition_in_range(z_r: f64, beta: f64, e_shift: f64) -> PyResult<()> {
 /// `z_r` is a sum of non-negative terms so it cannot reach a finite value
 /// through cancellation, but `oz_r` can be non-finite while `z_r` is not (a
 /// large-norm observable), so check it too.
-fn check_sample_in_range(z_r: f64, oz_r: C64, beta: f64, e_shift: f64) -> PyResult<()> {
-    check_partition_in_range(z_r, beta, e_shift)?;
+fn check_sample_finite(z_r: f64, oz_r: C64, beta: f64, e_shift: f64) -> PyResult<()> {
+    check_partition_finite(z_r, beta, e_shift)?;
     if !oz_r.re.is_finite() || !oz_r.im.is_finite() {
         return Err(boltzmann_range_err(
             &format!("observable contribution is not finite (oz_r = {oz_r})"),
@@ -281,6 +272,12 @@ impl PyFTLM {
     /// exceeds about 709: a 20-site Heisenberg chain has ``E_0 ~ -35``, so any
     /// ``beta >~ 20`` returns ``inf``/``NaN``.  A cheap way to get one is a
     /// short ``EigSolver`` run; it does not need to be tight, only close.
+    ///
+    /// ``sample`` raises ``ValueError`` on overflow.  It does *not* raise when
+    /// a sample's ``z_r`` underflows to ``0.0``: a start vector whose Krylov
+    /// space sits far above ``e_shift`` genuinely carries negligible weight.
+    /// If ``sum(z_r)`` over *all* samples is zero, ``e_shift`` is too far
+    /// below the spectrum; raise it towards the ground-state energy.
     #[getter]
     fn e_shift(&self) -> f64 {
         self.e_shift
@@ -380,7 +377,7 @@ impl PyFTLM {
         });
 
         let (z_r, oz_r) = result.map_err(Error::from)?;
-        check_sample_in_range(z_r, oz_r, beta, e_shift)?;
+        check_sample_finite(z_r, oz_r, beta, e_shift)?;
         Ok((z_r, Complex64::new(oz_r.re, oz_r.im)))
     }
 
@@ -523,7 +520,7 @@ impl PyLTLM {
         });
 
         let (z_r, oz_r) = result.map_err(Error::from)?;
-        check_sample_in_range(z_r, oz_r, beta, e_shift)?;
+        check_sample_finite(z_r, oz_r, beta, e_shift)?;
         Ok((z_r, Complex64::new(oz_r.re, oz_r.im)))
     }
 
@@ -641,12 +638,10 @@ impl PyFTLMDynamic {
 
             // The Boltzmann weights that scale the whole spectral function are
             // exactly the terms of this partition, so guard it the way the
-            // FTLM/LTLM samples guard theirs. Checking the *output* array
-            // instead would miss underflow: an e_shift below the left Ritz
-            // values zeroes every weight, and the resulting all-zero array is
-            // indistinguishable from a legitimately empty frequency window.
-            // Computed before the zero-operator early return below, so a
-            // degenerate partition is reported even when A|v0⟩ = 0.
+            // FTLM/LTLM samples guard theirs: an overflow here is e_shift's
+            // fault, and reporting it as a non-finite spectral function would
+            // blame the operator instead. Computed before the zero-operator
+            // early return below, so it is reported even when A|v0⟩ = 0.
             let z_left = ftlm::ftlm_partition(&left_eig, beta, e_shift);
 
             // Compute A|v0⟩ (using normalized v0 from the left basis)
@@ -681,11 +676,10 @@ impl PyFTLMDynamic {
         });
 
         let (spectral, z_left) = result.map_err(Error::from)?;
-        // Catches both ends, including the underflow the output array cannot
-        // show (an all-zero spectral function is also what an empty frequency
-        // window legitimately produces).
-        check_partition_in_range(z_left, beta, e_shift)?;
-        // A finite, non-zero partition still leaves the operator norm free, so
+        // Overflow only: an all-zero sample from a start vector whose weights
+        // underflowed is legitimate; see `check_partition_finite`.
+        check_partition_finite(z_left, beta, e_shift)?;
+        // A finite partition still leaves the operator norm free, so
         // an overflow can enter through `right_norm_sq` — the analogue of the
         // `oz_r` check on the other two estimators.
         if let Some(bad) = spectral.iter().find(|s| !s.is_finite()) {

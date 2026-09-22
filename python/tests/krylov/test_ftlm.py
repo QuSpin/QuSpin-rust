@@ -26,14 +26,16 @@ N = 3
 DIM = 2**N
 
 
-def _ham_and_obs(scale: float = 1.0):
+def _ham_and_obs(scale: float = 1.0, heisenberg: bool = False):
     """Heisenberg-ish chain H and an observable O, plus their dense forms.
 
     ``scale`` multiplies H so the spectrum can be pushed far enough from zero
-    to overflow the unshifted Boltzmann weight.
+    to overflow the unshifted Boltzmann weight.  ``heisenberg`` adds the YY
+    term, making H conserve Sz so the fully polarized states are eigenstates.
     """
     bonds = [[scale, i, i + 1] for i in range(N - 1)]
-    h_op = PauliOperator([("XX", bonds)], [("ZZ", bonds)])
+    terms = ["XX", "YY", "ZZ"] if heisenberg else ["XX", "ZZ"]
+    h_op = PauliOperator(*[[(t, bonds)] for t in terms])
     # ZZ, not Z: XX+ZZ is invariant under the global spin flip X^(x)N, under
     # which a single Z is odd, so <Z_0> vanishes identically at every beta and
     # any multiplicative error in oz_r would be invisible.  ZZ is even, and
@@ -43,7 +45,7 @@ def _ham_and_obs(scale: float = 1.0):
 
     h_mat = QMatrix.build_pauli(h_op, basis, np.dtype("complex128"))
     o_mat = QMatrix.build_pauli(o_op, basis, np.dtype("complex128"))
-    ham = Hamiltonian(h_mat, [Static(), Static()])
+    ham = Hamiltonian(h_mat, [Static() for _ in terms])
     obs = Hamiltonian(o_mat, [Static()])
 
     # `QMatrix` stores the transpose (#121), but XX+ZZ and Z are both
@@ -210,23 +212,6 @@ class TestOverflow:
         )
         assert np.all(np.isfinite(s))
 
-    def test_ftlm_dynamic_underflow_raises(self):
-        """Underflow makes the whole spectral array zero, which looks legitimate.
-
-        An all-zero spectral function is also what an empty frequency window
-        produces, so checking the output array cannot distinguish them; the
-        guard has to be on the left partition.
-        """
-        ham, obs, h_dense, _ = _ham_and_obs(self.SCALE)
-        e0 = np.linalg.eigvalsh(h_dense).min()
-        v0 = np.zeros(DIM, dtype=np.complex128)
-        v0[0] = 1.0
-
-        with pytest.raises(ValueError, match="underflow"):
-            FTLMDynamic(ham, e_shift=e0 - 100.0).sample(
-                v0, DIM, obs, self.BETA, np.linspace(-2.0, 2.0, 5), 0.1
-            )
-
     def test_overflow_message_says_lower_not_raise(self):
         """The recovery direction must be right; it is the actionable half.
 
@@ -241,20 +226,53 @@ class TestOverflow:
             FTLM(ham).sample(v0, DIM, obs, self.BETA)
         assert "raise" not in str(exc.value)
 
-    @pytest.mark.parametrize("cls", [FTLM, LTLM])
-    def test_underflow_raises_instead_of_returning_zero_over_zero(self, cls):
-        """The opposite failure: e_shift far BELOW the spectrum zeroes every weight.
+    @staticmethod
+    def _polarized_index(h_dense) -> int:
+        """Index of a fully polarized basis state, the top of the spectrum."""
+        i = int(np.argmax(np.real(np.diag(h_dense))))
+        off_diag = np.delete(h_dense[:, i], i)
+        assert np.max(np.abs(off_diag)) < 1e-12, "must be an eigenstate"
+        return i
 
-        Reaching for a variational lower bound on E_0 is the natural mistake,
-        and a bound only ~709/beta too low is already enough.
+    @pytest.mark.parametrize("cls", [FTLM, LTLM])
+    def test_negligible_sample_is_zero_not_an_error(self, cls):
+        """A single z_r underflowing to 0 is the right answer, not a failure.
+
+        With e_shift = E_0 exactly, the polarized start vector is an eigenstate
+        ~180 above it, so its weight exp(-25*180) is 0.0 in f64.  It must add
+        zero to the sum rather than abort the average.
         """
-        ham, obs, h_dense, _ = _ham_and_obs(self.SCALE)
+        ham, obs, h_dense, _ = _ham_and_obs(self.SCALE, heisenberg=True)
         e0 = np.linalg.eigvalsh(h_dense).min()
         v0 = np.zeros(DIM, dtype=np.complex128)
-        v0[0] = 1.0
+        v0[self._polarized_index(h_dense)] = 1.0
 
-        with pytest.raises(ValueError, match="underflow"):
-            cls(ham, e_shift=e0 - 100.0).sample(v0, DIM, obs, self.BETA)
+        z_r, oz_r = cls(ham, e_shift=e0).sample(v0, DIM, obs, self.BETA)
+        assert z_r == 0.0
+        assert oz_r == 0.0
+
+    @pytest.mark.parametrize("cls", [FTLM, LTLM])
+    def test_full_trace_with_negligible_samples_matches_exact(self, cls):
+        """The full-trace average survives samples whose weights underflow."""
+        ham, obs, h_dense, o_dense = _ham_and_obs(self.SCALE, heisenberg=True)
+        e0 = np.linalg.eigvalsh(h_dense).min()
+
+        got = _ftlm_average(cls(ham, e_shift=e0), obs, self.BETA, DIM)
+        want = _exact_thermal_average(h_dense, o_dense, self.BETA)
+
+        assert np.isfinite(got)
+        assert got == pytest.approx(want, abs=1e-8)
+
+    def test_ftlm_dynamic_negligible_sample_is_zero_not_an_error(self):
+        ham, obs, h_dense, _ = _ham_and_obs(self.SCALE, heisenberg=True)
+        e0 = np.linalg.eigvalsh(h_dense).min()
+        v0 = np.zeros(DIM, dtype=np.complex128)
+        v0[self._polarized_index(h_dense)] = 1.0
+
+        s = FTLMDynamic(ham, e_shift=e0).sample(
+            v0, DIM, obs, self.BETA, np.linspace(-2.0, 2.0, 5), 0.1
+        )
+        assert np.all(s == 0.0)
 
     def test_non_finite_observable_contribution_raises(self):
         """`oz_r` can blow up while `z_r` stays finite — the guard is two-sided.
