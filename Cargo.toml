@@ -9,7 +9,8 @@ members = [
     "crates/quspin-krylov",
     "crates/quspin-core",
     "crates/quspin-py",
-    "crates/quspin-ffht"
+    "crates/quspin-ffht",
+    "crates/quspin-nlce"
 ]
 resolver = "2"
 
@@ -34,3 +35,12 @@ ode_solvers = "0.6"
 
 [profile.release]
 codegen-units = 4
+
+# Dense eigensolves (`quspin_krylov::dense`) are unusably slow unoptimised.
+# nalgebra is generic, so its eigen code is monomorphised inside
+# quspin-krylov: optimise both so debug builds and `cargo test` stay practical.
+[profile.dev.package.nalgebra]
+opt-level = 3
+
+[profile.dev.package.quspin-krylov]
+opt-level = 3
