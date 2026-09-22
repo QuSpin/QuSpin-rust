@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 import scipy.sparse.linalg as sla
 
+from quspin_rs import Lattice, Local, SymmetryGroup
 from quspin_rs._rs import (
     BosonBasis,
     BosonOperator,
@@ -435,3 +436,163 @@ class TestAsLinearOperatorValidation:
         lo = op.as_linearoperator(SpinBasis.full(1, 4), np.ones(1, dtype=np.complex128))
         diag = np.real(np.diag(dense_from_matvec(lo)))
         assert sorted(np.round(diag, 6)) == [-1.5, -0.5, 0.5, 1.5]
+
+
+class TestSymmetricBasisComplexCharacters:
+    """Matrix-free operators on a momentum sector with complex characters.
+
+    Every other test in this file uses a real-symmetric Hamiltonian on a
+    non-symmetric basis, where the group character is identically 1.  A stray
+    complex conjugation in the ``SymBasis`` projection is invisible there but
+    zeroes out the whole sector for any character other than ``chi = +-1``.
+    """
+
+    @staticmethod
+    def _sector(L: int, k: int):
+        """Single-magnon momentum-k sector of an L-site XX+YY ring."""
+        op = PauliOperator(
+            [("XX", [[1.0, i, (i + 1) % L] for i in range(L)])],
+            [("YY", [[1.0, i, (i + 1) % L] for i in range(L)])],
+        )
+        group = SymmetryGroup(n_sites=L, lhss=2)
+        group.add_cyclic(Lattice([(i + 1) % L for i in range(L)]), k=k)
+        basis = SpinBasis.symmetric(group, op, ["1" + "0" * (L - 1)])
+        return op, basis
+
+    @pytest.mark.parametrize("k", range(6))
+    def test_single_magnon_dispersion(self, k: int):
+        """E(k) = 4*cos(2*pi*k/L), exactly — no convention ambiguity.
+
+        XX + YY = 2*(S+S- + S-S+), so the hopping amplitude is 2 per bond and
+        a single magnon on a ring disperses as 2*2*cos(k).
+        """
+        L = 6
+        op, basis = self._sector(L, k)
+        assert basis.size == 1, f"k={k} sector should hold exactly one state"
+
+        lo = op.as_linearoperator(basis, np.ones(2, dtype=np.complex128))
+        got = lo.matvec(np.ones(1, dtype=np.complex128))[0]
+        want = 4.0 * np.cos(2.0 * np.pi * k / L)
+
+        assert got == pytest.approx(
+            want, abs=1e-10
+        ), f"k={k}: matrix-free gave {got}, expected {want}"
+
+    @staticmethod
+    def _multi_magnon_sector(L: int, k: int):
+        """Two-magnon momentum-k sector — dimension > 1 with complex entries.
+
+        The single-magnon sector is 1x1 with a real entry, which cannot
+        distinguish A from conj(A); this one can.
+        """
+        bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
+        op = PauliOperator([("XX", bonds)], [("YY", bonds)], [("ZZ", bonds)])
+        group = SymmetryGroup(n_sites=L, lhss=2)
+        group.add_cyclic(Lattice([(i + 1) % L for i in range(L)]), k=k)
+        basis = SpinBasis.symmetric(group, op, ["110" + "0" * (L - 3)])
+        return op, basis
+
+    @pytest.mark.parametrize("k", [1, 2, 4, 5])
+    def test_matches_assembled_qmatrix_transposed(self, k: int):
+        """Matrix-free gives A; the assembled QMatrix stores A-transpose (#121).
+
+        Restricted to the momenta with genuinely complex characters, and
+        asserted on a sector with dimension > 1 so the two conventions are
+        actually distinguishable.
+        """
+        op, basis = self._multi_magnon_sector(6, k)
+        assert basis.size > 1, f"k={k} sector is too small to be conclusive"
+        coeffs = np.ones(3, dtype=np.complex128)
+
+        free = dense_from_matvec(op.as_linearoperator(basis, coeffs))
+        assembled = dense_from_matvec(
+            QMatrix.build_pauli(op, basis, np.dtype("complex128")).as_linearoperator(
+                coeffs
+            )
+        )
+
+        assert (
+            np.max(np.abs(np.imag(free))) > 1e-8
+        ), f"k={k} sector came out real — cannot detect a conjugation error"
+        assert np.max(np.abs(free - assembled.T)) < 1e-10
+        assert np.max(np.abs(free - free.conj().T)) < 1e-10, "A is not Hermitian"
+
+    @pytest.mark.parametrize("k", [1, 2])
+    def test_rmatvec_is_adjoint_in_complex_sector(self, k: int):
+        """`rmatvec`/`dot_transpose` route through the same projection.
+
+        Pins <y, Ax> == <A^H y, x> where A is genuinely complex.
+        """
+        op, basis = self._multi_magnon_sector(6, k)
+        n = basis.size
+        assert n > 1
+        lo = op.as_linearoperator(basis, np.ones(3, dtype=np.complex128))
+
+        rng = np.random.default_rng(7)
+        x = (rng.normal(size=n) + 1j * rng.normal(size=n)).astype(np.complex128)
+        y = (rng.normal(size=n) + 1j * rng.normal(size=n)).astype(np.complex128)
+
+        lhs = np.vdot(y, lo.matvec(x))
+        rhs = np.vdot(lo.rmatvec(y), x)
+        assert lhs == pytest.approx(rhs, abs=1e-10)
+
+    @pytest.mark.parametrize("k", [1, 2])
+    def test_fermionic_sector(self, k: int):
+        """Fermions: the Jordan-Wigner sign is a 1-cocycle, not a character.
+
+        The derivation behind the projection only survives because the sign is
+        real; this is the one case where it could genuinely have broken.
+        """
+        L = 6
+        # Hermitian hopping is c+_i c_j + c+_j c_i, i.e. "+-" over both bond
+        # orientations.  ("+-", b) + ("-+", b) would instead be
+        # c+_i c_j - c+_j c_i, since c_i c+_j = -c+_j c_i — anti-Hermitian.
+        forward = [[1.0, i, (i + 1) % L] for i in range(L)]
+        backward = [[1.0, (i + 1) % L, i] for i in range(L)]
+        op = FermionOperator([("+-", forward + backward)])
+        group = SymmetryGroup(n_sites=L, lhss=2)
+        group.add_cyclic(Lattice([(i + 1) % L for i in range(L)]), k=k)
+        basis = FermionBasis.symmetric(group, op, ["110000"])
+        assert basis.size > 1
+
+        coeffs = np.ones(1, dtype=np.complex128)
+        free = dense_from_matvec(op.as_linearoperator(basis, coeffs))
+
+        assert np.max(np.abs(free)) > 1e-8, "fermionic sector collapsed to zero"
+        assert np.max(np.abs(free - free.conj().T)) < 1e-10, "A is not Hermitian"
+        assert np.max(np.abs(free - dense_from_apply(op, basis, coeffs))) < 1e-12
+
+    def test_composite_group_lattice_times_local(self):
+        """A group built from both a lattice and a local generator."""
+        L = 6
+        bonds = [[1.0, i, (i + 1) % L] for i in range(L)]
+        op = PauliOperator([("XX", bonds)], [("YY", bonds)], [("ZZ", bonds)])
+
+        translation = SymmetryGroup(n_sites=L, lhss=2)
+        translation.add_cyclic(Lattice([(i + 1) % L for i in range(L)]), k=1)
+        spin_flip = SymmetryGroup(n_sites=L, lhss=2)
+        spin_flip.add_cyclic(Local([1, 0]), eta=1)
+        group = translation.product(spin_flip)
+
+        basis = SpinBasis.symmetric(group, op, ["110000"])
+        assert basis.size > 0
+
+        coeffs = np.ones(3, dtype=np.complex128)
+        free = dense_from_matvec(op.as_linearoperator(basis, coeffs))
+
+        assert np.max(np.abs(free)) > 1e-8, "composite sector collapsed to zero"
+        assert np.max(np.abs(free - free.conj().T)) < 1e-10, "A is not Hermitian"
+        assert np.max(np.abs(free - dense_from_apply(op, basis, coeffs))) < 1e-12
+
+    def test_trace_is_not_silently_zero(self):
+        """`trace` runs through the same projection as `matvec`."""
+        L, k = 6, 1
+        op = PauliOperator([("ZZ", [[1.0, i, (i + 1) % L] for i in range(L)])])
+        group = SymmetryGroup(n_sites=L, lhss=2)
+        group.add_cyclic(Lattice([(i + 1) % L for i in range(L)]), k=k)
+        basis = SpinBasis.symmetric(group, op, ["100000"])
+
+        lo = op.as_linearoperator(basis, np.ones(1, dtype=np.complex128))
+        dense = dense_from_matvec(lo)
+        assert np.trace(dense) == pytest.approx(lo.trace(), abs=1e-10)
+        assert abs(lo.trace()) > 1e-10, "ZZ has a non-zero trace in every sector"
