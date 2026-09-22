@@ -1,0 +1,10 @@
+[package]
+name = "quspin-nlce"
+version.workspace = true
+edition.workspace = true
+description = "Numerical linked-cluster expansion (NLCE) on top of QuSpin-rust"
+
+[dependencies]
+quspin-core = { path = "../quspin-core" }
+num-complex = { workspace = true }
+rayon = { workspace = true }

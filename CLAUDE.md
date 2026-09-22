@@ -4,7 +4,7 @@ Rust rewrite of the QuSpin quantum many-body physics library. Complete rewrite (
 
 ## Project Structure
 
-Cargo workspace split into seven focused physics crates plus a facade and the PyO3 bindings:
+Cargo workspace split into seven focused physics crates plus a facade, the PyO3 bindings, and the NLCE application crate:
 
 ```
 crates/
@@ -13,10 +13,11 @@ crates/
   quspin-operator/   # Operator types + *OperatorInner enums (no basis knowledge)
   quspin-basis/      # SpaceInner, SymBasis, BFS, orbit, enumeration
   quspin-expm/       # Taylor-series matrix exponential (generic over LinearOperator<V>)
-  quspin-krylov/     # Lanczos, FTLM, LTLM (takes matvec closures, no concrete types)
+  quspin-krylov/     # Lanczos, FTLM, LTLM (takes matvec closures, no concrete types); dense eigh/eigvalsh
   quspin-matrix/     # QMatrix, Hamiltonian, QMatrixOperator, apply glue
   quspin-core/       # Pure re-export facade (~90 lines, zero logic)
   quspin-py/         # PyO3 bindings (cdylib named `_rs`)
+  quspin-nlce/       # Numerical linked-cluster expansion (rectangle NLCE, ED solver) on quspin-core
 python/
   quspin_rs/         # Python package (imports _rs extension)
   tests/             # pytest suite
@@ -36,6 +37,8 @@ quspin-operator  quspin-basis   quspin-expm    quspin-krylov
        quspin-matrix
             │
        quspin-core  →  quspin-py
+            │
+       quspin-nlce
 ```
 
 All four crates at the mid level (`quspin-operator`, `quspin-basis`, `quspin-expm`, `quspin-krylov`) compile in parallel off `quspin-bitbasis`. `quspin-expm` and `quspin-krylov` depend only on `quspin-types`; `quspin-basis` depends on `quspin-bitbasis` (for `BitInt` / `StateGraph`) but has **no** runtime edge to `quspin-operator` — basis BFS drives any `&impl StateGraph` regardless of operator type.
@@ -92,6 +95,8 @@ GitHub Actions (`.github/workflows/ci.yaml`): `Swatinem/rust-cache` warms `targe
 - **Parallelism:** `rayon` throughout (replaces C++ OpenMP)
 - **Multi-word integers:** `ruint::Uint<BITS, LIMBS>` for large bit representations
 - **Error handling:** `Result<T, QuSpinError>` in the physics crates; maps to Python exceptions via PyO3
+- **Dense ED.** `quspin_krylov::dense::{eigh, eigvalsh}` (re-exported from `quspin-core`) diagonalise a row-major dense Hermitian buffer (e.g. from `QMatrix::to_dense`) via nalgebra's `SymmetricEigen`. `nalgebra` and `quspin-krylov` are built at `opt-level = 3` even in the dev/test profile (workspace `Cargo.toml`), because unoptimised dense eigensolves are unusably slow. `quspin_matrix::expectation(op, basis, coeffs, psi)` gives `⟨ψ|O|ψ⟩` via `OperatorDispatch::apply`.
+- **NLCE (`quspin-nlce`).** Trait pipeline `Lattice` → `ClusterGenerator` → `ClusterSolver<M: Model>` → `Property` → `combine`/`run_nlce` → `Resummation`; see `crates/quspin-nlce/README.md`. The 4×4 identity test is `#[ignore]`d (run with `--release -- --ignored`).
 - **Two ways to get a `LinearOperator`.** `QMatrix::build_*(op, basis, dtype).as_linearoperator(coeffs)` assembles the matrix; `OperatorOnBasis::new(op, basis, coeffs)` (in `quspin-matrix`) is matrix-free and recomputes elements per product. The matrix-free path backs `trace` / `onenorm` / `dot_transpose` with the single-sweep kernels in `quspin-matrix::matrix_free`; `dot_chunk` / `dot_transpose_chunk` are unsupported there (a row range of `A·x` needs the adjoint) so `parallel_hint()` is `false`. From Python: `<Operator>.as_linearoperator(basis, coeffs)` → `OperatorLinearOperator`, accepted by `ExpmOp` and by `scipy.sparse.linalg`.
 - **Caveat — `QMatrix` stores the transpose** (issue #121): `to_csr` and `QMatrixLinearOperator.matvec` return `Aᵀ` while `op.apply` and `OperatorOnBasis` return `A`. Invisible for real-symmetric Hamiltonians, which is every case the older tests cover. Don't write new code against the transposed convention.
 - **Python package:** `quspin-rs`, module `quspin_rs._rs`, built with maturin against `quspin-py`

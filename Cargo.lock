@@ -1012,6 +1012,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "quspin-nlce"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+ "quspin-core",
+ "rayon",
+]
+
+[[package]]
 name = "quspin-operator"
 version = "0.1.0"
 dependencies = [
