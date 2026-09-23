@@ -64,3 +64,29 @@ fn energy_converges_to_onsager_above_tc() {
         }
     }
 }
+
+/// Wynn resummation must beat the bare sums near T_c, measured against the
+/// exact Onsager energy.
+#[test]
+fn wynn_improves_on_bare_sums_near_tc() {
+    let temps = vec![0.7, 0.8, 1.0];
+    let solver = ExactDiagSolver::new(temps.clone()).unwrap();
+    let result = run_nlce(
+        &RectangleGenerator::new(SquareLattice, 7),
+        &solver,
+        &Xxz::ising(-1.0),
+    )
+    .unwrap();
+    let sums = result.sums();
+    let bare = Bare.resum(&sums).unwrap();
+    let wynn = Wynn { cycles: 2 }.resum(&sums).unwrap();
+    for (i, &t) in temps.iter().enumerate() {
+        let e_bare = (bare.energy[i] - onsager_energy(t)).abs();
+        let e_wynn = (wynn.energy[i] - onsager_energy(t)).abs();
+        eprintln!("T={t}: bare {e_bare:e}, Wynn(2) {e_wynn:e}");
+        assert!(
+            e_wynn < 0.2 * e_bare,
+            "T={t}: bare {e_bare:e}, Wynn {e_wynn:e}"
+        );
+    }
+}

@@ -44,6 +44,32 @@ impl Property for Vec<f64> {
     }
 }
 
+/// A [`Property`] that can be viewed as a flat list of real numbers, so that
+/// nonlinear sequence transformations ([`Wynn`](crate::resum::Wynn),
+/// [`Euler`](crate::resum::Euler)) can act on each component separately.
+pub trait Componentwise: Property {
+    /// All components, in a fixed order.
+    fn to_components(&self) -> Vec<f64>;
+
+    /// A value with the shape of `self` and the given components (as
+    /// returned by [`to_components`](Self::to_components)).
+    ///
+    /// # Panics
+    /// If `values` has the wrong length.
+    fn with_components(&self, values: &[f64]) -> Self;
+}
+
+impl Componentwise for Vec<f64> {
+    fn to_components(&self) -> Vec<f64> {
+        self.clone()
+    }
+
+    fn with_components(&self, values: &[f64]) -> Self {
+        assert_eq!(values.len(), self.len(), "component count mismatch");
+        values.to_vec()
+    }
+}
+
 /// Finite-temperature thermodynamics of a cluster, each array over the same
 /// temperature grid. All quantities are extensive (not per site), with
 /// `k_B = 1`.
@@ -137,5 +163,24 @@ impl Property for Thermo {
             .zip(other.fields())
             .map(|(a, b)| a.max_abs_diff(b))
             .fold(0.0, f64::max)
+    }
+}
+
+impl Componentwise for Thermo {
+    fn to_components(&self) -> Vec<f64> {
+        self.fields().flat_map(|f| f.iter().copied()).collect()
+    }
+
+    fn with_components(&self, values: &[f64]) -> Self {
+        let n: usize = self.fields().map(Vec::len).sum();
+        assert_eq!(values.len(), n, "component count mismatch");
+        let mut out = self.clone();
+        let mut rest = values;
+        for f in out.fields_mut() {
+            let (head, tail) = rest.split_at(f.len());
+            f.copy_from_slice(head);
+            rest = tail;
+        }
+        out
     }
 }

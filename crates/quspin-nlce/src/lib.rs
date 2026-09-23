@@ -23,7 +23,7 @@
 //! | Hamiltonian | [`Model`] | [`Xxz`] |
 //! | Per-cluster property | [`ClusterSolver`] | [`ExactDiagSolver`] → [`Thermo`] |
 //! | Inclusion–exclusion | [`combine`] / [`run_nlce`] over any [`Property`] | — |
-//! | Resummation | [`Resummation`] | [`Bare`] |
+//! | Resummation | [`Resummation`] | [`Bare`], [`Wynn`], [`Euler`] |
 //! | Saved DAGs | [`ClusterSet`] (a [`ClusterGenerator`]) | text file, [`store`] |
 //!
 //! ```no_run
@@ -61,7 +61,7 @@ pub use generator::{
 pub use graph::{Bond, ClusterGraph, ClusterKey, Topology};
 pub use lattice::{ChainLattice, Lattice, SquareLattice};
 pub use model::{Model, Xxz};
-pub use property::{Property, Thermo};
-pub use resum::{Bare, Resummation};
+pub use property::{Componentwise, Property, Thermo};
+pub use resum::{Bare, Euler, Resummation, Wynn};
 pub use solver::{ClusterSolver, ExactDiagSolver, MAX_ED_SITES, Spectrum, SpectrumBlock};
 pub use store::ClusterSet;

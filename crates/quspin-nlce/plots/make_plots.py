@@ -6,6 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import matplotlib
+import matplotlib.ticker
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -316,4 +317,126 @@ if (DIR / "ising_bond.csv").exists():
         "true error, not just the order-to-order change.\n"
         "The bond floor (~1e-9) at high T is rounding amplified by "
         "inclusion–exclusion over 21M embeddings, not truncation error.",
+    )
+
+
+# --- Resummation --------------------------------------------------------------
+def load_resummed(name):
+    """{(expansion, method): {key: array}} with rows sorted by T."""
+    rows = defaultdict(lambda: defaultdict(list))
+    with open(DIR / name) as f:
+        for r in csv.DictReader(f):
+            d = rows[(r["expansion"], r["method"])]
+            for k in ("T", "energy", "entropy", "specific_heat"):
+                d[k].append(float(r[k]))
+    return {m: {k: np.array(v) for k, v in d.items()} for m, d in rows.items()}
+
+
+BARE_DASH = (0, (3, 2))
+
+if (DIR / "heisenberg_resummed.csv").exists():
+    rs = load_resummed("heisenberg_resummed.csv")
+    families = {
+        # Wynn only: Euler assumes an alternating tail and is biased where
+        # the bond series has already converged (≈1e-5 at T = 2 for Euler 3).
+        "rect": [m for m in rs if m[0] == "rect" and m[1].startswith("wynn")],
+        "bond": [m for m in rs if m[0] == "bond" and m[1].startswith("wynn")],
+    }
+    rep = {"rect": ("rect", "wynn2"), "bond": ("bond", "wynn4")}
+    style = {
+        "rect": (RECT, "rectangles, m + n ≤ 8: Wynn 1–3"),
+        "bond": (BOND, "bonds, ≤ 12: Wynn 2–5"),
+    }
+    t = rs[rep["rect"]]["T"]
+    keep = (t >= 0.3) & (t <= 5)
+    fig, axes = plt.subplots(2, 3, figsize=(13, 7.4), sharex=True)
+    for col, (key, lab) in enumerate(QUANTS):
+        top, bottom = axes[0, col], axes[1, col]
+        spreads = {}
+        for fam, members in families.items():
+            color, label = style[fam]
+            vals = np.array([rs[m][key] for m in members])[:, keep]
+            lo, hi = vals.min(axis=0), vals.max(axis=0)
+            spreads[fam] = hi - lo
+            top.fill_between(t[keep], lo, hi, color=color, alpha=0.15, linewidth=0)
+            top.plot(t[keep], rs[rep[fam]][key][keep], color=color, label=label)
+            bottom.plot(t[keep], floor(hi - lo), color=color, label=f"spread, {fam}")
+        cross = rs[rep["bond"]][key][keep] - rs[rep["rect"]][key][keep]
+        bottom.plot(
+            t[keep],
+            floor(cross),
+            color=INK,
+            linewidth=1.5,
+            linestyle=(0, (4, 3)),
+            label="|bond − rect| (representatives)",
+        )
+        top.set_title(lab, loc="left")
+        bottom.set_title(f"{lab.split()[0]}: spread and disagreement", loc="left")
+        bottom.set_yscale("log")
+        bottom.set_ylim(1e-9, 1)
+        bottom.set_xscale("log")
+        bottom.set_xlabel("T / J")
+        bottom.set_xticks([0.3, 0.5, 1, 2, 5], ["0.3", "0.5", "1", "2", "5"])
+        bottom.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+    axes[0, 0].set_ylim(-0.7, 0)
+    axes[0, 1].set_ylim(0, 0.72)
+    axes[0, 2].set_ylim(0, 0.55)
+    axes[0, 0].legend(loc="lower right")
+    axes[1, 0].legend(loc="upper right")
+    finish(
+        fig,
+        DIR / "resummed_heisenberg.png",
+        "Heisenberg AFM: resummed rectangle vs bond expansion",
+        "Lines: Wynn 2 cycles (rectangles), Wynn 4 cycles (bonds); bands span all Wynn "
+        "cycle counts (Euler agrees at low T but is biased at high T).\n"
+        "Bottom: band width within each expansion and the gap between them, a "
+        "convergence proxy (there is no exact result).",
+    )
+
+if (DIR / "ising_resummed.csv").exists():
+    ri = load_resummed("ising_resummed.csv")
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.2))
+    t = ri[("rect", "wynn2")]["T"]
+    near = (t >= 0.45) & (t <= 1.6)
+    for fam, color, label in [
+        ("rect", RECT, "rectangles, m + n ≤ 8"),
+        ("bond", BOND, "bonds, ≤ 12 (even orders)"),
+    ]:
+        axes[0].plot(
+            t[near], ri[(fam, "wynn2")]["energy"][near], color=color, label=label
+        )
+        for method, dash, suffix in [
+            ("bare", BARE_DASH, "bare"),
+            ("wynn2", "-", "Wynn 2"),
+        ]:
+            err = floor(ri[(fam, method)]["energy"] - onsager(t))
+            axes[1].plot(t, err, color=color, linestyle=dash, label=f"{fam}, {suffix}")
+    reference(axes[0], t[near], onsager(t[near]), "Onsager (exact)")
+    axes[0].set_title("E / N, Wynn 2 cycles", loc="left")
+    axes[1].set_title("|E − E_Onsager| / N", loc="left")
+    axes[1].set_yscale("log")
+    axes[1].set_ylim(1e-16, 1)
+    axes[0].set_xticks([0.5, 0.6, 0.8, 1, 1.5], ["0.5", "0.6", "0.8", "1", "1.5"])
+    for ax in axes:
+        ax.set_xscale("log")
+        ax.set_xlabel("T / J")
+        ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+        ax.axvline(tc, color=INK_2, linewidth=1)
+        ax.text(
+            tc * 1.03,
+            0.97,
+            "T_c",
+            transform=ax.get_xaxis_transform(),
+            va="top",
+            fontsize=9,
+            color=INK_2,
+        )
+    axes[0].legend(loc="lower right")
+    axes[1].legend(loc="upper right", fontsize=8.5)
+    finish(
+        fig,
+        DIR / "resummed_ising.png",
+        "2D Ising model: Wynn resummation against Onsager",
+        "Dashed: bare sums; solid: Wynn ε with 2 cycles (bond series thinned to even "
+        "orders, since odd orders vanish).",
     )

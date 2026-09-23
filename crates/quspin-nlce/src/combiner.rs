@@ -49,6 +49,12 @@ impl<P: Property> NlceResult<P> {
     pub fn last_partial_sum(&self) -> Option<&P> {
         self.partial_sums.last().map(|(_, p)| p)
     }
+
+    /// The partial sums without their order labels, ascending — the input
+    /// of [`Resummation::resum`](crate::resum::Resummation::resum).
+    pub fn sums(&self) -> Vec<P> {
+        self.partial_sums.iter().map(|(_, p)| p.clone()).collect()
+    }
 }
 
 /// Weight of one cluster from its property and the (already known) weights
