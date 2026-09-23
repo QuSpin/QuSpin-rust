@@ -1,0 +1,212 @@
+"""Plot NLCE partial sums from export_csv output against exact references."""
+
+import csv
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+DIR = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+
+SURFACE = "#fcfcfb"
+INK = "#0b0b0b"
+INK_2 = "#52514e"
+GRID = "#e6e5e1"
+# Ordinal blue ramp, steps 250/350/450/550/650 (validated: monotone, gaps >= 0.06).
+RAMP = ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"]
+
+plt.rcParams.update(
+    {
+        "figure.facecolor": SURFACE,
+        "axes.facecolor": SURFACE,
+        "savefig.facecolor": SURFACE,
+        "axes.edgecolor": GRID,
+        "axes.labelcolor": INK_2,
+        "axes.titlecolor": INK,
+        "axes.titlesize": 11,
+        "axes.titleweight": "bold",
+        "axes.labelsize": 10,
+        "xtick.color": INK_2,
+        "ytick.color": INK_2,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "axes.grid": True,
+        "grid.color": GRID,
+        "grid.linewidth": 0.8,
+        "grid.linestyle": "-",
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "legend.frameon": False,
+        "legend.fontsize": 9,
+        "legend.labelcolor": INK,
+        "font.family": "DejaVu Sans",
+        "lines.linewidth": 2.0,
+        "lines.solid_capstyle": "round",
+        "lines.solid_joinstyle": "round",
+    }
+)
+
+
+def load(name):
+    data = defaultdict(lambda: defaultdict(list))
+    with open(DIR / name) as f:
+        for row in csv.DictReader(f):
+            o = int(row["order"])
+            for k, v in row.items():
+                if k != "order":
+                    data[o][k].append(float(v))
+    return {o: {k: np.array(v) for k, v in d.items()} for o, d in data.items()}
+
+
+def free_fermions(t):
+    k = 2 * np.pi * (np.arange(4096) + 0.5) / 4096
+    eps = np.cos(k)[None, :]
+    b = 1.0 / np.asarray(t)[:, None]
+    f = 1.0 / (np.exp(b * eps) + 1.0)
+    e = (eps * f).mean(axis=1)
+    lnz = np.log1p(np.exp(-b * eps)).mean(axis=1)
+    return e, lnz + b[:, 0] * e
+
+
+def onsager(t):
+    j = 0.25
+    k2 = 2 * j / np.asarray(t)
+    kap = 2 * np.sinh(k2) / np.cosh(k2) ** 2
+    a, g = np.ones_like(kap), np.sqrt(1 - kap**2)
+    for _ in range(40):
+        a, g = 0.5 * (a + g), np.sqrt(a * g)
+    ell = np.pi / (2 * a)
+    return -j / np.tanh(k2) * (1 + 2 / np.pi * (2 * np.tanh(k2) ** 2 - 1) * ell)
+
+
+def order_lines(ax, data, orders, key, transform=lambda o, y: y):
+    for color, o in zip(RAMP, orders):
+        ax.plot(
+            data[o]["T"], transform(o, data[o][key]), color=color, label=f"order {o}"
+        )
+
+
+def reference(ax, t, y, label):
+    ax.plot(
+        t, y, color=INK, linewidth=1.5, linestyle=(0, (4, 3)), label=label, zorder=5
+    )
+
+
+def finish(fig, path, title, subtitle):
+    # fig.text (not suptitle) so tight_layout packs the axes right under it.
+    fig.text(
+        0.01,
+        0.975,
+        title,
+        ha="left",
+        va="top",
+        fontsize=13,
+        fontweight="bold",
+        color=INK,
+    )
+    fig.text(0.01, 0.905, subtitle, ha="left", va="top", fontsize=9.5, color=INK_2)
+    fig.tight_layout(rect=(0, 0, 1, 0.86))
+    fig.savefig(path, dpi=160)
+    print("wrote", path)
+
+
+def floor(y):
+    return np.maximum(np.abs(y), 1e-16)
+
+
+# --- Heisenberg -------------------------------------------------------------
+h = load("heisenberg.csv")
+orders = [4, 5, 6, 7, 8]
+fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))
+for ax, key, lab in zip(
+    axes, ["energy", "entropy", "specific_heat"], ["E / N", "S / N", "C / N"]
+):
+    order_lines(ax, h, orders, key)
+    ax.set_xscale("log")
+    ax.set_xlabel("T / J")
+    ax.set_title(lab, loc="left")
+t = h[8]["T"]
+hi = t >= 1.0
+b = 1 / t[hi]
+reference(axes[0], t[hi], -3 * b / 8 - 3 * b**2 / 32, "high-T series, O(β²)")
+reference(axes[1], t, np.full_like(t, np.log(2)), "ln 2")
+axes[0].set_ylim(-0.72, 0.02)
+axes[1].set_ylim(0, 0.75)
+axes[2].set_ylim(0, 0.62)
+axes[2].legend(loc="upper right")
+axes[0].legend(handles=axes[0].lines[-1:], loc="lower right")
+axes[1].legend(handles=axes[1].lines[-1:], loc="lower right")
+finish(
+    fig,
+    DIR / "heisenberg.png",
+    "Square-lattice Heisenberg AFM: bare rectangle-NLCE partial sums",
+    "Orders m + n = 4…8 (largest cluster 4×4). Successive orders agree for T ≳ 1 J "
+    "and alternate below it, where resummation is needed.",
+)
+
+# --- Ising ------------------------------------------------------------------
+g = load("ising.csv")
+tc = 0.5 / np.log(1 + np.sqrt(2))
+fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.2))
+order_lines(axes[0], g, orders, "energy")
+t = g[8]["T"]
+reference(axes[0], t, onsager(t), "Onsager (exact)")
+axes[0].set_ylim(-0.52, 0.02)
+axes[0].set_title("E / N", loc="left")
+order_lines(axes[1], g, orders, "energy", lambda o, y: floor(y - onsager(g[o]["T"])))
+axes[1].set_yscale("log")
+axes[1].set_ylim(1e-16, 1)
+axes[1].set_title("|E_NLCE − E_Onsager| / N", loc="left")
+for ax in axes:
+    ax.set_xscale("log")
+    ax.set_xlabel("T / J")
+    ax.axvline(tc, color=INK_2, linewidth=1)
+    ax.text(
+        tc * 1.04,
+        0.97,
+        "T_c",
+        transform=ax.get_xaxis_transform(),
+        va="top",
+        fontsize=9,
+        color=INK_2,
+    )
+axes[0].legend(loc="lower right")
+finish(
+    fig,
+    DIR / "ising.png",
+    "2D classical Ising model (J = −1, S = ½): convergence to Onsager",
+    "Above T_c ≈ 0.567 the error falls steeply with every order (to ~1e-13); "
+    "convergence stalls near T_c and is slow in the ordered phase.",
+)
+
+# --- XX chain ---------------------------------------------------------------
+x = load("xx_chain.csv")
+xo = [3, 6, 9, 12, 15]
+fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.2))
+order_lines(axes[0], x, xo, "energy")
+t = x[15]["T"]
+e_ff, s_ff = free_fermions(t)
+reference(axes[0], t, e_ff, "free fermions (exact)")
+axes[0].set_title("E / N", loc="left")
+order_lines(
+    axes[1], x, xo, "energy", lambda o, y: floor(y - free_fermions(x[o]["T"])[0])
+)
+axes[1].set_yscale("log")
+axes[1].set_ylim(1e-16, 1)
+axes[1].set_title("|E_NLCE − E_exact| / N", loc="left")
+for ax in axes:
+    ax.set_xscale("log")
+    ax.set_xlabel("T / J")
+axes[0].legend(loc="lower right")
+finish(
+    fig,
+    DIR / "xx_chain.png",
+    "1D XX chain: 1 × n clusters vs the free-fermion thermodynamic limit",
+    "Orders 3…15 (chains of 2…14 sites). At order 15 the error hits machine "
+    "precision (~1e-14) for T ≳ 0.5 J.",
+)

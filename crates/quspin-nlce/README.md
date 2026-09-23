@@ -16,6 +16,15 @@ full ED per cluster, and reports the bare partial sums per order.
 cargo run --release -p quspin-nlce --example heisenberg_partial_sums 8
 ```
 
+Plots of the partial sums against exact results (Heisenberg, Ising vs
+Onsager, XX chain vs free fermions) are in [`plots/`](plots/); regenerate
+them with
+
+```sh
+cargo run --release -p quspin-nlce --example export_csv -- crates/quspin-nlce/plots
+python crates/quspin-nlce/plots/make_plots.py crates/quspin-nlce/plots   # needs matplotlib
+```
+
 ## Trait boundaries
 
 ```text
