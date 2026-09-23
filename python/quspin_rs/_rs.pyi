@@ -1310,11 +1310,16 @@ class FTLM:
 
     Args:
         hamiltonian: A ``Hamiltonian`` for the system.
+        e_shift: Energy shift subtracted from every Ritz value before
+            exponentiating (default 0.0). Must be the same for every
+            sample being averaged; see the ``e_shift`` property.
     """
 
-    def __init__(self, hamiltonian: Hamiltonian) -> None: ...
+    def __init__(self, hamiltonian: Hamiltonian, e_shift: float = 0.0) -> None: ...
     @property
     def dim(self) -> int: ...
+    @property
+    def e_shift(self) -> float: ...
     def sample(
         self,
         v0: npt.NDArray[Any],
@@ -1349,11 +1354,16 @@ class LTLM:
 
     Args:
         hamiltonian: A ``Hamiltonian`` for the system.
+        e_shift: Energy shift subtracted from every Ritz value before
+            exponentiating (default 0.0). Must be the same for every
+            sample being averaged; see the ``e_shift`` property.
     """
 
-    def __init__(self, hamiltonian: Hamiltonian) -> None: ...
+    def __init__(self, hamiltonian: Hamiltonian, e_shift: float = 0.0) -> None: ...
     @property
     def dim(self) -> int: ...
+    @property
+    def e_shift(self) -> float: ...
     def sample(
         self,
         v0: npt.NDArray[Any],
@@ -1388,11 +1398,16 @@ class FTLMDynamic:
 
     Args:
         hamiltonian: A ``Hamiltonian`` for the system.
+        e_shift: Energy shift subtracted from every Ritz value before
+            exponentiating (default 0.0). Must be the same for every
+            sample being averaged; see the ``e_shift`` property.
     """
 
-    def __init__(self, hamiltonian: Hamiltonian) -> None: ...
+    def __init__(self, hamiltonian: Hamiltonian, e_shift: float = 0.0) -> None: ...
     @property
     def dim(self) -> int: ...
+    @property
+    def e_shift(self) -> float: ...
     def sample(
         self,
         v0: npt.NDArray[Any],
