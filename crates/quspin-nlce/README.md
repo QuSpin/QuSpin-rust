@@ -35,8 +35,8 @@ their parent's order). The 12-bond square-lattice DAG is 3.2 MB and loads in
 automorphism, and sub-cluster reference.
 
 Plots of the partial sums against exact results (Heisenberg, Ising vs
-Onsager, XX chain vs free fermions) are in [`plots/`](plots/); regenerate
-them with
+Onsager, XX chain vs free fermions) and of the bond vs rectangle expansion
+(`bond_vs_rect_*.png`) are in [`plots/`](plots/); regenerate them with
 
 ```sh
 cargo run --release -p quspin-nlce --example export_csv -- crates/quspin-nlce/plots
@@ -119,6 +119,15 @@ four steps (`src/generator/bond.rs`, `src/canon.rs`):
 4. **Multiplicities.** Redelmeier again on each topology's own line graph
    enumerates its connected proper sub-bond-sets once each; canonicalising
    them gives `M(s, c)`. The single site is the order-0 cluster.
+
+**Round-off.** `W(c)` is an alternating-sign combination over all
+sub-clusters, and the bond expansion multiplies it by lattice constants up
+to ~10⁴ over thousands of topologies, so rounding in `P(c)` is amplified
+enormously. At 12 bonds this leaves a floor of ~1e-9 (Ising, exact
+eigenvalues; the thermal sums use compensated summation) to ~1e-8
+(Heisenberg, dense-eigensolver rounding) in the per-site sums at high T —
+irrelevant where the expansion is not already converged, but visible in the
+high-T tails of `plots/bond_vs_rect_*.png`.
 
 Every embedding must be visited to count `L(c)`, so enumeration dominates:
 on the square lattice there are 20,971,920 embeddings up to 12 bonds but only

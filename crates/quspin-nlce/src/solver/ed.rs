@@ -248,29 +248,38 @@ impl Spectrum {
         };
         for (it, &t) in temps.iter().enumerate() {
             let beta = 1.0 / t;
-            let (mut z, mut e1, mut m1, mut m2) = (0.0, 0.0, 0.0, 0.0);
+            // Compensated sums: the NLCE weights are alternating-sign
+            // combinations of many cluster properties, which amplifies any
+            // rounding in them (see `Neumaier`).
+            let (mut z, mut e1, mut m1, mut m2) = (
+                Neumaier::default(),
+                Neumaier::default(),
+                Neumaier::default(),
+                Neumaier::default(),
+            );
             for b in &self.blocks {
                 let sz = b.sz.unwrap_or(0.0);
                 for &e in &b.eigenvalues {
                     let w = b.degeneracy * (-beta * (e - e0)).exp();
-                    z += w;
-                    e1 += w * e;
+                    z.add(w);
+                    e1.add(w * e);
                     // A degeneracy-2 block pairs S^z with −S^z: ⟨S^z⟩ cancels.
                     if b.degeneracy == 1.0 {
-                        m1 += w * sz;
+                        m1.add(w * sz);
                     }
-                    m2 += w * sz * sz;
+                    m2.add(w * sz * sz);
                 }
             }
+            let (z, e1, m1, m2) = (z.sum(), e1.sum(), m1.sum(), m2.sum());
             let mean_e = e1 / z;
-            let mut var_e = 0.0;
+            let mut var = Neumaier::default();
             for b in &self.blocks {
                 for &e in &b.eigenvalues {
                     let w = b.degeneracy * (-beta * (e - e0)).exp();
-                    var_e += w * (e - mean_e) * (e - mean_e);
+                    var.add(w * (e - mean_e) * (e - mean_e));
                 }
             }
-            var_e /= z;
+            let var_e = var.sum() / z;
             let ln_z = -beta * e0 + z.ln();
             out.ln_z[it] = ln_z;
             out.energy[it] = mean_e;
@@ -284,6 +293,36 @@ impl Spectrum {
             }
         }
         out
+    }
+}
+
+/// Neumaier (improved Kahan) compensated summation.
+///
+/// A cluster property enters the expansion through alternating-sign
+/// combinations over all its sub-clusters, multiplied by lattice constants
+/// that reach ~10⁴ for 12-bond clusters, so rounding in `P(c)` is amplified
+/// by many orders of magnitude. Summing the up to 2^N Boltzmann terms naively
+/// accumulates `O(√n · ε)` relative error; compensated summation removes that
+/// growth.
+#[derive(Default, Clone, Copy)]
+struct Neumaier {
+    sum: f64,
+    comp: f64,
+}
+
+impl Neumaier {
+    fn add(&mut self, x: f64) {
+        let t = self.sum + x;
+        if self.sum.abs() >= x.abs() {
+            self.comp += (self.sum - t) + x;
+        } else {
+            self.comp += (x - t) + self.sum;
+        }
+        self.sum = t;
+    }
+
+    fn sum(self) -> f64 {
+        self.sum + self.comp
     }
 }
 

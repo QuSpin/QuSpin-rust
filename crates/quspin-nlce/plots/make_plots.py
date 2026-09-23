@@ -98,10 +98,13 @@ def reference(ax, t, y, label):
 
 
 def finish(fig, path, title, subtitle):
-    # fig.text (not suptitle) so tight_layout packs the axes right under it.
+    # Positions in inches from the top, so every figure height gets the same
+    # spacing; fig.text (not suptitle) so tight_layout packs the axes below.
+    h = fig.get_figheight()
+    n_lines = subtitle.count("\n") + 1
     fig.text(
         0.01,
-        0.975,
+        1 - 0.1 / h,
         title,
         ha="left",
         va="top",
@@ -109,8 +112,10 @@ def finish(fig, path, title, subtitle):
         fontweight="bold",
         color=INK,
     )
-    fig.text(0.01, 0.905, subtitle, ha="left", va="top", fontsize=9.5, color=INK_2)
-    fig.tight_layout(rect=(0, 0, 1, 0.86))
+    fig.text(
+        0.01, 1 - 0.42 / h, subtitle, ha="left", va="top", fontsize=9.5, color=INK_2
+    )
+    fig.tight_layout(rect=(0, 0, 1, 1 - (0.42 + 0.19 * n_lines) / h))
     fig.savefig(path, dpi=160)
     print("wrote", path)
 
@@ -210,3 +215,105 @@ finish(
     "Orders 3…15 (chains of 2…14 sites). At order 15 the error hits machine "
     "precision (~1e-14) for T ≳ 0.5 J.",
 )
+
+# --- Bond expansion vs rectangle expansion -----------------------------------
+RECT, BOND = "#2a78d6", "#eb6834"  # categorical slots 1-2 (validated pair)
+QUANTS = [("energy", "E / N"), ("entropy", "S / N"), ("specific_heat", "C / N")]
+
+if (DIR / "heisenberg_bond.csv").exists():
+    hb = load("heisenberg_bond.csv")
+
+    # Partial sums by order, same layout as heisenberg.png.
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))
+    for ax, (key, lab) in zip(axes, QUANTS):
+        order_lines(ax, hb, [8, 9, 10, 11, 12], key)
+        ax.set_xscale("log")
+        ax.set_xlabel("T / J")
+        ax.set_title(lab, loc="left")
+    axes[0].set_ylim(-0.72, 0.02)
+    axes[1].set_ylim(0, 0.75)
+    axes[2].set_ylim(0, 0.62)
+    axes[2].legend(loc="upper right")
+    finish(
+        fig,
+        DIR / "heisenberg_bond.png",
+        "Square-lattice Heisenberg AFM: bare bond-NLCE partial sums",
+        "Orders 8…12 bonds (4,424 topologies, up to 13 sites). Even and odd orders "
+        "bracket the result and fan out below T ≈ 1 J.",
+    )
+
+    # Highest order of each expansion, and its last-order change.
+    rect_last, rect_prev = h[8], h[7]
+    bond_last, bond_prev = hb[12], hb[11]
+    fig, axes = plt.subplots(2, 3, figsize=(13, 7.4), sharex=True)
+    for col, (key, lab) in enumerate(QUANTS):
+        top, bottom = axes[0, col], axes[1, col]
+        top.plot(
+            rect_last["T"], rect_last[key], color=RECT, label="rectangles, m + n ≤ 8"
+        )
+        top.plot(bond_last["T"], bond_last[key], color=BOND, label="bonds, ≤ 12")
+        top.set_title(lab, loc="left")
+        for last, prev, color in [
+            (rect_last, rect_prev, RECT),
+            (bond_last, bond_prev, BOND),
+        ]:
+            bottom.plot(last["T"], floor(last[key] - prev[key]), color=color)
+        bottom.set_yscale("log")
+        bottom.set_ylim(1e-15, 10)
+        bottom.set_title(f"|Δ{lab.split()[0]}| between the last two orders", loc="left")
+        bottom.set_xlabel("T / J")
+        bottom.set_xscale("log")
+    axes[0, 0].set_ylim(-0.72, 0.02)
+    axes[0, 1].set_ylim(0, 0.75)
+    axes[0, 2].set_ylim(0, 0.62)
+    axes[0, 0].legend(loc="lower right")
+    finish(
+        fig,
+        DIR / "bond_vs_rect_heisenberg.png",
+        "Heisenberg AFM: rectangle vs topological bond expansion (bare sums)",
+        "Rectangles: 16 clusters, ≤ 16 sites, ≈35 s. Bonds: 4,424 clusters, ≤ 13 "
+        "sites, ≈3–5 min. Bottom: change between the last two orders.\n"
+        "The flat bond floor (~1e-8) at high T is eigenvalue rounding amplified by "
+        "inclusion–exclusion over 21M embeddings, not truncation error.",
+    )
+
+if (DIR / "ising_bond.csv").exists():
+    gb = load("ising_bond.csv")
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.2))
+    for data, o, color, label in [
+        (g, 8, RECT, "rectangles, m + n ≤ 8"),
+        (gb, 12, BOND, "bonds, ≤ 12"),
+    ]:
+        t = data[o]["T"]
+        axes[0].plot(t, data[o]["energy"], color=color, label=label)
+        axes[1].plot(t, floor(data[o]["energy"] - onsager(t)), color=color)
+    t = g[8]["T"]
+    reference(axes[0], t, onsager(t), "Onsager (exact)")
+    axes[0].set_ylim(-0.52, 0.02)
+    axes[0].set_title("E / N", loc="left")
+    axes[1].set_yscale("log")
+    axes[1].set_ylim(1e-16, 1)
+    axes[1].set_title("|E_NLCE − E_Onsager| / N", loc="left")
+    for ax in axes:
+        ax.set_xscale("log")
+        ax.set_xlabel("T / J")
+        ax.axvline(tc, color=INK_2, linewidth=1)
+        ax.text(
+            tc * 1.04,
+            0.97,
+            "T_c",
+            transform=ax.get_xaxis_transform(),
+            va="top",
+            fontsize=9,
+            color=INK_2,
+        )
+    axes[0].legend(loc="lower right")
+    finish(
+        fig,
+        DIR / "bond_vs_rect_ising.png",
+        "2D Ising model: rectangle vs topological bond expansion against Onsager",
+        "Highest order of each expansion (bare sums). The exact solution gives the "
+        "true error, not just the order-to-order change.\n"
+        "The bond floor (~1e-9) at high T is rounding amplified by "
+        "inclusion–exclusion over 21M embeddings, not truncation error.",
+    )

@@ -1,5 +1,8 @@
 //! Write bare NLCE partial sums (per site) for the Heisenberg, Ising and XX
-//! models to CSV files in the given directory (default `.`), for plotting.
+//! models to CSV files in the given directory (default `.`), for plotting:
+//! rectangle expansion for all three, plus the 12-bond topological bond
+//! expansion for Heisenberg and Ising (one cluster DAG, reused for both
+//! models; ≈10 min in release).
 //!
 //! ```sh
 //! cargo run --release -p quspin-nlce --example export_csv -- crates/quspin-nlce/plots
@@ -60,6 +63,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &RectangleGenerator::new(SquareLattice, 8),
         &Xxz::heisenberg(1.0),
         log_grid(0.2, 20.0, 121),
+    )?;
+    let bonds = ClusterSet::from_generator(
+        &BondGenerator::new(SquareLattice, 12),
+        "topological bond expansion, square lattice, 12 bonds",
+    )?;
+    export(
+        &dir.join("heisenberg_bond.csv"),
+        &bonds,
+        &Xxz::heisenberg(1.0),
+        log_grid(0.2, 20.0, 121),
+    )?;
+    export(
+        &dir.join("ising_bond.csv"),
+        &bonds,
+        &Xxz::ising(-1.0),
+        log_grid(0.2, 10.0, 121),
     )?;
     Ok(())
 }
