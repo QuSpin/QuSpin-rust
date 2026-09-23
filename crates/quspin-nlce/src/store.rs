@@ -387,6 +387,21 @@ mod tests {
     }
 
     #[test]
+    fn round_trips_labelled_clusters() {
+        let set = ClusterSet::from_generator(
+            &BondGenerator::new(crate::lattice::SquareJ1J2Lattice, 3),
+            "J1-J2 bonds 3",
+        )
+        .unwrap();
+        assert!(
+            set.clusters
+                .iter()
+                .any(|c| c.graph.bonds.iter().any(|b| b.label == 1))
+        );
+        assert_eq!(round_trip(&set), set);
+    }
+
+    #[test]
     fn truncation_matches_lower_order_generation() {
         let big = ClusterSet::from_generator(&BondGenerator::new(SquareLattice, 7), "").unwrap();
         let small = BondGenerator::new(SquareLattice, 5).clusters().unwrap();

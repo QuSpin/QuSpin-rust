@@ -9,18 +9,18 @@
 //!
 //! where `L(c)` is the number of embeddings of cluster `c` per lattice site
 //! and `M(s, c)` the number of embeddings of sub-cluster `s` in `c`
-//! (Tang, Khatami & Rigol, arXiv:1207.3366). Two expansions are implemented:
-//! the rectangle expansion (Gan & Hazzard, arXiv:2005.03177) and the
-//! topological bond expansion (clusters = connected bond sets, merged by
-//! graph isomorphism).
+//! (Tang, Khatami & Rigol, arXiv:1207.3366). Implemented: the rectangle
+//! expansion (Gan & Hazzard, arXiv:2005.03177) and topological expansions
+//! over a pluggable node kind (bonds, sites, …) on any lattice, with
+//! clusters merged by labelled graph isomorphism.
 //!
 //! The pipeline is split along traits so each stage can be swapped:
 //!
 //! | Stage | Trait | Phase 1 impl |
 //! |---|---|---|
-//! | Infinite lattice | [`Lattice`] | [`SquareLattice`], [`ChainLattice`] |
-//! | Cluster DAG | [`ClusterGenerator`] | [`RectangleGenerator`], [`BondGenerator`] |
-//! | Hamiltonian | [`Model`] | [`Xxz`] |
+//! | Infinite lattice | [`Lattice`] | [`ChainLattice`], [`SquareLattice`], [`SquareJ1J2Lattice`], [`TriangularLattice`], [`HoneycombLattice`] |
+//! | Cluster DAG | [`ClusterGenerator`] | [`RectangleGenerator`], [`TopologicalGenerator`] over a [`NodeKind`] ([`Bonds`], [`Sites`]) |
+//! | Hamiltonian | [`Model`] | [`Xxz`], [`LabeledXxz`] |
 //! | Per-cluster property | [`ClusterSolver`] | [`ExactDiagSolver`] → [`Thermo`] |
 //! | Inclusion–exclusion | [`combine`] / [`run_nlce`] over any [`Property`] | — |
 //! | Resummation | [`Resummation`] | [`Bare`], [`Wynn`], [`Euler`] |
@@ -55,12 +55,14 @@ pub mod store;
 pub use combiner::{ClusterCache, NlceResult, combine, run_nlce, run_nlce_cached};
 pub use error::NlceError;
 pub use generator::{
-    BondGenerator, ClusterGenerator, ClusterType, EmbeddingCensus, RectangleGenerator,
-    RectangleOrder,
+    Adjacency, BondGenerator, Bonds, ClusterGenerator, ClusterType, EmbeddingCensus, Node,
+    NodeKind, RectangleGenerator, RectangleOrder, SiteGenerator, Sites, TopologicalGenerator,
 };
 pub use graph::{Bond, ClusterGraph, ClusterKey, Topology};
-pub use lattice::{ChainLattice, Lattice, SquareLattice};
-pub use model::{Model, Xxz};
+pub use lattice::{
+    ChainLattice, HoneycombLattice, Lattice, SquareJ1J2Lattice, SquareLattice, TriangularLattice,
+};
+pub use model::{LabeledXxz, Model, Xxz};
 pub use property::{Componentwise, Property, Thermo};
 pub use resum::{Bare, Euler, Resummation, Wynn};
 pub use solver::{ClusterSolver, ExactDiagSolver, MAX_ED_SITES, Spectrum, SpectrumBlock};

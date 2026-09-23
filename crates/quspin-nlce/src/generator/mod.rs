@@ -8,11 +8,14 @@
 //!
 //! [`combine`]: crate::combiner::combine
 
-mod bond;
 mod rectangle;
+mod topological;
 
-pub use bond::{BondGenerator, EmbeddingCensus};
 pub use rectangle::{RectangleGenerator, RectangleOrder};
+pub use topological::{
+    Adjacency, BondGenerator, Bonds, EmbeddingCensus, Node, NodeKind, SiteGenerator, Sites,
+    TopologicalGenerator,
+};
 
 use crate::error::NlceError;
 use crate::graph::{ClusterGraph, ClusterKey};
