@@ -3,8 +3,8 @@
 //!
 //! A [`ClusterGraph`] is what a solver sees: a finite set of sites
 //! `0..n_sites` with labelled bonds and open boundaries. It carries no
-//! information about how it was generated, so rectangle and (Phase 2)
-//! site-based generators produce the same type.
+//! information about how it was generated, so the rectangle and bond
+//! generators (and any future one) produce the same type.
 
 use crate::error::NlceError;
 use std::collections::HashSet;
@@ -263,8 +263,8 @@ pub enum Topology {
         /// Longer extent.
         n: u32,
     },
-    /// Canonical encoding of an arbitrary graph (reserved for the Phase 2
-    /// site-based generator, e.g. a canonical adjacency bit string).
+    /// Canonical code of an arbitrary graph ([`crate::canon::Canonical::code`]),
+    /// used by the topological bond expansion.
     Canonical(Vec<u64>),
 }
 
@@ -303,7 +303,13 @@ impl fmt::Display for ClusterKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.topology {
             Topology::Rectangle { m, n } => write!(f, "{m}x{n}")?,
-            Topology::Canonical(code) => write!(f, "graph{code:x?}")?,
+            Topology::Canonical(code) => {
+                // `[n, row_0, …]`: vertex and bond counts, then the rows.
+                let rows = &code[1..];
+                let bonds: u32 = rows.iter().map(|r| r.count_ones()).sum::<u32>() / 2;
+                let hex: Vec<String> = rows.iter().map(|r| format!("{r:x}")).collect();
+                write!(f, "{}v{bonds}b[{}]", code[0], hex.join("."))?
+            }
         }
         if !self.bond_labels.is_empty() || !self.site_labels.is_empty() {
             write!(f, "[b{:?} s{:?}]", self.bond_labels, self.site_labels)?;

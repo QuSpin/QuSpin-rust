@@ -8,13 +8,31 @@ Hamiltonian construction, symmetry sectors, and exact diagonalization.
 P/N = Σ_c L(c) W(c),        W(c) = P(c) − Σ_{s ⊂ c} M(s, c) W(s)
 ```
 
-Phase 1 implements the **rectangle expansion** (all open `m × n`
-rectangles up to `m + n ≤ max_order`, optionally capped by site count), with
-full ED per cluster, and reports the bare partial sums per order.
+Two expansions are implemented, both with full ED per cluster and bare
+partial sums per order:
+
+- **Rectangle expansion** (`RectangleGenerator`): all open `m × n`
+  rectangles up to `m + n ≤ max_order`, optionally capped by site count.
+- **Topological bond expansion** (`BondGenerator`): all connected bond sets
+  up to `max_order` bonds, merged by graph isomorphism (see below).
 
 ```sh
-cargo run --release -p quspin-nlce --example heisenberg_partial_sums 8
+cargo run --release -p quspin-nlce --example heisenberg_partial_sums 8          # rectangles
+cargo run --release -p quspin-nlce --example heisenberg_partial_sums 12 bond    # bonds
+cargo run --release -p quspin-nlce --example bond_census 12 bond12.clusters     # counts + save DAG
+cargo run --release -p quspin-nlce --example heisenberg_partial_sums 10 load bond12.clusters
 ```
+
+### Reusing cluster DAGs (`ClusterSet`)
+
+The cluster DAG is model independent. `ClusterSet::from_generator(&gen, desc)`
+captures it, `.save(path)` / `ClusterSet::load(path)` store it in a small
+line-based text format (documented in `src/store.rs`), and `ClusterSet` is
+itself a `ClusterGenerator`, so a loaded set goes straight into `run_nlce`.
+`.truncated(n)` keeps orders `≤ n` (valid because sub-clusters never exceed
+their parent's order). The 12-bond square-lattice DAG is 3.2 MB and loads in
+≈0.15 s, versus ≈17–20 s to regenerate. Loading validates every graph,
+automorphism, and sub-cluster reference.
 
 Plots of the partial sums against exact results (Heisenberg, Ising vs
 Onsager, XX chain vs free fermions) are in [`plots/`](plots/); regenerate
@@ -40,7 +58,7 @@ Lattice ──► ClusterGenerator ──► [ClusterType] ──► ClusterSolv
 | Trait | Responsibility | Phase 1 impl |
 |---|---|---|
 | `Lattice` | Infinite lattice: sites, labelled neighbour bonds, point group, canonical translation. Provides `distinct_orientations` (→ `L(c)`) and `cluster_graph` (induced open cluster + automorphisms). | `SquareLattice`, `ChainLattice` |
-| `ClusterGenerator` | Yields `ClusterType { key, order, graph, lattice_constant = L(c), subclusters = [(s, M(s,c))] }`, sorted by order, closed under sub-clusters. | `RectangleGenerator` |
+| `ClusterGenerator` | Yields `ClusterType { key, order, graph, lattice_constant = L(c), subclusters = [(s, M(s,c))] }`, sorted by order, closed under sub-clusters. | `RectangleGenerator`, `BondGenerator` |
 | `Model` | Hamiltonian on a `ClusterGraph` as a QuSpin `SpinOperatorInner`, plus the symmetries it has (S^z conservation, spin flip). | `Xxz` (Heisenberg / XX / Ising / field) |
 | `ClusterSolver<M>` | `(ClusterGraph, &M) → Property`. | `ExactDiagSolver → Thermo` |
 | `Property` | Anything with `zeros_like` + `axpy`: the combiner only forms linear combinations. | `Thermo` (arrays over T), `Vec<f64>` |
@@ -72,29 +90,51 @@ Everything goes through QuSpin-rust:
 
 Thermodynamics use Boltzmann weights shifted by the ground-state energy.
 
-## Phase 2: a site-based generator
+## Topological bond expansion: how the clusters are built
 
-A site-based (general graph) expansion only needs a new `ClusterGenerator`.
-The solver, model, combiner, cache, and resummation are unchanged:
+Clusters are connected sets of lattice bonds (the cluster Hamiltonian has
+exactly those bonds), the order is the bond count, and embeddings with
+isomorphic graphs share one cluster type. `BondGenerator` builds them in
+four steps (`src/generator/bond.rs`, `src/canon.rs`):
 
-1. **Enumerate** connected clusters by growing site sets from
-   `Lattice::unit_cell_sites()` with `Lattice::neighbors`, up to `N` sites.
-2. **Canonicalize** each cluster's induced graph (from `Lattice::cluster_graph`)
-   into `Topology::Canonical(code)`, e.g. a canonical adjacency matrix under
-   graph isomorphism. For disorder, put the bond/site labels into the
-   `ClusterKey` label fields.
-3. **Lattice constants:** count the distinct embeddings per site (site sets
-   modulo translation, per unit-cell site). `Lattice::distinct_orientations`
-   covers the point-group part.
-4. **Multiplicities:** for each cluster, enumerate its connected sub-site-sets,
-   canonicalize them, and count occurrences, giving `M(s, c)` as
-   `subclusters`.
-5. **Order** each cluster by its site (or bond) count and sort ascending.
+1. **Enumerate each embedding exactly once — Redelmeier's algorithm.** Bonds
+   of a finite lattice patch get integer ids in a translation-invariant order
+   (by endpoints). Every translation class of connected `n`-bond clusters has
+   exactly one representative whose smallest bond starts in the unit cell.
+   From each such root bond, a depth-first search on the line graph (bonds
+   adjacent when they share a site) grows clusters: each stack frame pops a
+   bond from an *untried* list, adds it, records the cluster, and recurses
+   with the untried list enlarged by the new bond's neighbours (only bonds
+   above the root, each offered at most once per path). After the subtree
+   *with* that bond is explored, the bond stays excluded for the rest of the
+   frame, so the search tree partitions the clusters and none is produced
+   twice. No hash set of seen clusters is needed, and memory is tiny.
+2. **Canonicalise each embedding.** Colour refinement plus
+   individualisation (nauty's scheme, without pruning) yields the
+   lexicographically smallest relabelled adjacency matrix — equal for two
+   graphs iff they are isomorphic. The same search returns the automorphism
+   group, which the ED solver uses for block-diagonalisation.
+3. **Lattice constants.** `L(c)` = number of embeddings that produced code
+   `c`, per unit-cell site.
+4. **Multiplicities.** Redelmeier again on each topology's own line graph
+   enumerates its connected proper sub-bond-sets once each; canonicalising
+   them gives `M(s, c)`. The single site is the order-0 cluster.
 
-`ClusterGraph::automorphisms` may be left empty. The solver then uses only
-S^z / spin-flip sectors, which is correct but slower. Supplying the graph's
-automorphism group lets the ED solver use any elementary-abelian 2-subgroup
-automatically.
+Every embedding must be visited to count `L(c)`, so enumeration dominates:
+on the square lattice there are 20,971,920 embeddings up to 12 bonds but only
+4,423 topologies, and the whole DAG takes ≈17 s on 4 cores
+(`examples/bond_census.rs`). Possible further speed-ups: canonicalise only
+one embedding per point-group orbit (weighting by orbit size), or prune the
+canonicalisation search with automorphisms.
+
+## Adding another generator (e.g. site-based)
+
+Only a new `ClusterGenerator` is needed; the solver, model, combiner, cache,
+and resummation are unchanged. A site-based expansion would run the same
+Redelmeier search over sites instead of bonds, take the *induced* subgraph
+(`Lattice::cluster_graph`) of each site set, and reuse `canon` for
+topologies and sub-cluster counting. `ClusterGraph::automorphisms` may be
+left empty (correct, just slower ED).
 
 Other solvers slot in the same way: a Lanczos/FTLM `ClusterSolver` for larger
 clusters, or a time-evolution solver returning a `Property` over time.
@@ -103,8 +143,10 @@ clusters, or a time-evolution solver returning a `Property` over time.
 
 | Test | What it checks |
 |---|---|
-| `tests/ed_solver.rs` | Symmetry-blocked spectrum = brute-force full-space ED (several models, graphs, D4 clusters); analytic dimer thermodynamics. |
+| `tests/ed_solver.rs` | Symmetry-blocked spectrum = brute-force full-space ED (several models, graphs, D4 clusters, every bond topology up to 6 bonds); analytic dimer thermodynamics. |
 | `tests/identity.rs` | `P(R) = Σ_{s ⊆ R} M(s,R) W(s)` to 1e-12 relative, with `M` counted by brute force, for 3×4. The 4×4 version is `#[ignore]`d; run it with `cargo test -p quspin-nlce --release -- --ignored`. |
 | `tests/xx_chain.rs` | 1×n clusters → free-fermion E, S, χ (errors ≤ 1e-12 at T ≥ 1). |
 | `tests/ising_onsager.rs` | 2D Ising energy → Onsager above T_c, monotone in order. |
 | `tests/heisenberg.rs` | High-T series (`−3β/8 − 3β²/32`, entropy), order-to-order convergence at high T, qualitative C(T), and cache reuse. |
+| `src/store.rs` (unit) | Save/load round-trips for both generators; truncation equals lower-order generation; malformed files rejected. |
+| `tests/bond_expansion.rs` | Bond expansion: identical to the rectangle expansion on the chain, order-`n` contributions vanish at least as `βⁿ`, agreement with rectangles at high T, Ising → Onsager. Unit tests in `bond.rs` / `canon.rs` check Redelmeier against brute force, `L(c)`/`M(s,c)` by hand and by exhaustive subsets, and the canonicaliser against the counts of unlabelled graphs. |

@@ -3,8 +3,8 @@
 //! A [`Lattice`] is the thermodynamic-limit system the expansion targets.
 //! Generators use it to realise finite clusters as [`ClusterGraph`]s, to count
 //! distinct orientations (the lattice constant `L(c)`), and to find cluster
-//! automorphisms. Phase 2 site-based generators additionally grow clusters
-//! with [`Lattice::neighbors`] from [`Lattice::unit_cell_sites`].
+//! automorphisms. The bond generator grows clusters with
+//! [`Lattice::neighbors`] from [`Lattice::unit_cell_sites`].
 
 use crate::error::NlceError;
 use crate::graph::{Bond, ClusterGraph};

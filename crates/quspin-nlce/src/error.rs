@@ -15,6 +15,8 @@ pub enum NlceError {
     InconsistentClusters(String),
     /// A combination of model, solver, and observables that is not supported.
     Unsupported(String),
+    /// Reading or writing a file failed.
+    Io(std::io::Error),
 }
 
 impl fmt::Display for NlceError {
@@ -24,6 +26,7 @@ impl fmt::Display for NlceError {
             Self::InvalidInput(s) => write!(f, "invalid input: {s}"),
             Self::InconsistentClusters(s) => write!(f, "inconsistent clusters: {s}"),
             Self::Unsupported(s) => write!(f, "unsupported: {s}"),
+            Self::Io(e) => write!(f, "I/O error: {e}"),
         }
     }
 }
@@ -32,6 +35,7 @@ impl std::error::Error for NlceError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::QuSpin(e) => Some(e),
+            Self::Io(e) => Some(e),
             _ => None,
         }
     }
@@ -40,5 +44,11 @@ impl std::error::Error for NlceError {
 impl From<QuSpinError> for NlceError {
     fn from(e: QuSpinError) -> Self {
         Self::QuSpin(e)
+    }
+}
+
+impl From<std::io::Error> for NlceError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
     }
 }

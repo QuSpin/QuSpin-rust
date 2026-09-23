@@ -3,20 +3,22 @@
 //! A [`ClusterGenerator`] yields every cluster type `c` with its lattice
 //! constant `L(c)` and the multiplicities `M(s, c)` of its proper
 //! sub-clusters. This is the only information the [`combine`] step needs,
-//! so any generator (rectangles now, site-based graphs in Phase 2) slots in
+//! so any generator (rectangles, topological bond clusters, …) slots in
 //! without changes elsewhere.
 //!
 //! [`combine`]: crate::combiner::combine
 
+mod bond;
 mod rectangle;
 
+pub use bond::{BondGenerator, EmbeddingCensus};
 pub use rectangle::{RectangleGenerator, RectangleOrder};
 
 use crate::error::NlceError;
 use crate::graph::{ClusterGraph, ClusterKey};
 
 /// One cluster type of the expansion.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ClusterType {
     /// Cache key (topology + labels).
     pub key: ClusterKey,

@@ -9,19 +9,22 @@
 //!
 //! where `L(c)` is the number of embeddings of cluster `c` per lattice site
 //! and `M(s, c)` the number of embeddings of sub-cluster `s` in `c`
-//! (Tang, Khatami & Rigol, arXiv:1207.3366). Phase 1 implements the
-//! rectangle expansion (Gan & Hazzard, arXiv:2005.03177).
+//! (Tang, Khatami & Rigol, arXiv:1207.3366). Two expansions are implemented:
+//! the rectangle expansion (Gan & Hazzard, arXiv:2005.03177) and the
+//! topological bond expansion (clusters = connected bond sets, merged by
+//! graph isomorphism).
 //!
 //! The pipeline is split along traits so each stage can be swapped:
 //!
 //! | Stage | Trait | Phase 1 impl |
 //! |---|---|---|
 //! | Infinite lattice | [`Lattice`] | [`SquareLattice`], [`ChainLattice`] |
-//! | Cluster DAG | [`ClusterGenerator`] | [`RectangleGenerator`] |
+//! | Cluster DAG | [`ClusterGenerator`] | [`RectangleGenerator`], [`BondGenerator`] |
 //! | Hamiltonian | [`Model`] | [`Xxz`] |
 //! | Per-cluster property | [`ClusterSolver`] | [`ExactDiagSolver`] → [`Thermo`] |
 //! | Inclusion–exclusion | [`combine`] / [`run_nlce`] over any [`Property`] | — |
 //! | Resummation | [`Resummation`] | [`Bare`] |
+//! | Saved DAGs | [`ClusterSet`] (a [`ClusterGenerator`]) | text file, [`store`] |
 //!
 //! ```no_run
 //! use quspin_nlce::*;
@@ -37,6 +40,7 @@
 
 #![warn(missing_docs)]
 
+pub mod canon;
 pub mod combiner;
 pub mod error;
 pub mod generator;
@@ -46,13 +50,18 @@ pub mod model;
 pub mod property;
 pub mod resum;
 pub mod solver;
+pub mod store;
 
 pub use combiner::{ClusterCache, NlceResult, combine, run_nlce, run_nlce_cached};
 pub use error::NlceError;
-pub use generator::{ClusterGenerator, ClusterType, RectangleGenerator, RectangleOrder};
+pub use generator::{
+    BondGenerator, ClusterGenerator, ClusterType, EmbeddingCensus, RectangleGenerator,
+    RectangleOrder,
+};
 pub use graph::{Bond, ClusterGraph, ClusterKey, Topology};
 pub use lattice::{ChainLattice, Lattice, SquareLattice};
 pub use model::{Model, Xxz};
 pub use property::{Property, Thermo};
 pub use resum::{Bare, Resummation};
 pub use solver::{ClusterSolver, ExactDiagSolver, MAX_ED_SITES, Spectrum, SpectrumBlock};
+pub use store::ClusterSet;

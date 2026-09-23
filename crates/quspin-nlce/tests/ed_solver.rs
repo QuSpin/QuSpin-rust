@@ -121,3 +121,23 @@ fn rejects_bad_temperatures() {
     assert!(ExactDiagSolver::new(vec![1.0, 0.0]).is_err());
     assert!(ExactDiagSolver::new(vec![f64::NAN]).is_err());
 }
+
+/// Every bond-expansion topology up to 6 bonds (trees, plaquettes, and
+/// graphs with large non-abelian automorphism groups such as the 4-leaf
+/// star) must give the full-space spectrum.
+#[test]
+fn bond_topologies_match_full_space() {
+    let clusters = BondGenerator::new(SquareLattice, 6).clusters().unwrap();
+    assert!(clusters.len() > 20);
+    for c in &clusters {
+        check(&c.graph, &Xxz::heisenberg(1.0));
+        check(
+            &c.graph,
+            &Xxz {
+                jxy: 0.4,
+                jz: 1.1,
+                hz: 0.3,
+            },
+        );
+    }
+}
