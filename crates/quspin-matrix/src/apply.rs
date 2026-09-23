@@ -673,6 +673,34 @@ pub fn project_to(
 // Tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// expectation — ⟨ψ|O|ψ⟩ on a single basis
+// ---------------------------------------------------------------------------
+
+/// Expectation value `⟨ψ|O|ψ⟩ = Σ_i conj(ψ_i) (O ψ)_i` of `op` (with
+/// per-cindex `coeffs`) in the state `psi` expressed in `basis`.
+///
+/// Uses [`OperatorDispatch::apply`](crate::OperatorDispatch::apply), i.e. the
+/// operator `A` itself (not the transposed `QMatrix` convention). `psi` is not
+/// normalised here: pass a normalised state to get a true expectation value.
+///
+/// # Errors
+/// Propagates errors from `apply` (length mismatches, LHSS mismatch,
+/// operator sites beyond the basis).
+pub fn expectation<O>(
+    op: &O,
+    basis: &GenericBasis,
+    coeffs: &[C64],
+    psi: &[C64],
+) -> Result<C64, QuSpinError>
+where
+    O: crate::OperatorDispatch + ?Sized,
+{
+    let mut out = vec![C64::default(); psi.len()];
+    op.apply(basis, coeffs, psi, &mut out, true)?;
+    Ok(psi.iter().zip(&out).map(|(a, b)| a.conj() * b).sum())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
