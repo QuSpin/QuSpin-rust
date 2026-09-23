@@ -16,7 +16,7 @@
 //!
 //! The pipeline is split along traits so each stage can be swapped:
 //!
-//! | Stage | Trait | Phase 1 impl |
+//! | Stage | Trait | Implementations |
 //! |---|---|---|
 //! | Infinite lattice | [`Lattice`] | [`ChainLattice`], [`SquareLattice`], [`SquareJ1J2Lattice`], [`TriangularLattice`], [`HoneycombLattice`] |
 //! | Cluster DAG | [`ClusterGenerator`] | [`RectangleGenerator`], [`TopologicalGenerator`] over a [`NodeKind`] ([`Bonds`], [`Sites`]) |

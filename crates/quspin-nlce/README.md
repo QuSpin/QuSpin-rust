@@ -62,7 +62,7 @@ Lattice ──► ClusterGenerator ──► [ClusterType] ──► ClusterSolv
                                                      Resummation
 ```
 
-| Trait | Responsibility | Phase 1 impl |
+| Trait | Responsibility | Implementations |
 |---|---|---|
 | `Lattice` | Infinite lattice: sites (with optional labels), labelled neighbour bonds, point group, canonical translation. Provides `distinct_orientations` (→ `L(c)`) and `cluster_graph` (induced open cluster + automorphisms). | chain, square, square J1–J2, triangular, honeycomb |
 | `ClusterGenerator` | Yields `ClusterType { key, order, graph, lattice_constant = L(c), subclusters = [(s, M(s,c))] }`, sorted by order, closed under sub-clusters. | `RectangleGenerator`, `TopologicalGenerator` (`BondGenerator`, `SiteGenerator`) |
